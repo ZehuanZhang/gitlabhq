@@ -24,10 +24,12 @@ export default class DropdownOperator extends FilteredSearchDropdown {
 
     if (selected.tagName === 'LI') {
       if (selected.hasAttribute('data-value')) {
+        const name = FilteredSearchVisualTokens.getLastTokenPartial();
         const operator = selected.dataset.value;
+
         FilteredSearchVisualTokens.removeLastTokenPartial();
         FilteredSearchDropdownManager.addWordToInput({
-          tokenName: this.filter,
+          tokenName: name,
           tokenOperator: operator,
           clicked: false,
         });
@@ -38,22 +40,24 @@ export default class DropdownOperator extends FilteredSearchDropdown {
   }
 
   renderContent(forceShowList = false) {
-    this.filter = FilteredSearchVisualTokens.getLastTokenPartial();
-
     const dropdownData = [
       {
         tag: 'equal',
         type: 'string',
         title: '=',
-        help: __('Is'),
+        help: __('is'),
       },
-      {
+    ];
+
+    if (gon.features?.notIssuableQueries) {
+      dropdownData.push({
         tag: 'not-equal',
         type: 'string',
         title: '!=',
-        help: __('Is not'),
-      },
-    ];
+        help: __('is not'),
+      });
+    }
+
     this.droplab.changeHookList(this.hookId, this.dropdown, [Filter], this.config);
     this.droplab.setData(this.hookId, dropdownData);
     super.renderContent(forceShowList);

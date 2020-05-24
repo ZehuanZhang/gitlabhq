@@ -2,23 +2,22 @@
 
 module BroadcastMessagesHelper
   def current_broadcast_banner_messages
-    BroadcastMessage.current_banner_messages(request.path)
+    BroadcastMessage.current_banner_messages(request.path).select do |message|
+      cookies["hide_broadcast_message_#{message.id}"].blank?
+    end
   end
 
   def current_broadcast_notification_message
-    BroadcastMessage.current_notification_messages(request.path).last
+    not_hidden_messages = BroadcastMessage.current_notification_messages(request.path).select do |message|
+      cookies["hide_broadcast_message_#{message.id}"].blank?
+    end
+    not_hidden_messages.last
   end
 
   def broadcast_message(message, opts = {})
     return unless message.present?
 
-    classes = "broadcast-#{message.broadcast_type}-message #{opts[:preview] && 'preview'}"
-
-    content_tag :div, dir: 'auto', class: classes, style: broadcast_message_style(message) do
-      concat sprite_icon('bullhorn', size: 16, css_class: 'vertical-align-text-top')
-      concat ' '
-      concat render_broadcast_message(message)
-    end
+    render "shared/broadcast_message", { message: message, opts: opts }
   end
 
   def broadcast_message_style(broadcast_message)
@@ -48,7 +47,15 @@ module BroadcastMessagesHelper
   end
 
   def render_broadcast_message(broadcast_message)
-    Banzai.render_field(broadcast_message, :message).html_safe
+    if broadcast_message.notification?
+      Banzai.render_field_and_post_process(broadcast_message, :message, {
+        current_user: current_user,
+        skip_project_check: true,
+        broadcast_message_placeholders: true
+      }).html_safe
+    else
+      Banzai.render_field(broadcast_message, :message).html_safe
+    end
   end
 
   def broadcast_type_options

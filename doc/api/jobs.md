@@ -4,7 +4,7 @@
 
 Get a list of jobs in a project. Jobs are sorted in descending order of their IDs.
 
-```
+```plaintext
 GET /projects/:id/jobs
 ```
 
@@ -13,7 +13,7 @@ GET /projects/:id/jobs
 | `id`      | integer/string                 | yes      | ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user.                                                                                               |
 | `scope`   | string **or** array of strings | no       | Scope of jobs to show. Either one of or an array of the following: `created`, `pending`, `running`, `failed`, `success`, `canceled`, `skipped`, or `manual`. All jobs are returned if `scope` is not provided. |
 
-```sh
+```shell
 curl --globoff --header "PRIVATE-TOKEN: <your_access_token>" 'https://gitlab.example.com/api/v4/projects/1/jobs?scope[]=pending&scope[]=running'
 ```
 
@@ -138,7 +138,7 @@ Example of response
 
 Get a list of jobs for a pipeline.
 
-```
+```plaintext
 GET /projects/:id/pipelines/:pipeline_id/jobs
 ```
 
@@ -148,7 +148,7 @@ GET /projects/:id/pipelines/:pipeline_id/jobs
 | `pipeline_id` | integer                        | yes      | ID of a pipeline.                                                                                                                                                                                          |
 | `scope`       | string **or** array of strings | no       | Scope of jobs to show. Either one of or an array of the following: `created`, `pending`, `running`, `failed`, `success`, `canceled`, `skipped`, or `manual`. All jobs are returned if `scope` is not provided. |
 
-```sh
+```shell
 curl --header "PRIVATE-TOKEN: <your_access_token>" 'https://gitlab.example.com/api/v4/projects/1/pipelines/6/jobs?scope[]=pending&scope[]=running'
 ```
 
@@ -273,7 +273,7 @@ Example of response
 
 Get a single job of a project
 
-```
+```plaintext
 GET /projects/:id/jobs/:job_id
 ```
 
@@ -282,7 +282,7 @@ GET /projects/:id/jobs/:job_id
 | `id`      | integer/string | yes      | ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user. |
 | `job_id`  | integer        | yes      | ID of a job.                                                                                                 |
 
-```sh
+```shell
 curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/jobs/8"
 ```
 
@@ -345,13 +345,13 @@ Example of response
 
 > **Notes**:
 >
-> - [Introduced][ce-2893] in GitLab 8.5.
-> - The use of `CI_JOB_TOKEN` in the artifacts download API was [introduced][ee-2346]
->   in [GitLab Premium][ee] 9.5.
+> - [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/2893) in GitLab 8.5.
+> - The use of `CI_JOB_TOKEN` in the artifacts download API was [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/2346)
+>   in [GitLab Premium](https://about.gitlab.com/pricing/) 9.5.
 
 Get the job's artifacts zipped archive of a project.
 
-```
+```plaintext
 GET /projects/:id/jobs/:job_id/artifacts
 ```
 
@@ -359,11 +359,11 @@ GET /projects/:id/jobs/:job_id/artifacts
 |-------------|----------------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------|
 | `id`        | integer/string | yes      | ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user.                                |
 | `job_id`    | integer        | yes      | ID of a job.                                                                                                                                |
-| `job_token` **(PREMIUM)** | string         | no       | To be used with [triggers] for multi-project pipelines. It should be invoked only inside `.gitlab-ci.yml`. Its value is always `$CI_JOB_TOKEN`. |
+| `job_token` **(PREMIUM)** | string         | no       | To be used with [triggers](../ci/triggers/README.md#when-a-pipeline-depends-on-the-artifacts-of-another-pipeline-premium) for multi-project pipelines. It should be invoked only inside `.gitlab-ci.yml`. Its value is always `$CI_JOB_TOKEN`. |
 
 Example request using the `PRIVATE-TOKEN` header:
 
-```sh
+```shell
 curl --output artifacts.zip --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/jobs/42/artifacts"
 ```
 
@@ -399,22 +399,20 @@ Possible response status codes:
 | 200       | Serves the artifacts file.      |
 | 404       | Build not found or no artifacts.|
 
-[ce-2893]: https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/2893
-
 ## Download the artifacts archive
 
 > **Notes**:
 >
-> - [Introduced][ce-5347] in GitLab 8.10.
-> - The use of `CI_JOB_TOKEN` in the artifacts download API was [introduced][ee-2346]
->   in [GitLab Premium][ee] 9.5.
+> - [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/5347) in GitLab 8.10.
+> - The use of `CI_JOB_TOKEN` in the artifacts download API was [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/2346)
+>   in [GitLab Premium](https://about.gitlab.com/pricing/) 9.5.
 
 Download the artifacts zipped archive from the latest successful pipeline for
 the given reference name and job, provided the job finished successfully. This
 is the same as [getting the job's artifacts](#get-job-artifacts), but by
 defining the job's name instead of its ID.
 
-```
+```plaintext
 GET /projects/:id/jobs/artifacts/:ref_name/download?job=name
 ```
 
@@ -425,11 +423,11 @@ Parameters
 | `id`        | integer/string | yes      | ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user.                                |
 | `ref_name`  | string         | yes      | Branch or tag name in repository. HEAD or SHA references are not supported.                                                                     |
 | `job`       | string         | yes      | The name of the job.                                                                                                                            |
-| `job_token` **(PREMIUM)** | string         | no       | To be used with [triggers] for multi-project pipelines. It should be invoked only inside `.gitlab-ci.yml`. Its value is always `$CI_JOB_TOKEN`. |
+| `job_token` **(PREMIUM)** | string         | no       | To be used with [triggers](../ci/triggers/README.md#when-a-pipeline-depends-on-the-artifacts-of-another-pipeline-premium) for multi-project pipelines. It should be invoked only inside `.gitlab-ci.yml`. Its value is always `$CI_JOB_TOKEN`. |
 
 Example request using the `PRIVATE-TOKEN` header:
 
-```sh
+```shell
 curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/jobs/artifacts/master/download?job=test"
 ```
 
@@ -466,8 +464,6 @@ Possible response status codes:
 | 200       | Serves the artifacts file.      |
 | 404       | Build not found or no artifacts.|
 
-[ce-5347]: https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/5347
-
 ## Download a single artifact file by job ID
 
 > Introduced in GitLab 10.0
@@ -476,7 +472,7 @@ Download a single artifact file from a job with a specified ID from within
 the job's artifacts zipped archive. The file is extracted from the archive and
 streamed to the client.
 
-```
+```plaintext
 GET /projects/:id/jobs/:job_id/artifacts/*artifact_path
 ```
 
@@ -490,7 +486,7 @@ Parameters
 
 Example request:
 
-```sh
+```shell
 curl --location --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/jobs/5/artifacts/some/release/file.pdf"
 ```
 
@@ -504,13 +500,13 @@ Possible response status codes:
 
 ## Download a single artifact file from specific tag or branch
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/23538) in GitLab 11.5.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/23538) in GitLab 11.5.
 
 Download a single artifact file for a specific job of the latest successful
 pipeline for the given reference name from within the job's artifacts archive.
 The file is extracted from the archive and streamed to the client.
 
-```
+```plaintext
 GET /projects/:id/jobs/artifacts/:ref_name/raw/*artifact_path?job=name
 ```
 
@@ -525,7 +521,7 @@ Parameters:
 
 Example request:
 
-```sh
+```shell
 curl --location --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/jobs/artifacts/master/raw/some/release/file.pdf?job=pdf"
 ```
 
@@ -541,16 +537,16 @@ Possible response status codes:
 
 Get a log (trace) of a specific job of a project:
 
-```
+```plaintext
 GET /projects/:id/jobs/:job_id/trace
 ```
 
 | Attribute | Type           | Required | Description                                                                                                      |
 |-----------|----------------|----------|------------------------------------------------------------------------------------------------------------------|
-| id        | integer/string | yes      | ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user. |
-| job_id    | integer        | yes      | ID of a job.                                                                                                 |
+| `id`      | integer/string | yes      | ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user. |
+| `job_id`  | integer        | yes      | ID of a job.                                                                                                 |
 
-```sh
+```shell
 curl --location --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/jobs/8/trace"
 ```
 
@@ -565,7 +561,7 @@ Possible response status codes:
 
 Cancel a single job of a project
 
-```
+```plaintext
 POST /projects/:id/jobs/:job_id/cancel
 ```
 
@@ -574,7 +570,7 @@ POST /projects/:id/jobs/:job_id/cancel
 | `id`      | integer/string | yes      | ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user. |
 | `job_id`  | integer        | yes      | ID of a job.                                                                                                 |
 
-```sh
+```shell
 curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/jobs/1/cancel"
 ```
 
@@ -614,7 +610,7 @@ Example of response
 
 Retry a single job of a project
 
-```
+```plaintext
 POST /projects/:id/jobs/:job_id/retry
 ```
 
@@ -623,7 +619,7 @@ POST /projects/:id/jobs/:job_id/retry
 | `id`      | integer/string | yes      | ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user. |
 | `job_id`  | integer        | yes      | ID of a job.                                                                                                 |
 
-```sh
+```shell
 curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/jobs/1/retry"
 ```
 
@@ -663,7 +659,7 @@ Example of response
 
 Erase a single job of a project (remove job artifacts and a job log)
 
-```
+```plaintext
 POST /projects/:id/jobs/:job_id/erase
 ```
 
@@ -676,7 +672,7 @@ Parameters
 
 Example of request
 
-```sh
+```shell
 curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/jobs/1/erase"
 ```
 
@@ -717,7 +713,7 @@ Example of response
 
 Prevents artifacts from being deleted when expiration is set.
 
-```
+```plaintext
 POST /projects/:id/jobs/:job_id/artifacts/keep
 ```
 
@@ -730,7 +726,7 @@ Parameters
 
 Example request:
 
-```sh
+```shell
 curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/jobs/1/artifacts/keep"
 ```
 
@@ -769,11 +765,11 @@ Example response:
 
 ## Delete artifacts
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/25522) in GitLab 11.9.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/25522) in GitLab 11.9.
 
 Delete artifacts of a job.
 
-```
+```plaintext
 DELETE /projects/:id/jobs/:job_id/artifacts
 ```
 
@@ -784,7 +780,7 @@ DELETE /projects/:id/jobs/:job_id/artifacts
 
 Example request:
 
-```sh
+```shell
 curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/jobs/1/artifacts"
 ```
 
@@ -797,7 +793,7 @@ If the artifacts were deleted successfully, a response with status `204 No Conte
 
 Triggers a manual action to start a job.
 
-```
+```plaintext
 POST /projects/:id/jobs/:job_id/play
 ```
 
@@ -806,7 +802,7 @@ POST /projects/:id/jobs/:job_id/play
 | `id`      | integer/string | yes      | ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user. |
 | `job_id`  | integer        | yes      | ID of a job.                                                                                                 |
 
-```sh
+```shell
 curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/jobs/1/play"
 ```
 
@@ -841,7 +837,3 @@ Example of response
   "user": null
 }
 ```
-
-[ee]: https://about.gitlab.com/pricing/
-[ee-2346]: https://gitlab.com/gitlab-org/gitlab/merge_requests/2346
-[triggers]: ../ci/triggers/README.md#when-a-pipeline-depends-on-the-artifacts-of-another-pipeline-premium

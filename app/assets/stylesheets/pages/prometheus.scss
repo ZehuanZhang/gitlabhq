@@ -13,6 +13,14 @@
   .form-group {
     margin-bottom: map-get($spacing-scale, 3);
   }
+
+  .variables-section {
+    input {
+      @include media-breakpoint-up(sm) {
+        width: 160px;
+      }
+    }
+  }
 }
 
 .draggable {
@@ -31,7 +39,7 @@
   }
 
   &.sortable-chosen .draggable-panel {
-    background: $white-light;
+    background: $white;
     box-shadow: 0 0 4px $gray-500;
   }
 
@@ -41,22 +49,34 @@
     .draggable-remove-link {
       cursor: pointer;
       color: $gray-600;
-      background-color: $white-light;
+      background-color: $white;
     }
   }
 }
 
 .prometheus-graphs-header {
-  .time-window-dropdown-menu {
-    padding: $gl-padding $gl-padding 0 $gl-padding-12;
+  .monitor-environment-dropdown-header header,
+  .monitor-dashboard-dropdown-header header {
+    font-size: $gl-font-size;
   }
 
-  .time-window-dropdown-menu-container {
-    width: 360px;
+  .monitor-environment-dropdown-menu,
+  .monitor-dashboard-dropdown-menu {
+    &.show {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .no-matches-message {
+      padding: $gl-padding-8 $gl-padding-12;
+    }
   }
 
-  .custom-time-range-form-group > label {
-    padding-bottom: $gl-padding;
+  .show-last-dropdown {
+    // same as in .dropdown-menu-toggle
+    // see app/assets/stylesheets/framework/dropdowns.scss
+    width: 160px;
   }
 }
 
@@ -78,19 +98,13 @@
   border-radius: $border-radius-default;
 }
 
-.prometheus-graph-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: $gl-padding-8;
-}
-
-.prometheus-graph-title {
-  font-size: $gl-font-size-large;
-}
-
 .alert-current-setting {
   max-width: 240px;
+
+  .badge.badge-danger {
+    color: $red-500;
+    background-color: $red-100;
+  }
 }
 
 .prometheus-graph-cursor {
@@ -137,7 +151,7 @@
       > .arrow::after {
         border-top: 6px solid transparent;
         border-bottom: 6px solid transparent;
-        border-left: 4px solid $gray-50;
+        border-left: 4px solid $gray-10;
       }
 
       .arrow-shadow {
@@ -159,7 +173,7 @@
       > .arrow::after {
         border-top: 6px solid transparent;
         border-bottom: 6px solid transparent;
-        border-right: 4px solid $gray-50;
+        border-right: 4px solid $gray-10;
       }
 
       .arrow-shadow {
@@ -193,7 +207,7 @@
     }
 
     > .popover-title {
-      background-color: $gray-50;
+      background-color: $gray-10;
       border-radius: $border-radius-default $border-radius-default 0 0;
     }
   }

@@ -1,6 +1,7 @@
 <script>
-import { GlLoadingIcon, GlTooltipDirective, GlButton } from '@gitlab/ui';
+import { GlLoadingIcon, GlTooltipDirective, GlDeprecatedButton } from '@gitlab/ui';
 import CiStatus from '~/vue_shared/components/ci_icon.vue';
+import { __ } from '~/locale';
 
 export default {
   directives: {
@@ -9,11 +10,19 @@ export default {
   components: {
     CiStatus,
     GlLoadingIcon,
-    GlButton,
+    GlDeprecatedButton,
   },
   props: {
     pipeline: {
       type: Object,
+      required: true,
+    },
+    projectId: {
+      type: Number,
+      required: true,
+    },
+    columnTitle: {
+      type: String,
       required: true,
     },
   },
@@ -30,19 +39,46 @@ export default {
     projectName() {
       return this.pipeline.project.name;
     },
+    parentPipeline() {
+      // Refactor string match when BE returns Upstream/Downstream indicators
+      return this.projectId === this.pipeline.project.id && this.columnTitle === __('Upstream');
+    },
+    childPipeline() {
+      // Refactor string match when BE returns Upstream/Downstream indicators
+      return this.projectId === this.pipeline.project.id && this.columnTitle === __('Downstream');
+    },
+    label() {
+      return this.parentPipeline ? __('Parent') : __('Child');
+    },
+    childTooltipText() {
+      return __('This pipeline was triggered by a parent pipeline');
+    },
+    parentTooltipText() {
+      return __('This pipeline triggered a child pipeline');
+    },
+    labelToolTipText() {
+      return this.label === __('Parent') ? this.parentTooltipText : this.childTooltipText;
+    },
   },
   methods: {
     onClickLinkedPipeline() {
       this.$root.$emit('bv::hide::tooltip', this.buttonId);
-      this.$emit('pipelineClicked');
+      this.$emit('pipelineClicked', this.$refs.linkedPipeline);
+    },
+    hideTooltips() {
+      this.$root.$emit('bv::hide::tooltip');
     },
   },
 };
 </script>
 
 <template>
-  <li class="linked-pipeline build">
-    <gl-button
+  <li
+    ref="linkedPipeline"
+    class="linked-pipeline build"
+    :class="{ 'child-pipeline': childPipeline }"
+  >
+    <gl-deprecated-button
       :id="buttonId"
       v-gl-tooltip
       :title="tooltipText"
@@ -59,6 +95,15 @@ export default {
         class="js-linked-pipeline-status"
       />
       <span class="str-truncated align-bottom"> {{ projectName }} &#8226; #{{ pipeline.id }} </span>
-    </gl-button>
+      <div v-if="parentPipeline || childPipeline" class="parent-child-label-container">
+        <span
+          v-gl-tooltip.bottom
+          :title="labelToolTipText"
+          class="badge badge-primary"
+          @mouseover="hideTooltips"
+          >{{ label }}</span
+        >
+      </div>
+    </gl-deprecated-button>
   </li>
 </template>

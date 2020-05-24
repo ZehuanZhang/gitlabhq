@@ -2,6 +2,8 @@ import * as getters from '~/ide/stores/getters';
 import { createStore } from '~/ide/stores';
 import { file } from '../helpers';
 
+const TEST_PROJECT_ID = 'test_project';
+
 describe('IDE store getters', () => {
   let localState;
   let localStore;
@@ -278,39 +280,21 @@ describe('IDE store getters', () => {
   });
 
   describe('canPushToBranch', () => {
-    it('returns false when no currentBranch exists', () => {
-      const localGetters = {
-        currentProject: undefined,
-      };
-
-      expect(getters.canPushToBranch({}, localGetters)).toBeFalsy();
-    });
-
-    it('returns true when can_push to currentBranch', () => {
-      const localGetters = {
-        currentProject: {
-          default_branch: 'master',
-        },
-        currentBranch: {
-          can_push: true,
-        },
-      };
-
-      expect(getters.canPushToBranch({}, localGetters)).toBeTruthy();
-    });
-
-    it('returns false when !can_push to currentBranch', () => {
-      const localGetters = {
-        currentProject: {
-          default_branch: 'master',
-        },
-        currentBranch: {
-          can_push: false,
-        },
-      };
-
-      expect(getters.canPushToBranch({}, localGetters)).toBeFalsy();
-    });
+    it.each`
+      currentBranch          | canPushCode  | expectedValue
+      ${undefined}           | ${undefined} | ${false}
+      ${{ can_push: true }}  | ${false}     | ${true}
+      ${{ can_push: true }}  | ${true}      | ${true}
+      ${{ can_push: false }} | ${false}     | ${false}
+      ${{ can_push: false }} | ${true}      | ${false}
+      ${undefined}           | ${true}      | ${true}
+      ${undefined}           | ${false}     | ${false}
+    `(
+      'with currentBranch ($currentBranch) and canPushCode ($canPushCode), it is $expectedValue',
+      ({ currentBranch, canPushCode, expectedValue }) => {
+        expect(getters.canPushToBranch({}, { currentBranch, canPushCode })).toBe(expectedValue);
+      },
+    );
   });
 
   describe('isFileDeletedAndReadded', () => {
@@ -397,5 +381,40 @@ describe('IDE store getters', () => {
         expect(localStore.getters.getDiffInfo(entry.path)).toEqual(expect.objectContaining(output));
       },
     );
+  });
+
+  describe('findProjectPermissions', () => {
+    it('returns false if project not found', () => {
+      expect(localStore.getters.findProjectPermissions(TEST_PROJECT_ID)).toEqual({});
+    });
+
+    it('finds permission in given project', () => {
+      const userPermissions = {
+        readMergeRequest: true,
+        createMergeRequestsIn: false,
+      };
+
+      localState.projects[TEST_PROJECT_ID] = { userPermissions };
+
+      expect(localStore.getters.findProjectPermissions(TEST_PROJECT_ID)).toBe(userPermissions);
+    });
+  });
+
+  describe.each`
+    getterName                  | permissionKey
+    ${'canReadMergeRequests'}   | ${'readMergeRequest'}
+    ${'canCreateMergeRequests'} | ${'createMergeRequestIn'}
+    ${'canPushCode'}            | ${'pushCode'}
+  `('$getterName', ({ getterName, permissionKey }) => {
+    it.each([true, false])('finds permission for current project (%s)', val => {
+      localState.projects[TEST_PROJECT_ID] = {
+        userPermissions: {
+          [permissionKey]: val,
+        },
+      };
+      localState.currentProjectId = TEST_PROJECT_ID;
+
+      expect(localStore.getters[getterName]).toBe(val);
+    });
   });
 });

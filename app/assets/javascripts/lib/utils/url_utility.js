@@ -1,6 +1,14 @@
 const PATH_SEPARATOR = '/';
 const PATH_SEPARATOR_LEADING_REGEX = new RegExp(`^${PATH_SEPARATOR}+`);
 const PATH_SEPARATOR_ENDING_REGEX = new RegExp(`${PATH_SEPARATOR}+$`);
+const SHA_REGEX = /[\da-f]{40}/gi;
+
+// Reset the cursor in a Regex so that multiple uses before a recompile don't fail
+function resetRegExp(regex) {
+  regex.lastIndex = 0; /* eslint-disable-line no-param-reassign */
+
+  return regex;
+}
 
 // Returns a decoded url parameter value
 // - Treats '+' as '%20'
@@ -55,15 +63,22 @@ export function getParameterValues(sParam, url = window.location) {
   }, []);
 }
 
-// @param {Object} params - url keys and value to merge
-// @param {String} url
+/**
+ * Merges a URL to a set of params replacing value for
+ * those already present.
+ *
+ * Also removes `null` param values from the resulting URL.
+ *
+ * @param {Object} params - url keys and value to merge
+ * @param {String} url
+ */
 export function mergeUrlParams(params, url) {
   const re = /^([^?#]*)(\?[^#]*)?(.*)/;
   const merged = {};
-  const urlparts = url.match(re);
+  const [, fullpath, query, fragment] = url.match(re);
 
-  if (urlparts[2]) {
-    urlparts[2]
+  if (query) {
+    query
       .substr(1)
       .split('&')
       .forEach(part => {
@@ -76,11 +91,15 @@ export function mergeUrlParams(params, url) {
 
   Object.assign(merged, params);
 
-  const query = Object.keys(merged)
+  const newQuery = Object.keys(merged)
+    .filter(key => merged[key] !== null)
     .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(merged[key])}`)
     .join('&');
 
-  return `${urlparts[1]}?${query}${urlparts[3]}`;
+  if (newQuery) {
+    return `${fullpath}?${newQuery}${fragment}`;
+  }
+  return `${fullpath}${fragment}`;
 }
 
 /**
@@ -128,6 +147,20 @@ export function doesHashExistInUrl(hashName) {
   return hash && hash.includes(hashName);
 }
 
+export function urlContainsSha({ url = String(window.location) } = {}) {
+  return resetRegExp(SHA_REGEX).test(url);
+}
+
+export function getShaFromUrl({ url = String(window.location) } = {}) {
+  let sha = null;
+
+  if (urlContainsSha({ url })) {
+    [sha] = url.match(resetRegExp(SHA_REGEX));
+  }
+
+  return sha;
+}
+
 /**
  * Apply the fragment to the given url by returning a new url string that includes
  * the fragment. If the given url already contains a fragment, the original fragment
@@ -144,13 +177,23 @@ export const setUrlFragment = (url, fragment) => {
 
 export function visitUrl(url, external = false) {
   if (external) {
-    // Simulate `target="blank" rel="noopener noreferrer"`
+    // Simulate `target="_blank" rel="noopener noreferrer"`
     // See https://mathiasbynens.github.io/rel-noopener/
     const otherWindow = window.open();
     otherWindow.opener = null;
     otherWindow.location = url;
   } else {
     window.location.href = url;
+  }
+}
+
+export function updateHistory({ state = {}, title = '', url, replace = false, win = window } = {}) {
+  if (win.history) {
+    if (replace) {
+      win.history.replaceState(state, title, url);
+    } else {
+      win.history.pushState(state, title, url);
+    }
   }
 }
 
@@ -162,12 +205,14 @@ export function redirectTo(url) {
   return window.location.assign(url);
 }
 
+export const escapeFileUrl = fileUrl => encodeURIComponent(fileUrl).replace(/%2F/g, '/');
+
 export function webIDEUrl(route = undefined) {
   let returnUrl = `${gon.relative_url_root || ''}/-/ide/`;
   if (route) {
     returnUrl += `project${route.replace(new RegExp(`^${gon.relative_url_root || ''}`), '')}`;
   }
-  return returnUrl;
+  return escapeFileUrl(returnUrl);
 }
 
 /**
@@ -179,12 +224,45 @@ export function getBaseURL() {
 }
 
 /**
+ * Returns true if url is an absolute URL
+ *
+ * @param {String} url
+ */
+export function isAbsolute(url) {
+  return /^https?:\/\//.test(url);
+}
+
+/**
+ * Returns true if url is a root-relative URL
+ *
+ * @param {String} url
+ */
+export function isRootRelative(url) {
+  return /^\//.test(url);
+}
+
+/**
  * Returns true if url is an absolute or root-relative URL
  *
  * @param {String} url
  */
 export function isAbsoluteOrRootRelative(url) {
-  return /^(https?:)?\//.test(url);
+  return isAbsolute(url) || isRootRelative(url);
+}
+
+/**
+ * Converts a relative path to an absolute or a root relative path depending
+ * on what is passed as a basePath.
+ *
+ * @param {String} path       Relative path, eg. ../img/img.png
+ * @param {String} basePath   Absolute or root relative path, eg. /user/project or
+ *                            https://gitlab.com/user/project
+ */
+export function relativePathToAbsolute(path, basePath) {
+  const absolute = isAbsolute(basePath);
+  const base = absolute ? basePath : `file:///${basePath}`;
+  const url = new URL(path, base);
+  return absolute ? url.href : decodeURIComponent(url.pathname);
 }
 
 /**
@@ -225,8 +303,10 @@ export function getWebSocketUrl(path) {
 export function queryToObject(query) {
   const removeQuestionMarkFromQuery = String(query).startsWith('?') ? query.slice(1) : query;
   return removeQuestionMarkFromQuery.split('&').reduce((accumulator, curr) => {
-    const p = curr.split('=');
-    accumulator[decodeURIComponent(p[0])] = decodeURIComponent(p[1]);
+    const [key, value] = curr.split('=');
+    if (value !== undefined) {
+      accumulator[decodeURIComponent(key)] = decodeURIComponent(value);
+    }
     return accumulator;
   }, {});
 }
@@ -281,4 +361,14 @@ export const setUrlParams = (params, url = window.location.href, clearParams = f
   return urlObj.toString();
 };
 
-export const escapeFileUrl = fileUrl => encodeURIComponent(fileUrl).replace(/%2F/g, '/');
+export function urlIsDifferent(url, compare = String(window.location)) {
+  return url !== compare;
+}
+
+export function getHTTPProtocol(url) {
+  if (!url) {
+    return window.location.protocol.slice(0, -1);
+  }
+  const protocol = url.split(':');
+  return protocol.length > 1 ? protocol[0] : undefined;
+}

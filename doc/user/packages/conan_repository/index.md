@@ -1,6 +1,12 @@
+---
+stage: Package
+group: Package
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://about.gitlab.com/handbook/engineering/ux/technical-writing/#designated-technical-writers
+---
+
 # GitLab Conan Repository **(PREMIUM)**
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab-ee/issues/8248) in [GitLab Premium](https://about.gitlab.com/pricing/) 12.6.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/8248) in [GitLab Premium](https://about.gitlab.com/pricing/) 12.6.
 
 With the GitLab Conan Repository, every
 project can have its own space to store Conan packages.
@@ -20,7 +26,7 @@ by default. To enable it for existing projects, or if you want to disable it:
 1. Find the Packages feature and enable or disable it.
 1. Click on **Save changes** for the changes to take effect.
 
-You should then be able to see the **Packages** section on the left sidebar.
+You should then be able to see the **Packages & Registries** section on the left sidebar.
 
 ## Getting started
 
@@ -33,13 +39,13 @@ Follow the instructions at [conan.io](https://conan.io/downloads.html) to downlo
 
 Once installation is complete, verify you can use Conan in your terminal by running
 
-```sh
+```shell
 conan --version
 ```
 
 You should see the Conan version printed in the output:
 
-```
+```plaintext
 Conan version 1.20.5
 ```
 
@@ -48,7 +54,7 @@ Conan version 1.20.5
 When developing with C++ and Conan, you have a wide range of options for compilers. This tutorial walks through using the cmake
 compiler. In your terminal, run the command
 
-```sh
+```shell
 cmake --version
 ```
 
@@ -69,13 +75,13 @@ Clone the repo and it can be used for the rest of the tutorial if you don't have
 In your terminal, navigate to the root folder of your project. Generate a new recipe by running `conan new` and providing it with a
 package name and version:
 
-```sh
+```shell
 conan new Hello/0.1 -t
 ```
 
 Next, you will create a package for that recipe by running `conan create` providing the Conan user and channel:
 
-```sh
+```shell
 conan create . my-org+my-group+my-project/beta
 ```
 
@@ -94,7 +100,7 @@ You are now ready to upload your package to the GitLab registry. To get started,
 
 Add a new remote to your Conan configuration:
 
-```sh
+```shell
 conan remote add gitlab https://gitlab.example.com/api/v4/packages/conan
 ```
 
@@ -102,20 +108,25 @@ Once the remote is set, you can use the remote when running Conan commands by ad
 
 For example:
 
-```sh
+```shell
 conan search Hello* --all --remote=gitlab
 ```
 
 ## Authenticating to the GitLab Conan Repository
 
-You will need to generate a [personal access token](../../../user/profile/personal_access_tokens.md) with the scope set to `api` for repository authentication.
+You will need a personal access token or deploy token.
+
+For repository authentication:
+
+- You can generate a [personal access token](../../../user/profile/personal_access_tokens.md) with the scope set to `api`.
+- You can generate a [deploy token](./../../project/deploy_tokens/index.md) with the scope set to `read_package_registry`, `write_package_registry`, or both.
 
 ### Adding a Conan user to the GitLab remote
 
 Once you have a personal access token and have [set your Conan remote](#adding-the-gitlab-package-registry-as-a-conan-remote), you can associate the token with the remote so you do not have to explicitly add them to each Conan command you run:
 
-```sh
-conan user <gitlab-username> -r gitlab -p <personal_access_token>
+```shell
+conan user <gitlab_username or deploy_token_username> -r gitlab -p <personal_access_token or deploy_token>
 ```
 
 Note: **Note**
@@ -129,15 +140,15 @@ The personal access token is not stored locally at any moment. Conan uses JWT, s
 Alternatively, you could explicitly include your credentials in any given command.
 For example:
 
-```sh
-CONAN_LOGIN_USERNAME=<gitlab-username> CONAN_PASSWORD=<personal_access_token> conan upload Hello/0.1@my-group+my-project/beta --all --remote=gitlab
+```shell
+CONAN_LOGIN_USERNAME=<gitlab_username or deploy_token_username> CONAN_PASSWORD=<personal_access_token or deploy_token> conan upload Hello/0.1@my-group+my-project/beta --all --remote=gitlab
 ```
 
 ### Setting a default remote to your project (optional)
 
 If you'd like Conan to always use GitLab as the registry for your package, you can tell Conan to always reference the GitLab remote for a given package recipe:
 
-```sh
+```shell
 conan remote add_ref Hello/0.1@my-group+my-project/beta gitlab
 ```
 
@@ -147,8 +158,8 @@ This functionality is best suited for when you want to consume or install packag
 
 The rest of the example commands in this documentation assume that you have added a Conan user with your credentials to the `gitlab` remote and will not include the explicit credentials or remote option, but be aware that any of the commands could be run without having added a user or default remote:
 
-```sh
-`CONAN_LOGIN_USERNAME=<gitlab-username> CONAN_PASSWORD=<personal_access_token> <conan command> --remote=gitlab
+```shell
+`CONAN_LOGIN_USERNAME=<gitlab_username or deploy_token_username> CONAN_PASSWORD=<personal_access_token or deploy_token> <conan command> --remote=gitlab
 ```
 
 ## Uploading a package
@@ -159,7 +170,7 @@ Ensure you have a project created on GitLab and that the personal access token y
 
 You can upload your package to the GitLab Package Registry using the `conan upload` command:
 
-```sh
+```shell
 conan upload Hello/0.1@my-group+my-project/beta --all
 ```
 
@@ -179,7 +190,7 @@ it is not possible due to a naming collision. For example:
 | `gitlab-org/gitlab-ce`             | `my-package/1.0.0@foo/stable`                   | No        |
 
 NOTE: **Note:**
-A future iteration will extend support to [project and group level](https://gitlab.com/gitlab-org/gitlab/issues/11679) remotes which will allow for more flexible naming conventions.
+A future iteration will extend support to [project and group level](https://gitlab.com/gitlab-org/gitlab/-/issues/11679) remotes which will allow for more flexible naming conventions.
 
 ## Installing a package
 
@@ -198,15 +209,15 @@ Add the Conan recipe to the `[requires]` section of the file:
  cmake
 ```
 
-Next, from the root of your project, create a build directory and navigate to it:
+Next, create a build directory from the root of your project and navigate to it:
 
-```sh
+```shell
 mkdir build && cd build
 ```
 
 Now you can install the dependencies listed in `conanfile.txt`:
 
-```sh
+```shell
 conan install ..
 ```
 
@@ -220,7 +231,7 @@ There are two ways to remove a Conan package from the GitLab Package Registry.
 
 - **Using the Conan client in the command line:**
 
-  ```sh
+  ```shell
   conan remove Hello/0.2@user/channel --remote=gitlab
   ```
 
@@ -238,7 +249,7 @@ The `conan search` command can be run searching by full or partial package name,
 
 To search using a partial name, use the wildcard symbol `*`, which should be placed at the end of your search (e.g., `my-packa*`):
 
-```sh
+```shell
 conan search Hello --all --remote=gitlab
 conan search He* --all --remote=gitlab
 conan search Hello/0.1@my-group+my-project/beta --all --remote=gitlab
@@ -246,11 +257,11 @@ conan search Hello/0.1@my-group+my-project/beta --all --remote=gitlab
 
 The scope of your search will include all projects you have permission to access, this includes your private projects as well as all public projects.
 
-## Fetching Conan package info from the GitLab Package Registry
+## Fetching Conan package information from the GitLab Package Registry
 
-The `conan info` command will return info about a given package:
+The `conan info` command will return information about a given package:
 
-```sh
+```shell
 conan info Hello/0.1@my-group+my-project/beta
 ```
 
@@ -261,18 +272,20 @@ The GitLab Conan repository supports the following Conan CLI commands:
 - `conan upload`: Upload your recipe and package files to the GitLab Package Registry.
 - `conan install`: Install a conan package from the GitLab Package Registry, this includes using the `conanfile.txt` file.
 - `conan search`: Search the GitLab Package Registry for public packages, and private packages you have permission to view.
-- `conan info`: View the info on a given package from the GitLab Package Registry.
+- `conan info`: View the information on a given package from the GitLab Package Registry.
 - `conan remove`: Delete the package from the GitLab Package Registry.
 
 ## Using GitLab CI with Conan packages
 
-To work with Conan commands within [GitLab CI](./../../../ci/README.md), you can use
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/11678) in [GitLab Premium](https://about.gitlab.com/pricing/) 12.7.
+
+To work with Conan commands within [GitLab CI/CD](./../../../ci/README.md), you can use
 `CI_JOB_TOKEN` in place of the personal access token in your commands.
 
 It is easiest to provide the `CONAN_LOGIN_USERNAME` and `CONAN_PASSWORD` with each
 Conan command in your `.gitlab-ci.yml` file:
 
-```yml
+```yaml
 image: conanio/gcc7
 
 create_package:

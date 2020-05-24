@@ -25,9 +25,9 @@ Using EFS may negatively impact performance. Please review the [relevant documen
 
 ### Step 1 - Install NFS Server on Host
 
-Installing the nfs-kernel-server package allows you to share directories with the clients running the GitLab application.
+Installing the `nfs-kernel-server` package allows you to share directories with the clients running the GitLab application.
 
-```sh
+```shell
 apt-get update
 apt-get install nfs-kernel-server
 ```
@@ -36,7 +36,7 @@ apt-get install nfs-kernel-server
 
 In this setup we will share the home directory on the host with the client. Edit the exports file as below to share the host's home directory with the client. If you have multiple clients running GitLab you must enter the client IP addresses in line in the `/etc/exports` file.
 
-```text
+```plaintext
 #/etc/exports for one client
 /home <client-ip-address>(rw,sync,no_root_squash,no_subtree_check)
 
@@ -47,7 +47,7 @@ In this setup we will share the home directory on the host with the client. Edit
 Restart the NFS server after making changes to the `exports` file for the changes
 to take effect.
 
-```sh
+```shell
 systemctl restart nfs-kernel-server
 ```
 
@@ -61,10 +61,10 @@ inside your HA environment to the NFS server configured above.
 
 ### Step 1 - Install NFS Common on Client
 
-The nfs-common provides NFS functionality without installing server components which
+The `nfs-common` provides NFS functionality without installing server components which
 we don't need running on the application nodes.
 
-```sh
+```shell
 apt-get update
 apt-get install nfs-common
 ```
@@ -76,14 +76,14 @@ Please note that if your mount point directory contains any files they will be h
 once the remote shares are mounted. An empty/new directory on the client is recommended
 for this purpose.
 
-```sh
+```shell
 mkdir -p /nfs/home
 ```
 
 Confirm that the mount point works by mounting it on the client and checking that
 it is mounted with the command below:
 
-```sh
+```shell
 mount <host_ip_address>:/home
 df -h
 ```
@@ -94,10 +94,11 @@ Edit `/etc/fstab` on client as below to mount the remote shares automatically at
 Note that GitLab requires advisory file locking, which is only supported natively in
 NFS version 4. NFSv3 also supports locking as long as Linux Kernel 2.6.5+ is used.
 We recommend using version 4 and do not specifically test NFSv3.
+See [NFS documentation](nfs.md#nfs-client-mount-options) for guidance on mount options.
 
-```text
+```plaintext
 #/etc/fstab
-165.227.159.85:/home       /nfs/home      nfs4 defaults,soft,rsize=1048576,wsize=1048576,noatime,nofail,lookupcache=positive 0 2
+10.0.0.1:/nfs/home  /nfs/home  nfs4 defaults,hard,vers=4.1,rsize=1048576,wsize=1048576,noatime,nofail,lookupcache=positive 0 2
 ```
 
 Reboot the client and confirm that the mount point is mounted automatically.
@@ -110,7 +111,7 @@ default file locations in `gitlab.rb` on the client allows you to have one main 
 point and have all the required locations as subdirectories to use the NFS mount for
 `git-data`.
 
-```text
+```plaintext
 git_data_dirs({"default" => {"path" => "/nfs/home/var/opt/gitlab-data/git-data"}})
 gitlab_rails['uploads_directory'] = '/nfs/home/var/opt/gitlab-data/uploads'
 gitlab_rails['shared_path'] = '/nfs/home/var/opt/gitlab-data/shared'
@@ -126,7 +127,7 @@ by a firewall, then you will need to reconfigure that firewall to allow NFS comm
 
 [This guide from TDLP](http://tldp.org/HOWTO/NFS-HOWTO/security.html#FIREWALLS)
 covers the basics of using NFS in a firewalled environment. Additionally, we encourage you to
-search for and review the specific documentation for your OS/distro and your firewall software.
+search for and review the specific documentation for your operating system or distribution and your firewall software.
 
 Example for Ubuntu:
 
@@ -134,7 +135,7 @@ Check that NFS traffic from the client is allowed by the firewall on the host by
 the command: `sudo ufw status`. If it's being blocked, then you can allow traffic from a specific
 client with the command below.
 
-```sh
+```shell
 sudo ufw allow from <client-ip-address> to any port nfs
 ```
 

@@ -3,8 +3,8 @@
 require 'spec_helper'
 
 describe RemoteMirrorNotificationWorker, :mailer do
-  set(:project) { create(:project, :repository, :remote_mirror) }
-  set(:mirror) { project.remote_mirrors.first }
+  let_it_be(:project) { create(:project, :repository, :remote_mirror) }
+  let_it_be(:mirror) { project.remote_mirrors.first }
 
   describe '#execute' do
     it 'calls NotificationService#remote_mirror_update_failed when the mirror exists' do
@@ -26,7 +26,7 @@ describe RemoteMirrorNotificationWorker, :mailer do
     it 'does nothing when the mirror does not exist' do
       expect(NotificationService).not_to receive(:new)
 
-      subject.perform(RemoteMirror.maximum(:id).to_i.succ)
+      subject.perform(non_existing_record_id)
     end
 
     it 'does nothing when a notification has already been sent' do

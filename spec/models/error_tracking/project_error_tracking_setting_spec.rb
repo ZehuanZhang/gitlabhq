@@ -4,10 +4,11 @@ require 'spec_helper'
 
 describe ErrorTracking::ProjectErrorTrackingSetting do
   include ReactiveCachingHelpers
+  include Gitlab::Routing
 
   let_it_be(:project) { create(:project) }
 
-  subject { create(:project_error_tracking_setting, project: project) }
+  subject(:setting) { build(:project_error_tracking_setting, project: project) }
 
   describe 'Associations' do
     it { is_expected.to belong_to(:project) }
@@ -17,6 +18,19 @@ describe ErrorTracking::ProjectErrorTrackingSetting do
     it { is_expected.to validate_length_of(:api_url).is_at_most(255) }
     it { is_expected.to allow_value("http://gitlab.com/api/0/projects/project1/something").for(:api_url) }
     it { is_expected.not_to allow_values("http://gitlab.com/api/0/projects/project1/something€").for(:api_url) }
+
+    it 'disallows non-booleans in enabled column' do
+      is_expected.not_to allow_value(
+        nil
+      ).for(:enabled)
+    end
+
+    it 'allows booleans in enabled column' do
+      is_expected.to allow_value(
+        true,
+        false
+      ).for(:enabled)
+    end
 
     it 'rejects invalid api_urls' do
       is_expected.not_to allow_values(
@@ -60,6 +74,22 @@ describe ErrorTracking::ProjectErrorTrackingSetting do
 
         it { expect(subject.valid?).to eq(valid?) }
       end
+    end
+  end
+
+  describe '.extract_sentry_external_url' do
+    subject { described_class.extract_sentry_external_url(sentry_url) }
+
+    describe 'when passing a URL' do
+      let(:sentry_url) { 'https://sentrytest.gitlab.com/api/0/projects/sentry-org/sentry-project' }
+
+      it { is_expected.to eq('https://sentrytest.gitlab.com/sentry-org/sentry-project') }
+    end
+
+    describe 'when passing nil' do
+      let(:sentry_url) { nil }
+
+      it { is_expected.to be_nil }
     end
   end
 
@@ -213,7 +243,7 @@ describe ErrorTracking::ProjectErrorTrackingSetting do
   describe '#issue_details' do
     let(:issue) { build(:detailed_error_tracking_error) }
     let(:sentry_client) { double('sentry_client', issue_details: issue) }
-    let(:commit_id) { '123456' }
+    let(:commit_id) { issue.first_release_version }
 
     let(:result) do
       subject.issue_details
@@ -230,6 +260,7 @@ describe ErrorTracking::ProjectErrorTrackingSetting do
       it { expect(result).to eq(issue: issue) }
       it { expect(result[:issue].first_release_version).to eq(commit_id) }
       it { expect(result[:issue].gitlab_commit).to eq(nil) }
+      it { expect(result[:issue].gitlab_commit_path).to eq(nil) }
 
       context 'when release version is nil' do
         before do
@@ -237,6 +268,7 @@ describe ErrorTracking::ProjectErrorTrackingSetting do
         end
 
         it { expect(result[:issue].gitlab_commit).to eq(nil) }
+        it { expect(result[:issue].gitlab_commit_path).to eq(nil) }
       end
 
       context 'when repo commit matches first relase version' do
@@ -248,6 +280,7 @@ describe ErrorTracking::ProjectErrorTrackingSetting do
         end
 
         it { expect(result[:issue].gitlab_commit).to eq(commit_id) }
+        it { expect(result[:issue].gitlab_commit_path).to eq("/#{project.namespace.path}/#{project.path}/-/commit/#{commit_id}") }
       end
     end
 
@@ -418,6 +451,25 @@ describe ErrorTracking::ProjectErrorTrackingSetting do
       it 'returns nil' do
         expect(subject.api_url).to eq(nil)
       end
+    end
+  end
+
+  describe '#expire_issues_cache', :use_clean_rails_redis_caching do
+    let(:issues) { [:some, :issues] }
+    let(:opt) { 'list_issues' }
+    let(:params) { { issue_status: 'unresolved', limit: 20, sort: 'last_seen' } }
+
+    before do
+      start_reactive_cache_lifetime(subject, opt, params.stringify_keys)
+      stub_reactive_cache(subject, issues, opt, params.stringify_keys)
+    end
+
+    it 'clears the cache' do
+      expect(subject.list_sentry_issues(params)).to eq(issues)
+
+      subject.expire_issues_cache
+
+      expect(subject.list_sentry_issues(params)).to eq(nil)
     end
   end
 end

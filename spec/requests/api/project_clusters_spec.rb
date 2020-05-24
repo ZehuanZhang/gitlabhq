@@ -5,9 +5,9 @@ require 'spec_helper'
 describe API::ProjectClusters do
   include KubernetesHelpers
 
-  let(:current_user) { create(:user) }
-  let(:developer_user) { create(:user) }
-  let(:project) { create(:project) }
+  let_it_be(:current_user) { create(:user) }
+  let_it_be(:developer_user) { create(:user) }
+  let_it_be(:project) { create(:project) }
 
   before do
     project.add_maintainer(current_user)
@@ -15,10 +15,10 @@ describe API::ProjectClusters do
   end
 
   describe 'GET /projects/:id/clusters' do
-    let!(:extra_cluster) { create(:cluster, :provided_by_gcp, :project) }
+    let_it_be(:extra_cluster) { create(:cluster, :provided_by_gcp, :project) }
 
-    let!(:clusters) do
-      create_list(:cluster, 5, :provided_by_gcp, :project, :production_environment,
+    let_it_be(:clusters) do
+      create_list(:cluster, 2, :provided_by_gcp, :project, :production_environment,
                   projects: [project])
     end
 
@@ -26,7 +26,7 @@ describe API::ProjectClusters do
       it 'responds with 403' do
         get api("/projects/#{project.id}/clusters", developer_user)
 
-        expect(response).to have_gitlab_http_status(403)
+        expect(response).to have_gitlab_http_status(:forbidden)
       end
     end
 
@@ -35,17 +35,15 @@ describe API::ProjectClusters do
         get api("/projects/#{project.id}/clusters", current_user)
       end
 
-      it 'responds with 200' do
-        expect(response).to have_gitlab_http_status(200)
-      end
-
       it 'includes pagination headers' do
+        expect(response).to have_gitlab_http_status(:ok)
         expect(response).to include_pagination_headers
       end
 
       it 'onlies include authorized clusters' do
         cluster_ids = json_response.map { |cluster| cluster['id'] }
 
+        expect(response).to have_gitlab_http_status(:ok)
         expect(cluster_ids).to match_array(clusters.pluck(:id))
         expect(cluster_ids).not_to include(extra_cluster.id)
       end
@@ -71,7 +69,7 @@ describe API::ProjectClusters do
       it 'responds with 403' do
         get api("/projects/#{project.id}/clusters/#{cluster_id}", developer_user)
 
-        expect(response).to have_gitlab_http_status(403)
+        expect(response).to have_gitlab_http_status(:forbidden)
       end
     end
 
@@ -139,10 +137,10 @@ describe API::ProjectClusters do
       end
 
       context 'with non-existing cluster' do
-        let(:cluster_id) { 123 }
+        let(:cluster_id) { 0 }
 
         it 'returns 404' do
-          expect(response).to have_gitlab_http_status(404)
+          expect(response).to have_gitlab_http_status(:not_found)
         end
       end
     end
@@ -152,6 +150,12 @@ describe API::ProjectClusters do
     let(:api_url) { 'https://kubernetes.example.com' }
     let(:namespace) { project.path }
     let(:authorization_type) { 'rbac' }
+    let(:management_project) { create(:project, namespace: project.namespace) }
+    let(:management_project_id) { management_project.id }
+
+    before do
+      management_project.add_maintainer(current_user)
+    end
 
     let(:platform_kubernetes_attributes) do
       {
@@ -167,7 +171,8 @@ describe API::ProjectClusters do
         name: 'test-cluster',
         domain: 'domain.example.com',
         managed: false,
-        platform_kubernetes_attributes: platform_kubernetes_attributes
+        platform_kubernetes_attributes: platform_kubernetes_attributes,
+        management_project_id: management_project_id
       }
     end
 
@@ -175,7 +180,7 @@ describe API::ProjectClusters do
       it 'responds with 403' do
         post api("/projects/#{project.id}/clusters/user", developer_user), params: cluster_params
 
-        expect(response).to have_gitlab_http_status(403)
+        expect(response).to have_gitlab_http_status(:forbidden)
       end
     end
 
@@ -185,20 +190,18 @@ describe API::ProjectClusters do
       end
 
       context 'with valid params' do
-        it 'responds with 201' do
-          expect(response).to have_gitlab_http_status(201)
-        end
-
         it 'creates a new Cluster::Cluster' do
           cluster_result = Clusters::Cluster.find(json_response["id"])
           platform_kubernetes = cluster_result.platform
 
+          expect(response).to have_gitlab_http_status(:created)
           expect(cluster_result).to be_user
           expect(cluster_result).to be_kubernetes
           expect(cluster_result.project).to eq(project)
           expect(cluster_result.name).to eq('test-cluster')
           expect(cluster_result.domain).to eq('domain.example.com')
           expect(cluster_result.managed).to be_falsy
+          expect(cluster_result.management_project_id).to eq management_project_id
           expect(platform_kubernetes.rbac?).to be_truthy
           expect(platform_kubernetes.api_url).to eq(api_url)
           expect(platform_kubernetes.namespace).to eq(namespace)
@@ -232,18 +235,24 @@ describe API::ProjectClusters do
         end
       end
 
-      context 'with invalid params' do
-        let(:namespace) { 'invalid_namespace' }
+      context 'current user does not have access to management_project_id' do
+        let(:management_project_id) { create(:project).id }
 
         it 'responds with 400' do
-          expect(response).to have_gitlab_http_status(400)
-        end
-
-        it 'does not create a new Clusters::Cluster' do
-          expect(project.reload.clusters).to be_empty
+          expect(response).to have_gitlab_http_status(:bad_request)
         end
 
         it 'returns validation errors' do
+          expect(json_response['message']['management_project_id'].first).to match('don\'t have permission')
+        end
+      end
+
+      context 'with invalid params' do
+        let(:namespace) { 'invalid_namespace' }
+
+        it 'does not create a new Clusters::Cluster' do
+          expect(response).to have_gitlab_http_status(:bad_request)
+          expect(project.reload.clusters).to be_empty
           expect(json_response['message']['platform_kubernetes.namespace'].first).to be_present
         end
       end
@@ -258,9 +267,9 @@ describe API::ProjectClusters do
       end
 
       it 'responds with 400' do
-        expect(response).to have_gitlab_http_status(400)
-
-        expect(json_response['message']['base'].first).to eq(_('Instance does not support multiple Kubernetes clusters'))
+        expect(response).to have_gitlab_http_status(:bad_request)
+        expect(json_response['message']['base'].first)
+          .to eq(_('Instance does not support multiple Kubernetes clusters'))
       end
     end
 
@@ -270,8 +279,7 @@ describe API::ProjectClusters do
       end
 
       it 'responds with 403' do
-        expect(response).to have_gitlab_http_status(403)
-
+        expect(response).to have_gitlab_http_status(:forbidden)
         expect(json_response['message']).to eq('403 Forbidden')
       end
     end
@@ -281,7 +289,7 @@ describe API::ProjectClusters do
     let(:api_url) { 'https://kubernetes.example.com' }
     let(:namespace) { 'new-namespace' }
     let(:platform_kubernetes_attributes) { { namespace: namespace } }
-    let(:management_project) { create(:project, namespace: project.namespace) }
+    let_it_be(:management_project) { create(:project, namespace: project.namespace) }
     let(:management_project_id) { management_project.id }
 
     let(:update_params) do
@@ -307,7 +315,7 @@ describe API::ProjectClusters do
       it 'responds with 403' do
         put api("/projects/#{project.id}/clusters/#{cluster.id}", developer_user), params: update_params
 
-        expect(response).to have_gitlab_http_status(403)
+        expect(response).to have_gitlab_http_status(:forbidden)
       end
     end
 
@@ -321,11 +329,8 @@ describe API::ProjectClusters do
       end
 
       context 'with valid params' do
-        it 'responds with 200' do
-          expect(response).to have_gitlab_http_status(200)
-        end
-
         it 'updates cluster attributes' do
+          expect(response).to have_gitlab_http_status(:ok)
           expect(cluster.domain).to eq('new-domain.com')
           expect(cluster.platform_kubernetes.namespace).to eq('new-namespace')
           expect(cluster.management_project).to eq(management_project)
@@ -335,29 +340,24 @@ describe API::ProjectClusters do
       context 'with invalid params' do
         let(:namespace) { 'invalid_namespace' }
 
-        it 'responds with 400' do
-          expect(response).to have_gitlab_http_status(400)
-        end
-
         it 'does not update cluster attributes' do
+          expect(response).to have_gitlab_http_status(:bad_request)
           expect(cluster.domain).not_to eq('new_domain.com')
           expect(cluster.platform_kubernetes.namespace).not_to eq('invalid_namespace')
           expect(cluster.management_project).not_to eq(management_project)
         end
 
         it 'returns validation errors' do
-          expect(json_response['message']['platform_kubernetes.namespace'].first).to match('can contain only lowercase letters')
+          expect(json_response['message']['platform_kubernetes.namespace'].first)
+            .to match('can contain only lowercase letters')
         end
       end
 
       context 'current user does not have access to management_project_id' do
-        let(:management_project_id) { create(:project).id }
-
-        it 'responds with 400' do
-          expect(response).to have_gitlab_http_status(400)
-        end
+        let_it_be(:management_project_id) { create(:project).id }
 
         it 'returns validation errors' do
+          expect(response).to have_gitlab_http_status(:bad_request)
           expect(json_response['message']['management_project_id'].first).to match('don\'t have permission')
         end
       end
@@ -371,12 +371,10 @@ describe API::ProjectClusters do
             }
           end
 
-          it 'responds with 400' do
-            expect(response).to have_gitlab_http_status(400)
-          end
-
           it 'returns validation error' do
-            expect(json_response['message']['platform_kubernetes.base'].first).to eq(_('Cannot modify managed Kubernetes cluster'))
+            expect(response).to have_gitlab_http_status(:bad_request)
+            expect(json_response['message']['platform_kubernetes.base'].first)
+              .to eq(_('Cannot modify managed Kubernetes cluster'))
           end
         end
 
@@ -384,7 +382,7 @@ describe API::ProjectClusters do
           let(:namespace) { 'new-namespace' }
 
           it 'responds with 200' do
-            expect(response).to have_gitlab_http_status(200)
+            expect(response).to have_gitlab_http_status(:ok)
           end
         end
       end
@@ -412,13 +410,10 @@ describe API::ProjectClusters do
           }
         end
 
-        it 'responds with 200' do
-          expect(response).to have_gitlab_http_status(200)
-        end
-
         it 'updates platform kubernetes attributes' do
           platform_kubernetes = cluster.platform_kubernetes
 
+          expect(response).to have_gitlab_http_status(:ok)
           expect(cluster.name).to eq('new-name')
           expect(platform_kubernetes.namespace).to eq('new-namespace')
           expect(platform_kubernetes.api_url).to eq('https://new-api-url.com')
@@ -430,7 +425,7 @@ describe API::ProjectClusters do
         let(:cluster) { create(:cluster, :project, :provided_by_user) }
 
         it 'responds with 404' do
-          expect(response).to have_gitlab_http_status(404)
+          expect(response).to have_gitlab_http_status(:not_found)
         end
       end
     end
@@ -439,7 +434,7 @@ describe API::ProjectClusters do
   describe 'DELETE /projects/:id/clusters/:cluster_id' do
     let(:cluster_params) { { cluster_id: cluster.id } }
 
-    let(:cluster) do
+    let_it_be(:cluster) do
       create(:cluster, :project, :provided_by_gcp,
              projects: [project])
     end
@@ -448,7 +443,7 @@ describe API::ProjectClusters do
       it 'responds with 403' do
         delete api("/projects/#{project.id}/clusters/#{cluster.id}", developer_user), params: cluster_params
 
-        expect(response).to have_gitlab_http_status(403)
+        expect(response).to have_gitlab_http_status(:forbidden)
       end
     end
 
@@ -457,11 +452,8 @@ describe API::ProjectClusters do
         delete api("/projects/#{project.id}/clusters/#{cluster.id}", current_user), params: cluster_params
       end
 
-      it 'responds with 204' do
-        expect(response).to have_gitlab_http_status(204)
-      end
-
       it 'deletes the cluster' do
+        expect(response).to have_gitlab_http_status(:no_content)
         expect(Clusters::Cluster.exists?(id: cluster.id)).to be_falsy
       end
 
@@ -469,7 +461,7 @@ describe API::ProjectClusters do
         let(:cluster) { create(:cluster, :project, :provided_by_user) }
 
         it 'responds with 404' do
-          expect(response).to have_gitlab_http_status(404)
+          expect(response).to have_gitlab_http_status(:not_found)
         end
       end
     end

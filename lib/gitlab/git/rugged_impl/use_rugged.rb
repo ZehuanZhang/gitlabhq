@@ -15,10 +15,6 @@ module Gitlab
           Gitlab::GitalyClient.can_use_disk?(repo.storage)
         end
 
-        def running_puma_with_multiple_threads?
-          Gitlab::Runtime.puma? && ::Puma.cli_config.options[:max_threads] > 1
-        end
-
         def execute_rugged_call(method_name, *args)
           Gitlab::GitalyClient::StorageSettings.allow_disk_access do
             start = Gitlab::Metrics::System.monotonic_time
@@ -29,7 +25,7 @@ module Gitlab
 
             if Gitlab::RuggedInstrumentation.active?
               Gitlab::RuggedInstrumentation.increment_query_count
-              Gitlab::RuggedInstrumentation.query_time += duration
+              Gitlab::RuggedInstrumentation.add_query_time(duration)
 
               Gitlab::RuggedInstrumentation.add_call_details(
                 feature: method_name,
@@ -39,6 +35,22 @@ module Gitlab
             end
 
             result
+          end
+        end
+
+        def running_puma_with_multiple_threads?
+          return false unless Gitlab::Runtime.puma?
+
+          ::Puma.respond_to?(:cli_config) && ::Puma.cli_config.options[:max_threads] > 1
+        end
+
+        def rugged_feature_keys
+          Gitlab::Git::RuggedImpl::Repository::FEATURE_FLAGS
+        end
+
+        def rugged_enabled_through_feature_flag?
+          rugged_feature_keys.any? do |feature_key|
+            Feature.enabled?(feature_key)
           end
         end
       end

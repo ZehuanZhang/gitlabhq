@@ -13,7 +13,7 @@ describe 'Environments page', :js do
   end
 
   def stop_button_selector
-    %q{button[data-original-title="Stop environment"]}
+    %q{button[title="Stop environment"]}
   end
 
   describe 'page tabs' do
@@ -37,6 +37,7 @@ describe 'Environments page', :js do
 
           expect(page).to have_css('.environments-container')
           expect(page.all('.environment-name').length).to eq(1)
+          expect(page.all('.ic-stop').length).to eq(1)
         end
       end
 
@@ -105,6 +106,7 @@ describe 'Environments page', :js do
 
           expect(page).to have_css('.environments-container')
           expect(page.all('.environment-name').length).to eq(1)
+          expect(page.all('.ic-stop').length).to eq(0)
         end
       end
     end
@@ -397,10 +399,12 @@ describe 'Environments page', :js do
 
   describe 'environments folders' do
     before do
-      create(:environment, project: project,
+      create(:environment, :will_auto_stop,
+                           project: project,
                            name: 'staging/review-1',
                            state: :available)
-      create(:environment, project: project,
+      create(:environment, :will_auto_stop,
+                           project: project,
                            name: 'staging/review-2',
                            state: :available)
     end
@@ -418,6 +422,14 @@ describe 'Environments page', :js do
 
       expect(page).to have_content 'review-1'
       expect(page).to have_content 'review-2'
+      within('.ci-table') do
+        within('.gl-responsive-table-row:nth-child(3)') do
+          expect(find('.js-auto-stop').text).not_to be_empty
+        end
+        within('.gl-responsive-table-row:nth-child(4)') do
+          expect(find('.js-auto-stop').text).not_to be_empty
+        end
+      end
     end
   end
 

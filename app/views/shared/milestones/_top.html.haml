@@ -8,7 +8,7 @@
 = render 'shared/milestones/deprecation_message' if is_dynamic_milestone
 = render 'shared/milestones/description', milestone: milestone
 
-- if milestone.complete?(current_user) && milestone.active?
+- if milestone.complete? && milestone.active?
   .alert.alert-success.prepend-top-default
     %span
       = _('All issues for this milestone are closed.')
@@ -21,10 +21,10 @@
     %table.table
       %thead
         %tr
-          %th Project
-          %th Open issues
-          %th State
-          %th Due date
+          %th= _('Project')
+          %th= _('Open issues')
+          %th= _('State')
+          %th= _('Due date')
         %tr
           %td
             - project_name = group ? milestone.project.name : milestone.project.full_name
@@ -33,8 +33,8 @@
             = milestone.milestone.issues_visible_to_user(current_user).opened.count
           %td
             - if milestone.closed?
-              Closed
+              = _('Closed')
             - else
-              Open
+              = _('Open')
           %td
             = milestone.expires_at

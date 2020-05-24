@@ -14,7 +14,7 @@ and upgrade your GitLab instance.
 
 Admin privileges for [GitLab.com](https://gitlab.com/) are restricted to the GitLab team.
 
-For more information on configuring GitLab self-managed instances, see [Administrator documentation](../administration/index.md).
+For more information on configuring GitLab self-managed instances, see the [Administrator documentation](../administration/index.md).
 
 ## Overview
 
@@ -45,7 +45,7 @@ GitLab is a Git-based platform that integrates a great number of essential tools
 - Building, testing, and deploying with built-in [Continuous Integration](../ci/README.md).
 - Deploying personal and professional static websites with [GitLab Pages](project/pages/index.md).
 - Integrating with Docker by using [GitLab Container Registry](packages/container_registry/index.md).
-- Tracking the development lifecycle by using [GitLab Cycle Analytics](project/cycle_analytics.md).
+- Tracking the development lifecycle by using [GitLab Value Stream Analytics](project/cycle_analytics.md).
 
 With GitLab Enterprise Edition, you can also:
 
@@ -66,7 +66,7 @@ With GitLab Enterprise Edition, you can also:
 - Leverage continuous delivery method with [Canary Deployments](project/canary_deployments.md).
 - Scan your code for vulnerabilities and [display them in merge requests](application_security/sast/index.md).
 
-You can also [integrate](project/integrations/project_services.md) GitLab with numerous third-party applications, such as Mattermost, Microsoft Teams, HipChat, Trello, Slack, Bamboo CI, Jira, and a lot more.
+You can also [integrate](project/integrations/overview.md) GitLab with numerous third-party applications, such as Mattermost, Microsoft Teams, HipChat, Trello, Slack, Bamboo CI, Jira, and a lot more.
 
 ## Projects
 
@@ -88,7 +88,7 @@ it all at once, from one single project.
 Use built-in [GitLab CI/CD](../ci/README.md) to test, build, and deploy your applications
 directly from GitLab. No third-party integrations needed.
 
-- [GitLab Auto Deploy](../topics/autodevops/index.md#auto-deploy): Deploy your application out-of-the-box with GitLab Auto Deploy.
+- [GitLab Auto Deploy](../topics/autodevops/stages.md#auto-deploy): Deploy your application out-of-the-box with GitLab Auto Deploy.
 - [Review Apps](../ci/review_apps/index.md): Live-preview the changes introduced by a merge request with Review Apps.
 - [GitLab Pages](project/pages/index.md): Publish your static site directly from
   GitLab with GitLab Pages. You can build, test, and deploy any Static Site Generator with Pages.
@@ -100,7 +100,7 @@ directly from GitLab. No third-party integrations needed.
 There is a lot you can customize and configure
 to enjoy the best of GitLab.
 
-- [Settings](profile/index.md): Manage your user settings to change your personal info,
+- [Settings](profile/index.md): Manage your user settings to change your personal information,
   personal access tokens, authorized applications, etc.
 - [Authentication](../topics/authentication/index.md): Read through the authentication
   methods available in GitLab.

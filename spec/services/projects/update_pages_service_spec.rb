@@ -5,7 +5,7 @@ require "spec_helper"
 describe Projects::UpdatePagesService do
   let_it_be(:project, refind: true) { create(:project, :repository) }
   let_it_be(:pipeline) { create(:ci_pipeline, project: project, sha: project.commit('HEAD').sha) }
-  let_it_be(:build) { create(:ci_build, pipeline: pipeline, ref: 'HEAD') }
+  let(:build) { create(:ci_build, pipeline: pipeline, ref: 'HEAD') }
   let(:invalid_file) { fixture_file_upload('spec/fixtures/dk.png') }
 
   let(:file) { fixture_file_upload("spec/fixtures/pages.zip") }
@@ -82,6 +82,9 @@ describe Projects::UpdatePagesService do
 
         expect(execute).not_to eq(:success)
         expect(project.pages_metadatum).not_to be_deployed
+
+        expect(deploy_status).to be_failed
+        expect(deploy_status.description).to eq('build SHA is outdated for this ref')
       end
 
       context 'when using empty file' do
@@ -110,8 +113,9 @@ describe Projects::UpdatePagesService do
 
       context 'when timeout happens by DNS error' do
         before do
-          allow_any_instance_of(described_class)
-            .to receive(:extract_zip_archive!).and_raise(SocketError)
+          allow_next_instance_of(described_class) do |instance|
+            allow(instance).to receive(:extract_zip_archive!).and_raise(SocketError)
+          end
         end
 
         it 'raises an error' do
@@ -125,9 +129,10 @@ describe Projects::UpdatePagesService do
 
       context 'when failed to extract zip artifacts' do
         before do
-          expect_any_instance_of(described_class)
-            .to receive(:extract_zip_archive!)
-            .and_raise(Projects::UpdatePagesService::FailedToExtractError)
+          expect_next_instance_of(described_class) do |instance|
+            expect(instance).to receive(:extract_zip_archive!)
+              .and_raise(Projects::UpdatePagesService::FailedToExtractError)
+          end
         end
 
         it 'raises an error' do
@@ -151,6 +156,23 @@ describe Projects::UpdatePagesService do
           build.reload
           expect(deploy_status).to be_failed
           expect(project.pages_metadatum).not_to be_deployed
+        end
+      end
+
+      context 'with background jobs running', :sidekiq_inline do
+        where(:ci_atomic_processing) do
+          [true, false]
+        end
+
+        with_them do
+          before do
+            stub_feature_flags(ci_atomic_processing: ci_atomic_processing)
+          end
+
+          it 'succeeds' do
+            expect(project.pages_deployed?).to be_falsey
+            expect(execute).to eq(:success)
+          end
         end
       end
     end
@@ -199,6 +221,32 @@ describe Projects::UpdatePagesService do
       end
 
       it_behaves_like 'pages size limit is', 100.megabytes
+    end
+  end
+
+  context 'when file size is spoofed' do
+    let(:metadata) { spy('metadata') }
+
+    include_context 'pages zip with spoofed size'
+
+    before do
+      file = fixture_file_upload(fake_zip_path, 'pages.zip')
+      metafile = fixture_file_upload('spec/fixtures/pages.zip.meta')
+
+      create(:ci_job_artifact, :archive, file: file, job: build)
+      create(:ci_job_artifact, :metadata, file: metafile, job: build)
+
+      allow(build).to receive(:artifacts_metadata_entry)
+                        .and_return(metadata)
+      allow(metadata).to receive(:total_size).and_return(100)
+    end
+
+    it 'raises an error' do
+      expect do
+        subject.execute
+      end.to raise_error(Projects::UpdatePagesService::FailedToExtractError,
+                         'Entry public/index.html should be 1B but is larger when inflated')
+      expect(deploy_status).to be_script_failure
     end
   end
 

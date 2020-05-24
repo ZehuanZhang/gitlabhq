@@ -3,11 +3,15 @@
 require 'spec_helper'
 
 describe API::Pipelines do
-  let(:user)        { create(:user) }
-  let(:non_member)  { create(:user) }
-  let(:project)     { create(:project, :repository, creator: user) }
+  let_it_be(:user) { create(:user) }
+  let_it_be(:non_member) { create(:user) }
 
-  let!(:pipeline) do
+  # We need to reload as the shared example 'pipelines visibility table' is changing project
+  let_it_be(:project, reload: true) do
+    create(:project, :repository, creator: user)
+  end
+
+  let_it_be(:pipeline) do
     create(:ci_empty_pipeline, project: project, sha: project.commit.id,
                                ref: project.default_branch, user: user)
   end
@@ -23,10 +27,10 @@ describe API::Pipelines do
       it 'returns project pipelines' do
         get api("/projects/#{project.id}/pipelines", user)
 
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
         expect(response).to include_pagination_headers
         expect(json_response).to be_an Array
-        expect(json_response.first['sha']).to match /\A\h{40}\z/
+        expect(json_response.first['sha']).to match(/\A\h{40}\z/)
         expect(json_response.first['id']).to eq pipeline.id
         expect(json_response.first['web_url']).to be_present
         expect(json_response.first.keys).to contain_exactly(*%w[id sha ref status web_url created_at updated_at])
@@ -68,8 +72,8 @@ describe API::Pipelines do
         end
 
         context 'when scope is branches or tags' do
-          let!(:pipeline_branch) { create(:ci_pipeline, project: project) }
-          let!(:pipeline_tag) { create(:ci_pipeline, project: project, ref: 'v1.0.0', tag: true) }
+          let_it_be(:pipeline_branch) { create(:ci_pipeline, project: project) }
+          let_it_be(:pipeline_tag) { create(:ci_pipeline, project: project, ref: 'v1.0.0', tag: true) }
 
           context 'when scope is branches' do
             it 'returns matched pipelines' do
@@ -157,7 +161,7 @@ describe API::Pipelines do
         end
 
         context 'when name is specified' do
-          let!(:pipeline) { create(:ci_pipeline, project: project, user: user) }
+          let_it_be(:pipeline) { create(:ci_pipeline, project: project, user: user) }
 
           context 'when name exists' do
             it 'returns matched pipelines' do
@@ -181,7 +185,7 @@ describe API::Pipelines do
         end
 
         context 'when username is specified' do
-          let!(:pipeline) { create(:ci_pipeline, project: project, user: user) }
+          let_it_be(:pipeline) { create(:ci_pipeline, project: project, user: user) }
 
           context 'when username exists' do
             it 'returns matched pipelines' do
@@ -205,8 +209,8 @@ describe API::Pipelines do
         end
 
         context 'when yaml_errors is specified' do
-          let!(:pipeline1) { create(:ci_pipeline, project: project, yaml_errors: 'Syntax error') }
-          let!(:pipeline2) { create(:ci_pipeline, project: project) }
+          let_it_be(:pipeline1) { create(:ci_pipeline, project: project, yaml_errors: 'Syntax error') }
+          let_it_be(:pipeline2) { create(:ci_pipeline, project: project) }
 
           context 'when yaml_errors is true' do
             it 'returns matched pipelines' do
@@ -238,9 +242,9 @@ describe API::Pipelines do
         end
 
         context 'when updated_at filters are specified' do
-          let!(:pipeline1) { create(:ci_pipeline, project: project, updated_at: 2.days.ago) }
-          let!(:pipeline2) { create(:ci_pipeline, project: project, updated_at: 4.days.ago) }
-          let!(:pipeline3) { create(:ci_pipeline, project: project, updated_at: 1.hour.ago) }
+          let_it_be(:pipeline1) { create(:ci_pipeline, project: project, updated_at: 2.days.ago) }
+          let_it_be(:pipeline2) { create(:ci_pipeline, project: project, updated_at: 4.days.ago) }
+          let_it_be(:pipeline3) { create(:ci_pipeline, project: project, updated_at: 1.hour.ago) }
 
           it 'returns pipelines with last update date in specified datetime range' do
             get api("/projects/#{project.id}/pipelines", user), params: { updated_before: 1.day.ago, updated_after: 3.days.ago }
@@ -254,7 +258,9 @@ describe API::Pipelines do
         context 'when order_by and sort are specified' do
           context 'when order_by user_id' do
             before do
-              create_list(:ci_pipeline, 3, project: project, user: create(:user))
+              create_list(:user, 3).each do |some_user|
+                create(:ci_pipeline, project: project, user: some_user)
+              end
             end
 
             context 'when sort parameter is valid' do
@@ -294,7 +300,7 @@ describe API::Pipelines do
       it 'does not return project pipelines' do
         get api("/projects/#{project.id}/pipelines", non_member)
 
-        expect(response).to have_gitlab_http_status(404)
+        expect(response).to have_gitlab_http_status(:not_found)
         expect(json_response['message']).to eq '404 Project Not Found'
         expect(json_response).not_to be_an Array
       end
@@ -323,7 +329,7 @@ describe API::Pipelines do
             post api("/projects/#{project.id}/pipeline", user), params: { ref: project.default_branch }
           end.to change { project.ci_pipelines.count }.by(1)
 
-          expect(response).to have_gitlab_http_status(201)
+          expect(response).to have_gitlab_http_status(:created)
           expect(json_response).to be_a Hash
           expect(json_response['sha']).to eq project.commit.id
         end
@@ -337,7 +343,7 @@ describe API::Pipelines do
             end.to change { project.ci_pipelines.count }.by(1)
             expect_variables(project.ci_pipelines.last.variables, variables)
 
-            expect(response).to have_gitlab_http_status(201)
+            expect(response).to have_gitlab_http_status(:created)
             expect(json_response).to be_a Hash
             expect(json_response['sha']).to eq project.commit.id
             expect(json_response).not_to have_key('variables')
@@ -358,7 +364,7 @@ describe API::Pipelines do
             end.to change { project.ci_pipelines.count }.by(1)
             expect_variables(project.ci_pipelines.last.variables, variables)
 
-            expect(response).to have_gitlab_http_status(201)
+            expect(response).to have_gitlab_http_status(:created)
             expect(json_response).to be_a Hash
             expect(json_response['sha']).to eq project.commit.id
             expect(json_response).not_to have_key('variables')
@@ -372,7 +378,7 @@ describe API::Pipelines do
                 post api("/projects/#{project.id}/pipeline", user), params: { ref: project.default_branch }
               end.not_to change { project.ci_pipelines.count }
 
-              expect(response).to have_gitlab_http_status(400)
+              expect(response).to have_gitlab_http_status(:bad_request)
             end
           end
         end
@@ -380,7 +386,7 @@ describe API::Pipelines do
         it 'fails when using an invalid ref' do
           post api("/projects/#{project.id}/pipeline", user), params: { ref: 'invalid_ref' }
 
-          expect(response).to have_gitlab_http_status(400)
+          expect(response).to have_gitlab_http_status(:bad_request)
           expect(json_response['message']['base'].first).to eq 'Reference not found'
           expect(json_response).not_to be_an Array
         end
@@ -395,7 +401,7 @@ describe API::Pipelines do
           it 'fails to create pipeline' do
             post api("/projects/#{project.id}/pipeline", user), params: { ref: project.default_branch }
 
-            expect(response).to have_gitlab_http_status(400)
+            expect(response).to have_gitlab_http_status(:bad_request)
             expect(json_response['message']['base'].first).to eq 'Missing CI config file'
             expect(json_response).not_to be_an Array
           end
@@ -407,7 +413,7 @@ describe API::Pipelines do
       it 'does not create pipeline' do
         post api("/projects/#{project.id}/pipeline", non_member), params: { ref: project.default_branch }
 
-        expect(response).to have_gitlab_http_status(404)
+        expect(response).to have_gitlab_http_status(:not_found)
         expect(json_response['message']).to eq '404 Project Not Found'
         expect(json_response).not_to be_an Array
       end
@@ -428,21 +434,21 @@ describe API::Pipelines do
       it 'exposes known attributes' do
         get api("/projects/#{project.id}/pipelines/#{pipeline.id}", user)
 
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
         expect(response).to match_response_schema('public_api/v4/pipeline/detail')
       end
 
       it 'returns project pipelines' do
         get api("/projects/#{project.id}/pipelines/#{pipeline.id}", user)
 
-        expect(response).to have_gitlab_http_status(200)
-        expect(json_response['sha']).to match /\A\h{40}\z/
+        expect(response).to have_gitlab_http_status(:ok)
+        expect(json_response['sha']).to match(/\A\h{40}\z/)
       end
 
       it 'returns 404 when it does not exist' do
-        get api("/projects/#{project.id}/pipelines/123456", user)
+        get api("/projects/#{project.id}/pipelines/#{non_existing_record_id}", user)
 
-        expect(response).to have_gitlab_http_status(404)
+        expect(response).to have_gitlab_http_status(:not_found)
         expect(json_response['message']).to eq '404 Not found'
         expect(json_response['id']).to be nil
       end
@@ -464,7 +470,7 @@ describe API::Pipelines do
       it 'does not return a project pipeline' do
         get api("/projects/#{project.id}/pipelines/#{pipeline.id}", non_member)
 
-        expect(response).to have_gitlab_http_status(404)
+        expect(response).to have_gitlab_http_status(:not_found)
         expect(json_response['message']).to eq '404 Project Not Found'
         expect(json_response['id']).to be nil
       end
@@ -489,7 +495,7 @@ describe API::Pipelines do
         it 'gets the latest pipleine' do
           get api("/projects/#{project.id}/pipelines/latest", user)
 
-          expect(response).to have_gitlab_http_status(200)
+          expect(response).to have_gitlab_http_status(:ok)
           expect(response).to match_response_schema('public_api/v4/pipeline/detail')
           expect(json_response['ref']).to eq(project.default_branch)
           expect(json_response['sha']).to eq(project.commit.id)
@@ -500,7 +506,7 @@ describe API::Pipelines do
         it 'gets the latest pipleine' do
           get api("/projects/#{project.id}/pipelines/latest", user), params: { ref: second_branch.name }
 
-          expect(response).to have_gitlab_http_status(200)
+          expect(response).to have_gitlab_http_status(:ok)
           expect(response).to match_response_schema('public_api/v4/pipeline/detail')
           expect(json_response['ref']).to eq(second_branch.name)
           expect(json_response['sha']).to eq(second_branch.target)
@@ -512,7 +518,7 @@ describe API::Pipelines do
       it 'does not return a project pipeline' do
         get api("/projects/#{project.id}/pipelines/#{pipeline.id}", non_member)
 
-        expect(response).to have_gitlab_http_status(404)
+        expect(response).to have_gitlab_http_status(:not_found)
         expect(json_response['message']).to eq '404 Project Not Found'
         expect(json_response['id']).to be nil
       end
@@ -528,7 +534,7 @@ describe API::Pipelines do
       it 'returns pipeline variables empty' do
         subject
 
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
         expect(json_response).to be_empty
       end
 
@@ -538,7 +544,7 @@ describe API::Pipelines do
         it 'returns pipeline variables' do
           subject
 
-          expect(response).to have_gitlab_http_status(200)
+          expect(response).to have_gitlab_http_status(:ok)
           expect(json_response).to contain_exactly({ "variable_type" => "env_var", "key" => "foo", "value" => "bar" })
         end
       end
@@ -559,7 +565,7 @@ describe API::Pipelines do
         it 'returns pipeline variables' do
           subject
 
-          expect(response).to have_gitlab_http_status(200)
+          expect(response).to have_gitlab_http_status(:ok)
           expect(json_response).to contain_exactly({ "variable_type" => "env_var", "key" => "foo", "value" => "bar" })
         end
       end
@@ -570,7 +576,7 @@ describe API::Pipelines do
         it 'does not return pipeline variables' do
           subject
 
-          expect(response).to have_gitlab_http_status(403)
+          expect(response).to have_gitlab_http_status(:forbidden)
         end
       end
     end
@@ -579,7 +585,7 @@ describe API::Pipelines do
       it 'does not return pipeline variables' do
         get api("/projects/#{project.id}/pipelines/#{pipeline.id}/variables", non_member)
 
-        expect(response).to have_gitlab_http_status(404)
+        expect(response).to have_gitlab_http_status(:not_found)
         expect(json_response['message']).to eq '404 Project Not Found'
       end
     end
@@ -592,14 +598,14 @@ describe API::Pipelines do
       it 'destroys the pipeline' do
         delete api("/projects/#{project.id}/pipelines/#{pipeline.id}", owner)
 
-        expect(response).to have_gitlab_http_status(204)
+        expect(response).to have_gitlab_http_status(:no_content)
         expect { pipeline.reload }.to raise_error(ActiveRecord::RecordNotFound)
       end
 
       it 'returns 404 when it does not exist' do
-        delete api("/projects/#{project.id}/pipelines/123456", owner)
+        delete api("/projects/#{project.id}/pipelines/#{non_existing_record_id}", owner)
 
-        expect(response).to have_gitlab_http_status(404)
+        expect(response).to have_gitlab_http_status(:not_found)
         expect(json_response['message']).to eq '404 Not found'
       end
 
@@ -608,12 +614,12 @@ describe API::Pipelines do
       end
 
       context 'when the pipeline has jobs' do
-        let!(:build) { create(:ci_build, project: project, pipeline: pipeline) }
+        let_it_be(:build) { create(:ci_build, project: project, pipeline: pipeline) }
 
         it 'destroys associated jobs' do
           delete api("/projects/#{project.id}/pipelines/#{pipeline.id}", owner)
 
-          expect(response).to have_gitlab_http_status(204)
+          expect(response).to have_gitlab_http_status(:no_content)
           expect { build.reload }.to raise_error(ActiveRecord::RecordNotFound)
         end
       end
@@ -624,7 +630,7 @@ describe API::Pipelines do
         it 'returns a 404' do
           delete api("/projects/#{project.id}/pipelines/#{pipeline.id}", non_member)
 
-          expect(response).to have_gitlab_http_status(404)
+          expect(response).to have_gitlab_http_status(:not_found)
           expect(json_response['message']).to eq '404 Project Not Found'
         end
       end
@@ -639,7 +645,7 @@ describe API::Pipelines do
         it 'returns a 403' do
           delete api("/projects/#{project.id}/pipelines/#{pipeline.id}", developer)
 
-          expect(response).to have_gitlab_http_status(403)
+          expect(response).to have_gitlab_http_status(:forbidden)
           expect(json_response['message']).to eq '403 Forbidden'
         end
       end
@@ -648,19 +654,19 @@ describe API::Pipelines do
 
   describe 'POST /projects/:id/pipelines/:pipeline_id/retry' do
     context 'authorized user' do
-      let!(:pipeline) do
+      let_it_be(:pipeline) do
         create(:ci_pipeline, project: project, sha: project.commit.id,
                              ref: project.default_branch)
       end
 
-      let!(:build) { create(:ci_build, :failed, pipeline: pipeline) }
+      let_it_be(:build) { create(:ci_build, :failed, pipeline: pipeline) }
 
       it 'retries failed builds' do
         expect do
           post api("/projects/#{project.id}/pipelines/#{pipeline.id}/retry", user)
         end.to change { pipeline.builds.count }.from(1).to(2)
 
-        expect(response).to have_gitlab_http_status(201)
+        expect(response).to have_gitlab_http_status(:created)
         expect(build.reload.retried?).to be true
       end
     end
@@ -669,7 +675,7 @@ describe API::Pipelines do
       it 'does not return a project pipeline' do
         post api("/projects/#{project.id}/pipelines/#{pipeline.id}/retry", non_member)
 
-        expect(response).to have_gitlab_http_status(404)
+        expect(response).to have_gitlab_http_status(:not_found)
         expect(json_response['message']).to eq '404 Project Not Found'
         expect(json_response['id']).to be nil
       end
@@ -677,24 +683,24 @@ describe API::Pipelines do
   end
 
   describe 'POST /projects/:id/pipelines/:pipeline_id/cancel' do
-    let!(:pipeline) do
+    let_it_be(:pipeline) do
       create(:ci_empty_pipeline, project: project, sha: project.commit.id,
                                  ref: project.default_branch)
     end
 
-    let!(:build) { create(:ci_build, :running, pipeline: pipeline) }
+    let_it_be(:build) { create(:ci_build, :running, pipeline: pipeline) }
 
     context 'authorized user' do
       it 'retries failed builds', :sidekiq_might_not_need_inline do
         post api("/projects/#{project.id}/pipelines/#{pipeline.id}/cancel", user)
 
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
         expect(json_response['status']).to eq('canceled')
       end
     end
 
     context 'user without proper access rights' do
-      let!(:reporter) { create(:user) }
+      let_it_be(:reporter) { create(:user) }
 
       before do
         project.add_reporter(reporter)
@@ -703,8 +709,77 @@ describe API::Pipelines do
       it 'rejects the action' do
         post api("/projects/#{project.id}/pipelines/#{pipeline.id}/cancel", reporter)
 
-        expect(response).to have_gitlab_http_status(403)
+        expect(response).to have_gitlab_http_status(:forbidden)
         expect(pipeline.reload.status).to eq('pending')
+      end
+    end
+  end
+
+  describe 'GET /projects/:id/pipelines/:pipeline_id/test_report' do
+    context 'authorized user' do
+      subject { get api("/projects/#{project.id}/pipelines/#{pipeline.id}/test_report", user) }
+
+      let(:pipeline) { create(:ci_pipeline, project: project) }
+
+      context 'when feature is enabled' do
+        before do
+          stub_feature_flags(junit_pipeline_view: true)
+        end
+
+        context 'when pipeline does not have a test report' do
+          it 'returns an empty test report' do
+            subject
+
+            expect(response).to have_gitlab_http_status(:ok)
+            expect(json_response['total_count']).to eq(0)
+          end
+        end
+
+        context 'when pipeline has a test report' do
+          let(:pipeline) { create(:ci_pipeline, :with_test_reports, project: project) }
+
+          it 'returns the test report' do
+            subject
+
+            expect(response).to have_gitlab_http_status(:ok)
+            expect(json_response['total_count']).to eq(4)
+          end
+        end
+
+        context 'when pipeline has corrupt test reports' do
+          before do
+            job = create(:ci_build, pipeline: pipeline)
+            create(:ci_job_artifact, :junit_with_corrupted_data, job: job, project: project)
+          end
+
+          it 'returns a suite_error' do
+            subject
+
+            expect(response).to have_gitlab_http_status(:ok)
+            expect(json_response['test_suites'].first['suite_error']).to eq('JUnit XML parsing failed: 1:1: FATAL: Document is empty')
+          end
+        end
+      end
+
+      context 'when feature is disabled' do
+        before do
+          stub_feature_flags(junit_pipeline_view: false)
+        end
+
+        it 'renders empty response' do
+          subject
+
+          expect(response).to have_gitlab_http_status(:not_found)
+        end
+      end
+    end
+
+    context 'unauthorized user' do
+      it 'does not return project pipelines' do
+        get api("/projects/#{project.id}/pipelines/#{pipeline.id}/test_report", non_member)
+
+        expect(response).to have_gitlab_http_status(:not_found)
+        expect(json_response['message']).to eq '404 Project Not Found'
       end
     end
   end

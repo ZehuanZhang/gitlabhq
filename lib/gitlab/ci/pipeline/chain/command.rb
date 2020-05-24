@@ -10,7 +10,7 @@ module Gitlab
           :trigger_request, :schedule, :merge_request, :external_pull_request,
           :ignore_skip_ci, :save_incompleted,
           :seeds_block, :variables_attributes, :push_options,
-          :chat_data, :allow_mirror_update,
+          :chat_data, :allow_mirror_update, :bridge,
           # These attributes are set by Chains during processing:
           :config_content, :config_processor, :stage_seeds
         ) do
@@ -20,12 +20,6 @@ module Gitlab
             params.each do |key, value|
               self[key] = value
             end
-          end
-
-          def uses_unsupported_legacy_trigger?
-            trigger_request.present? &&
-              trigger_request.trigger.legacy? &&
-              !trigger_request.trigger.supports_legacy_tokens?
           end
 
           def branch_exists?
@@ -77,6 +71,25 @@ module Gitlab
             strong_memoize(:ambiguous_ref) do
               project.repository.ambiguous_ref?(origin_ref)
             end
+          end
+
+          def parent_pipeline
+            bridge&.parent_pipeline
+          end
+
+          def duration_histogram
+            strong_memoize(:duration_histogram) do
+              name = :gitlab_ci_pipeline_creation_duration_seconds
+              comment = 'Pipeline creation duration'
+              labels = {}
+              buckets = [0.01, 0.05, 0.1, 0.5, 1.0, 2.0, 5.0, 20.0, 50.0, 240.0]
+
+              Gitlab::Metrics.histogram(name, comment, labels, buckets)
+            end
+          end
+
+          def observe_creation_duration(duration)
+            duration_histogram.observe({}, duration.seconds)
           end
         end
       end

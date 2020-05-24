@@ -59,7 +59,7 @@ describe('Jobs Store Mutations', () => {
 
     describe('when traceSize is bigger than the total size', () => {
       it('sets isTraceSizeVisible to false', () => {
-        const copy = Object.assign({}, stateCopy, { traceSize: 5118460, size: 2321312 });
+        const copy = { ...stateCopy, traceSize: 5118460, size: 2321312 };
 
         mutations[types.RECEIVE_TRACE_SUCCESS](copy, { total: 511846 });
 
@@ -157,17 +157,21 @@ describe('Jobs Store Mutations', () => {
     });
   });
 
-  describe('STOP_POLLING_TRACE', () => {
-    it('sets isTraceComplete to true', () => {
-      mutations[types.STOP_POLLING_TRACE](stateCopy);
+  describe('SET_TRACE_TIMEOUT', () => {
+    it('sets the traceTimeout id', () => {
+      const id = 7;
 
-      expect(stateCopy.isTraceComplete).toEqual(true);
+      expect(stateCopy.traceTimeout).not.toEqual(id);
+
+      mutations[types.SET_TRACE_TIMEOUT](stateCopy, id);
+
+      expect(stateCopy.traceTimeout).toEqual(id);
     });
   });
 
-  describe('RECEIVE_TRACE_ERROR', () => {
-    it('resets trace state and sets error to true', () => {
-      mutations[types.RECEIVE_TRACE_ERROR](stateCopy);
+  describe('STOP_POLLING_TRACE', () => {
+    it('sets isTraceComplete to true', () => {
+      mutations[types.STOP_POLLING_TRACE](stateCopy);
 
       expect(stateCopy.isTraceComplete).toEqual(true);
     });

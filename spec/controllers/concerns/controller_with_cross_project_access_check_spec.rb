@@ -14,6 +14,7 @@ describe ControllerWithCrossProjectAccessCheck do
   context 'When reading cross project is not allowed' do
     before do
       allow(Ability).to receive(:allowed).and_call_original
+      expect(Ability).to receive(:allowed?).with(user, :log_in, :global).and_call_original
       allow(Ability).to receive(:allowed?)
                           .with(user, :read_cross_project, :global)
                           .and_return(false)
@@ -51,7 +52,7 @@ describe ControllerWithCrossProjectAccessCheck do
 
         get :index
 
-        expect(response).to have_gitlab_http_status(403)
+        expect(response).to have_gitlab_http_status(:forbidden)
         expect(response.body).to match(/#{message}/)
       end
 
@@ -60,7 +61,7 @@ describe ControllerWithCrossProjectAccessCheck do
 
         get :index
 
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
       end
 
       it 'is skipped when the `unless` condition returns true' do
@@ -68,13 +69,13 @@ describe ControllerWithCrossProjectAccessCheck do
 
         get :index
 
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
       end
 
       it 'correctly renders an action that does not require cross project access' do
         get :show, params: { id: 'nothing' }
 
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
       end
     end
 
@@ -113,7 +114,7 @@ describe ControllerWithCrossProjectAccessCheck do
       it 'renders a success when the check is skipped' do
         get :index
 
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
       end
 
       it 'is executed when the `if` condition returns false' do
@@ -121,7 +122,7 @@ describe ControllerWithCrossProjectAccessCheck do
 
         get :index
 
-        expect(response).to have_gitlab_http_status(403)
+        expect(response).to have_gitlab_http_status(:forbidden)
       end
 
       it 'is executed when the `unless` condition returns true' do
@@ -129,19 +130,19 @@ describe ControllerWithCrossProjectAccessCheck do
 
         get :index
 
-        expect(response).to have_gitlab_http_status(403)
+        expect(response).to have_gitlab_http_status(:forbidden)
       end
 
       it 'does not skip the check on an action that is not skipped' do
         get :show, params: { id: 'hello' }
 
-        expect(response).to have_gitlab_http_status(403)
+        expect(response).to have_gitlab_http_status(:forbidden)
       end
 
       it 'does not skip the check on an action that was not defined to skip' do
         get :edit, params: { id: 'hello' }
 
-        expect(response).to have_gitlab_http_status(403)
+        expect(response).to have_gitlab_http_status(:forbidden)
       end
     end
   end

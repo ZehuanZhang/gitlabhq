@@ -8,25 +8,26 @@ See [the general developer security release guidelines](https://gitlab.com/gitla
 
 ## Related issues
 
-<!-- Mention the issue(s) this MR is related to -->
+<!-- Mention the GitLab Security issue this MR is related to -->
 
 ## Developer checklist
 
-- [ ] Link this MR in the `links` section of the related issue on [GitLab Security].
+- [ ] **On "Related issues" section, write down the [GitLab Security] issue it belongs to (i.e. `Related to <issue_id>`).**
 - [ ] Merge request targets `master`, or `X-Y-stable` for backports.
 - [ ] Milestone is set for the version this merge request applies to. A closed milestone can be assigned via [quick actions].
 - [ ] Title of this merge request is the same as for all backports.
 - [ ] A [CHANGELOG entry](https://docs.gitlab.com/ee/development/changelog.html) is added without a `merge_request` value, with `type` set to `security`
 - [ ] Assign to a reviewer and maintainer, per our [Code Review process].
-- [ ] If this merge request targets `master`, ensure it's approved according to our [Approval Guidelines].
+- [ ] For the MR targeting `master`:
+  - [ ] Ask for a non-blocking review from the AppSec team member associated to the issue in the [Canonical repository](https://gitlab.com/gitlab-org/gitlab). If you're unsure who to ping, ask on `#sec-appsec` Slack channel.
+  - [ ] Ensure it's approved according to our [Approval Guidelines].
 - [ ] Merge request _must not_ close the corresponding security issue, _unless_ it targets `master`.
 
 **Note:** Reviewer/maintainer should not be a Release Manager
 
-## Reviewer checklist
-
+## Maintainer checklist
 - [ ] Correct milestone is applied and the title is matching across all backports
-- [ ] Assigned to `@gitlab-release-tools-bot` with passing CI pipelines
+- [ ] Assigned to `@gitlab-release-tools-bot` with passing CI pipelines and **when all backports including the MR targeting master are ready.**
 
 /label ~security
 

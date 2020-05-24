@@ -6,13 +6,13 @@ module Gitlab
     IpBlacklisted = Class.new(StandardError)
 
     # Scopes used for GitLab API access
-    API_SCOPES = [:api, :read_user].freeze
+    API_SCOPES = [:api, :read_user, :read_api].freeze
 
     # Scopes used for GitLab Repository access
     REPOSITORY_SCOPES = [:read_repository, :write_repository].freeze
 
     # Scopes used for GitLab Docker Registry access
-    REGISTRY_SCOPES = [:read_registry].freeze
+    REGISTRY_SCOPES = [:read_registry, :write_registry].freeze
 
     # Scopes used for GitLab as admin
     ADMIN_SCOPES = [:sudo].freeze
@@ -49,7 +49,7 @@ module Gitlab
           lfs_token_check(login, password, project) ||
           oauth_access_token_check(login, password) ||
           personal_access_token_check(password) ||
-          deploy_token_check(login, password) ||
+          deploy_token_check(login, password, project) ||
           user_with_password_for_git(login, password) ||
           Gitlab::Auth::Result.new
 
@@ -88,7 +88,7 @@ module Gitlab
           else
             # If no user is provided, try LDAP.
             #   LDAP users are only authenticated via LDAP
-            authenticators << Gitlab::Auth::LDAP::Authentication
+            authenticators << Gitlab::Auth::Ldap::Authentication
           end
 
           authenticators.compact!
@@ -134,7 +134,7 @@ module Gitlab
       end
 
       def authenticate_using_internal_or_ldap_password?
-        Gitlab::CurrentSettings.password_authentication_enabled_for_git? || Gitlab::Auth::LDAP::Config.enabled?
+        Gitlab::CurrentSettings.password_authentication_enabled_for_git? || Gitlab::Auth::Ldap::Config.enabled?
       end
 
       def service_request_check(login, password, project)
@@ -164,25 +164,25 @@ module Gitlab
         Gitlab::Auth::Result.new(user, nil, :gitlab_or_ldap, full_authentication_abilities)
       end
 
-      # rubocop: disable CodeReuse/ActiveRecord
       def oauth_access_token_check(login, password)
         if login == "oauth2" && password.present?
           token = Doorkeeper::AccessToken.by_token(password)
 
           if valid_oauth_token?(token)
-            user = User.find_by(id: token.resource_owner_id)
+            user = User.id_in(token.resource_owner_id).first
+            return unless user&.can?(:log_in)
+
             Gitlab::Auth::Result.new(user, nil, :oauth, full_authentication_abilities)
           end
         end
       end
-      # rubocop: enable CodeReuse/ActiveRecord
 
       def personal_access_token_check(password)
         return unless password.present?
 
         token = PersonalAccessTokensFinder.new(state: 'active').find_by_token(password)
 
-        if token && valid_scoped_token?(token, all_available_scopes)
+        if token && valid_scoped_token?(token, all_available_scopes) && token.user.can?(:log_in)
           Gitlab::Auth::Result.new(token.user, nil, :personal_access_token, abilities_for_scopes(token.scopes))
         end
       end
@@ -198,7 +198,9 @@ module Gitlab
       def abilities_for_scopes(scopes)
         abilities_by_scope = {
           api: full_authentication_abilities,
+          read_api: read_only_authentication_abilities,
           read_registry: [:read_container_image],
+          write_registry: [:create_container_image],
           read_repository: [:download_code],
           write_repository: [:download_code, :push_code]
         }
@@ -208,7 +210,7 @@ module Gitlab
         end.uniq
       end
 
-      def deploy_token_check(login, password)
+      def deploy_token_check(login, password, project)
         return unless password.present?
 
         token = DeployToken.active.find_by_token(password)
@@ -219,7 +221,7 @@ module Gitlab
         scopes = abilities_for_scopes(token.scopes)
 
         if valid_scoped_token?(token, all_available_scopes)
-          Gitlab::Auth::Result.new(token, token.project, :deploy_token, scopes)
+          Gitlab::Auth::Result.new(token, project, :deploy_token, scopes)
         end
       end
 
@@ -260,6 +262,8 @@ module Gitlab
         return unless build.project.builds_enabled?
 
         if build.user
+          return unless build.user.can?(:log_in)
+
           # If user is assigned to build, use restricted credentials of user
           Gitlab::Auth::Result.new(build.user, build.project, :build, build_authentication_abilities)
         else
@@ -331,6 +335,10 @@ module Gitlab
         return [] unless Gitlab.config.registry.enabled
 
         REGISTRY_SCOPES
+      end
+
+      def resource_bot_scopes
+        Gitlab::Auth::API_SCOPES + Gitlab::Auth::REPOSITORY_SCOPES + Gitlab::Auth.registry_scopes - [:read_user]
       end
 
       private

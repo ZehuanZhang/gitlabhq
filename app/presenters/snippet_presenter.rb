@@ -11,6 +11,14 @@ class SnippetPresenter < Gitlab::View::Presenter::Delegated
     Gitlab::UrlBuilder.build(snippet, raw: true)
   end
 
+  def ssh_url_to_repo
+    snippet.ssh_url_to_repo if snippet.repository_exists?
+  end
+
+  def http_url_to_repo
+    snippet.http_url_to_repo if snippet.repository_exists?
+  end
+
   def can_read_snippet?
     can_access_resource?("read")
   end
@@ -25,6 +33,14 @@ class SnippetPresenter < Gitlab::View::Presenter::Delegated
 
   def can_report_as_spam?
     snippet.submittable_as_spam_by?(current_user)
+  end
+
+  def blob
+    if snippet.empty_repo?
+      snippet.blob
+    else
+      snippet.blobs.first
+    end
   end
 
   private

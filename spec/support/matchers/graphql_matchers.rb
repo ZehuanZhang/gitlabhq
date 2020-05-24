@@ -1,8 +1,14 @@
 # frozen_string_literal: true
 
 RSpec::Matchers.define :require_graphql_authorizations do |*expected|
-  match do |field|
-    expect(field.metadata[:authorize]).to eq(*expected)
+  match do |klass|
+    permissions = if klass.respond_to?(:required_permissions)
+                    klass.required_permissions
+                  else
+                    [klass.to_graphql.metadata[:authorize]]
+                  end
+
+    expect(permissions).to eq(expected)
   end
 end
 
@@ -79,21 +85,28 @@ end
 RSpec::Matchers.define :have_graphql_arguments do |*expected|
   include GraphqlHelpers
 
+  def expected_names
+    @names ||= Array.wrap(expected).map { |name| GraphqlHelpers.fieldnamerize(name) }
+  end
+
   match do |field|
-    argument_names = expected.map { |name| GraphqlHelpers.fieldnamerize(name) }
-    expect(field.arguments.keys).to contain_exactly(*argument_names)
+    expect(field.arguments.keys).to contain_exactly(*expected_names)
+  end
+
+  failure_message do |field|
+    "expected that #{field.name} would have the following fields: #{expected_names.inspect}, but it has #{field.arguments.keys.inspect}."
   end
 end
 
 RSpec::Matchers.define :have_graphql_type do |expected|
   match do |field|
-    expect(field.type).to eq(expected.to_graphql)
+    expect(field.type).to eq(expected)
   end
 end
 
 RSpec::Matchers.define :have_non_null_graphql_type do |expected|
   match do |field|
-    expect(field.type).to eq(!expected.to_graphql)
+    expect(field.type.to_graphql).to eq(!expected.to_graphql)
   end
 end
 
@@ -101,10 +114,16 @@ RSpec::Matchers.define :have_graphql_resolver do |expected|
   match do |field|
     case expected
     when Method
-      expect(field.metadata[:type_class].resolve_proc).to eq(expected)
+      expect(field.to_graphql.metadata[:type_class].resolve_proc).to eq(expected)
     else
-      expect(field.metadata[:type_class].resolver).to eq(expected)
+      expect(field.to_graphql.metadata[:type_class].resolver).to eq(expected)
     end
+  end
+end
+
+RSpec::Matchers.define :have_graphql_extension do |expected|
+  match do |field|
+    expect(field.to_graphql.metadata[:type_class].extensions).to include(expected)
   end
 end
 

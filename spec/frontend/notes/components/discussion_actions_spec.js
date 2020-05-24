@@ -1,5 +1,5 @@
 import { shallowMount, mount } from '@vue/test-utils';
-import { discussionMock } from '../../notes/mock_data';
+import { discussionMock } from '../mock_data';
 import DiscussionActions from '~/notes/components/discussion_actions.vue';
 import ReplyPlaceholder from '~/notes/components/discussion_reply_placeholder.vue';
 import ResolveDiscussionButton from '~/notes/components/discussion_resolve_button.vue';
@@ -35,7 +35,6 @@ describe('DiscussionActions', () => {
         shouldShowJumpToNextDiscussion: true,
         ...props,
       },
-      attachToDocument: true,
     });
   };
 
@@ -120,15 +119,6 @@ describe('DiscussionActions', () => {
         .find('button')
         .trigger('click');
       expect(wrapper.vm.$emit).toHaveBeenCalledWith('resolve');
-    });
-
-    it('emits jumpToNextDiscussion event when clicking on jump to next discussion button', () => {
-      jest.spyOn(wrapper.vm, '$emit');
-      wrapper
-        .find(JumpToNextDiscussionButton)
-        .find('button')
-        .trigger('click');
-      expect(wrapper.vm.$emit).toHaveBeenCalledWith('jumpToNextDiscussion');
     });
   });
 });

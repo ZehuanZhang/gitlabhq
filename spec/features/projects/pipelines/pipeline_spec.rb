@@ -19,32 +19,32 @@ describe 'Pipeline', :js do
   shared_context 'pipeline builds' do
     let!(:build_passed) do
       create(:ci_build, :success,
-             pipeline: pipeline, stage: 'build', name: 'build')
+             pipeline: pipeline, stage: 'build', stage_idx: 0, name: 'build')
     end
 
     let!(:build_failed) do
       create(:ci_build, :failed,
-             pipeline: pipeline, stage: 'test', name: 'test')
+             pipeline: pipeline, stage: 'test', stage_idx: 1, name: 'test')
     end
 
     let!(:build_preparing) do
       create(:ci_build, :preparing,
-             pipeline: pipeline, stage: 'deploy', name: 'prepare')
+             pipeline: pipeline, stage: 'deploy', stage_idx: 2, name: 'prepare')
     end
 
     let!(:build_running) do
       create(:ci_build, :running,
-             pipeline: pipeline, stage: 'deploy', name: 'deploy')
+             pipeline: pipeline, stage: 'deploy', stage_idx: 3, name: 'deploy')
     end
 
     let!(:build_manual) do
       create(:ci_build, :manual,
-             pipeline: pipeline, stage: 'deploy', name: 'manual-build')
+             pipeline: pipeline, stage: 'deploy', stage_idx: 3, name: 'manual-build')
     end
 
     let!(:build_scheduled) do
       create(:ci_build, :scheduled,
-             pipeline: pipeline, stage: 'deploy', name: 'delayed-job')
+             pipeline: pipeline, stage: 'deploy', stage_idx: 3, name: 'delayed-job')
     end
 
     let!(:build_external) do
@@ -99,12 +99,67 @@ describe 'Pipeline', :js do
       end
     end
 
-    it 'shows links to the related merge requests' do
-      visit_pipeline
+    describe 'related merge requests' do
+      context 'when there are no related merge requests' do
+        it 'shows a "no related merge requests" message' do
+          visit_pipeline
 
-      within '.related-merge-request-info' do
-        pipeline.all_merge_requests.map do |merge_request|
-          expect(page).to have_link(project_merge_request_path(project, merge_request))
+          within '.related-merge-request-info' do
+            expect(page).to have_content('No related merge requests found.')
+          end
+        end
+      end
+
+      context 'when there is one related merge request' do
+        before do
+          create(:merge_request,
+            source_project: project,
+            source_branch: pipeline.ref)
+        end
+
+        it 'shows a link to the merge request' do
+          visit_pipeline
+
+          within '.related-merge-requests' do
+            expect(page).to have_content('1 related merge request: ')
+            expect(page).to have_selector('.js-truncated-mr-list')
+            expect(page).to have_link('!1 My title 1')
+
+            expect(page).not_to have_selector('.js-full-mr-list')
+            expect(page).not_to have_selector('.text-expander')
+          end
+        end
+      end
+
+      context 'when there are two related merge requests' do
+        before do
+          create(:merge_request, source_project: project, source_branch: pipeline.ref)
+          create(:merge_request, source_project: project, source_branch: pipeline.ref, target_branch: 'fix')
+        end
+
+        it 'links to the most recent related merge request' do
+          visit_pipeline
+
+          within '.related-merge-requests' do
+            expect(page).to have_content('2 related merge requests: ')
+            expect(page).to have_link('!2 My title 3')
+            expect(page).to have_selector('.text-expander')
+            expect(page).to have_selector('.js-full-mr-list', visible: false)
+          end
+        end
+
+        it 'expands to show links to all related merge requests' do
+          visit_pipeline
+
+          within '.related-merge-requests' do
+            find('.text-expander').click
+
+            expect(page).to have_selector('.js-full-mr-list', visible: true)
+
+            pipeline.all_merge_requests.map do |merge_request|
+              expect(page).to have_link(href: project_merge_request_path(project, merge_request))
+            end
+          end
         end
       end
     end
@@ -217,7 +272,7 @@ describe 'Pipeline', :js do
         it 'includes the failure reason' do
           page.within('#ci-badge-test') do
             build_link = page.find('.js-pipeline-graph-job-link')
-            expect(build_link['data-original-title']).to eq('test - failed - (unknown failure)')
+            expect(build_link['title']).to eq('test - failed - (unknown failure)')
           end
         end
       end
@@ -252,9 +307,12 @@ describe 'Pipeline', :js do
 
     context 'when the pipeline has manual stage' do
       before do
-        create(:ci_build, :manual, pipeline: pipeline, stage: 'publish', name: 'CentOS')
-        create(:ci_build, :manual, pipeline: pipeline, stage: 'publish', name: 'Debian')
-        create(:ci_build, :manual, pipeline: pipeline, stage: 'publish', name: 'OpenSUDE')
+        create(:ci_build, :manual, pipeline: pipeline, stage_idx: 10, stage: 'publish', name: 'CentOS')
+        create(:ci_build, :manual, pipeline: pipeline, stage_idx: 10, stage: 'publish', name: 'Debian')
+        create(:ci_build, :manual, pipeline: pipeline, stage_idx: 10, stage: 'publish', name: 'OpenSUDE')
+
+        # force to update stages statuses
+        Ci::ProcessPipelineService.new(pipeline).execute
 
         visit_pipeline
       end
@@ -269,9 +327,10 @@ describe 'Pipeline', :js do
         visit_pipeline
       end
 
-      it 'shows Pipeline, Jobs and Failed Jobs tabs with link' do
+      it 'shows Pipeline, Jobs, DAG and Failed Jobs tabs with link' do
         expect(page).to have_link('Pipeline')
         expect(page).to have_link('Jobs')
+        expect(page).to have_link('DAG')
         expect(page).to have_link('Failed Jobs')
       end
 
@@ -290,6 +349,42 @@ describe 'Pipeline', :js do
         it 'does not show failed jobs tab pane' do
           expect(page).to have_link('Pipeline')
           expect(page).not_to have_content('Failed Jobs')
+        end
+      end
+    end
+
+    describe 'test tabs' do
+      let(:pipeline) { create(:ci_pipeline, :with_test_reports, project: project) }
+
+      before do
+        visit_pipeline
+        wait_for_requests
+      end
+
+      context 'with test reports' do
+        it 'shows badge counter in Tests tab' do
+          expect(pipeline.test_reports.total_count).to eq(4)
+          expect(page.find('.js-test-report-badge-counter').text).to eq(pipeline.test_reports.total_count.to_s)
+        end
+
+        it 'does not call test_report.json endpoint by default', :js do
+          expect(page).to have_selector('.js-no-tests-to-show', visible: :all)
+        end
+
+        it 'does call test_report.json endpoint when tab is selected', :js do
+          find('.js-tests-tab-link').click
+          wait_for_requests
+
+          expect(page).to have_content('Test suites')
+          expect(page).to have_selector('.js-tests-detail', visible: :all)
+        end
+      end
+
+      context 'without test reports' do
+        let(:pipeline) { create(:ci_pipeline, project: project) }
+
+        it 'shows nothing' do
+          expect(page.find('.js-test-report-badge-counter', visible: :all).text).to eq("")
         end
       end
     end
@@ -518,6 +613,20 @@ describe 'Pipeline', :js do
               href: project_commits_path(merge_request.target_project, merge_request.target_branch))
           end
         end
+      end
+    end
+
+    context 'when FF dag_pipeline_tab is disabled' do
+      before do
+        stub_feature_flags(dag_pipeline_tab: false)
+        visit_pipeline
+      end
+
+      it 'does not show DAG link' do
+        expect(page).to have_link('Pipeline')
+        expect(page).to have_link('Jobs')
+        expect(page).not_to have_link('DAG')
+        expect(page).to have_link('Failed Jobs')
       end
     end
   end
@@ -771,9 +880,10 @@ describe 'Pipeline', :js do
     end
 
     context 'page tabs' do
-      it 'shows Pipeline and Jobs tabs with link' do
+      it 'shows Pipeline, Jobs and DAG tabs with link' do
         expect(page).to have_link('Pipeline')
         expect(page).to have_link('Jobs')
+        expect(page).to have_link('DAG')
       end
 
       it 'shows counter in Jobs tab' do
@@ -963,6 +1073,37 @@ describe 'Pipeline', :js do
     end
   end
 
+  describe 'GET /:project/pipelines/:id/dag' do
+    include_context 'pipeline builds'
+
+    let(:project) { create(:project, :repository) }
+    let(:pipeline) { create(:ci_pipeline, project: project, ref: 'master', sha: project.commit.id) }
+
+    before do
+      visit dag_project_pipeline_path(project, pipeline)
+    end
+
+    it 'shows DAG tab pane as active' do
+      expect(page).to have_css('#js-tab-dag.active', visible: false)
+    end
+
+    context 'page tabs' do
+      it 'shows Pipeline, Jobs and DAG tabs with link' do
+        expect(page).to have_link('Pipeline')
+        expect(page).to have_link('Jobs')
+        expect(page).to have_link('DAG')
+      end
+
+      it 'shows counter in Jobs tab' do
+        expect(page.find('.js-builds-counter').text).to eq(pipeline.total_size.to_s)
+      end
+
+      it 'shows DAG tab as active' do
+        expect(page).to have_css('li.js-dag-tab-link .active')
+      end
+    end
+  end
+
   context 'when user sees pipeline flags in a pipeline detail page' do
     let(:project) { create(:project, :repository) }
 
@@ -989,8 +1130,6 @@ describe 'Pipeline', :js do
     end
 
     context 'when pipeline has configuration errors' do
-      include_context 'pipeline builds'
-
       let(:pipeline) do
         create(:ci_pipeline,
                :invalid,
@@ -1030,6 +1169,10 @@ describe 'Pipeline', :js do
           expect(page).to have_selector(
             %Q{span[title="#{pipeline.present.failure_reason}"]})
         end
+      end
+
+      it 'contains a pipeline header with title' do
+        expect(page).to have_content "Pipeline ##{pipeline.id}"
       end
     end
 

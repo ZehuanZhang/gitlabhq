@@ -1,16 +1,13 @@
 <script>
-import Icon from '~/vue_shared/components/icon.vue';
 import FileHeader from '~/vue_shared/components/file_row_header.vue';
 import FileIcon from '~/vue_shared/components/file_icon.vue';
-import ChangedFileIcon from '~/vue_shared/components/changed_file_icon.vue';
+import { escapeFileUrl } from '~/lib/utils/url_utility';
 
 export default {
   name: 'FileRow',
   components: {
     FileHeader,
     FileIcon,
-    Icon,
-    ChangedFileIcon,
   },
   props: {
     file: {
@@ -21,26 +18,6 @@ export default {
       type: Number,
       required: true,
     },
-    extraComponent: {
-      type: Object,
-      required: false,
-      default: null,
-    },
-    hideExtraOnTree: {
-      type: Boolean,
-      required: false,
-      default: false,
-    },
-    showChangedIcon: {
-      type: Boolean,
-      required: false,
-      default: false,
-    },
-  },
-  data() {
-    return {
-      dropdownOpen: false,
-    };
   },
   computed: {
     isTree() {
@@ -62,8 +39,9 @@ export default {
         'is-open': this.file.opened,
       };
     },
-    childFilesLevel() {
-      return this.file.isHeader ? 0 : this.level + 1;
+    textForTitle() {
+      // don't output a title if we don't have the expanded path
+      return this.file?.tree?.length ? this.file.tree[0].parentPath : false;
     },
   },
   watch: {
@@ -121,63 +99,39 @@ export default {
     hasUrlAtCurrentRoute() {
       if (!this.$router || !this.$router.currentRoute) return true;
 
-      return this.$router.currentRoute.path === `/project${this.file.url}`;
-    },
-    toggleDropdown(val) {
-      this.dropdownOpen = val;
+      return this.$router.currentRoute.path === `/project${escapeFileUrl(this.file.url)}`;
     },
   },
 };
 </script>
 
 <template>
-  <div>
-    <file-header v-if="file.isHeader" :path="file.path" />
-    <div
-      v-else
-      :class="fileClass"
-      :title="file.name"
-      class="file-row"
-      role="button"
-      @click="clickFile"
-      @mouseleave="toggleDropdown(false)"
-    >
-      <div class="file-row-name-container">
-        <span ref="textOutput" :style="levelIndentation" class="file-row-name str-truncated">
-          <file-icon
-            v-if="!showChangedIcon || file.type === 'tree'"
-            class="file-row-icon"
-            :file-name="file.name"
-            :loading="file.loading"
-            :folder="isTree"
-            :opened="file.opened"
-            :size="16"
-          />
-          <changed-file-icon v-else :file="file" :size="16" class="append-right-5" />
-          {{ file.name }}
-        </span>
-        <component
-          :is="extraComponent"
-          v-if="extraComponent && !(hideExtraOnTree && file.type === 'tree')"
-          :file="file"
-          :dropdown-open="dropdownOpen"
-          @toggle="toggleDropdown($event)"
+  <file-header v-if="file.isHeader" :path="file.path" />
+  <div
+    v-else
+    :class="fileClass"
+    :title="textForTitle"
+    :data-level="level"
+    class="file-row"
+    role="button"
+    @click="clickFile"
+    @mouseleave="$emit('mouseleave', $event)"
+  >
+    <div class="file-row-name-container">
+      <span ref="textOutput" :style="levelIndentation" class="file-row-name str-truncated">
+        <file-icon
+          class="file-row-icon"
+          :class="{ 'text-secondary': file.type === 'tree' }"
+          :file-name="file.name"
+          :loading="file.loading"
+          :folder="isTree"
+          :opened="file.opened"
+          :size="16"
         />
-      </div>
+        {{ file.name }}
+      </span>
+      <slot></slot>
     </div>
-    <template v-if="file.opened || file.isHeader">
-      <file-row
-        v-for="childFile in file.tree"
-        :key="childFile.key"
-        :file="childFile"
-        :level="childFilesLevel"
-        :hide-extra-on-tree="hideExtraOnTree"
-        :extra-component="extraComponent"
-        :show-changed-icon="showChangedIcon"
-        @toggleTreeOpen="toggleTreeOpen"
-        @clickFile="clickedFile"
-      />
-    </template>
   </div>
 </template>
 
@@ -192,19 +146,6 @@ export default {
   border-radius: 3px;
   text-align: left;
   cursor: pointer;
-}
-
-.file-row:hover,
-.file-row:focus {
-  background: #f2f2f2;
-}
-
-.file-row:active {
-  background: #dfdfdf;
-}
-
-.file-row.is-active {
-  background: #f2f2f2;
 }
 
 .file-row-name-container {

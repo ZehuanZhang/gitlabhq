@@ -5,13 +5,17 @@ Workhorse and GitLab-Shell.
 
 ## Deep Dive
 
-In May 2019, Bob Van Landuyt hosted a [Deep Dive] on GitLab's [Gitaly project] and how to contribute to it as a Ruby developer, to share his domain specific knowledge with anyone who may work in this part of the code base in the future. You can find the [recording on YouTube], and the slides on [Google Slides] and in [PDF]. Everything covered in this deep dive was accurate as of GitLab 11.11, and while specific details may have changed since then, it should still serve as a good introduction.
+In May 2019, Bob Van Landuyt hosted a Deep Dive (GitLab team members only: `https://gitlab.com/gitlab-org/create-stage/issues/1`)
+on GitLab's [Gitaly project](https://gitlab.com/gitlab-org/gitaly) and how to contribute to it as a
+Ruby developer, to share his domain specific knowledge with anyone who may work in this part of the
+code base in the future.
 
-[Deep Dive]: https://gitlab.com/gitlab-org/create-stage/issues/1
-[Gitaly project]: https://gitlab.com/gitlab-org/gitaly
-[recording on YouTube]: https://www.youtube.com/watch?v=BmlEWFS8ORo
-[Google Slides]: https://docs.google.com/presentation/d/1VgRbiYih9ODhcPnL8dS0W98EwFYpJ7GXMPpX-1TM6YE/edit
-[PDF]: https://gitlab.com/gitlab-org/create-stage/uploads/a4fdb1026278bda5c1c5bb574379cf80/Create_Deep_Dive__Gitaly_for_Create_Ruby_Devs.pdf
+You can find the [recording on YouTube](https://www.youtube.com/watch?v=BmlEWFS8ORo), and the slides
+on [Google Slides](https://docs.google.com/presentation/d/1VgRbiYih9ODhcPnL8dS0W98EwFYpJ7GXMPpX-1TM6YE/edit)
+and in [PDF](https://gitlab.com/gitlab-org/create-stage/uploads/a4fdb1026278bda5c1c5bb574379cf80/Create_Deep_Dive__Gitaly_for_Create_Ruby_Devs.pdf).
+
+Everything covered in this deep dive was accurate as of GitLab 11.11, and while specific details may
+have changed since then, it should still serve as a good introduction.
 
 ## Beginner's guide
 
@@ -54,7 +58,7 @@ of Gitaly and `gitaly-proto` during testing and development.
 - See [below](#running-tests-with-a-locally-modified-version-of-gitaly) for instructions on running GitLab CE tests with a modified version of Gitaly.
 - In GDK run `gdk install` and restart `gdk run` (or `gdk run app`) to use a locally modified Gitaly version for development
 
-### Gitaly-ruby
+### `gitaly-ruby`
 
 It is possible to implement and test RPC's in Gitaly using Ruby code,
 in
@@ -73,7 +77,7 @@ If your test-suite is failing with Gitaly issues, as a first step, try running:
 rm -rf tmp/tests/gitaly
 ```
 
-During rspec tests, the Gitaly instance will write logs to `gitlab/log/gitaly-test.log`.
+During RSpec tests, the Gitaly instance will write logs to `gitlab/log/gitaly-test.log`.
 
 ## Legacy Rugged code
 
@@ -81,7 +85,7 @@ While Gitaly can handle all Git access, many of GitLab customers still
 run Gitaly atop NFS. The legacy Rugged implementation for Git calls may
 be faster than the Gitaly RPC due to N+1 Gitaly calls and other
 reasons. See [the
-issue](https://gitlab.com/gitlab-org/gitlab-foss/issues/57317) for more
+issue](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/57317) for more
 details.
 
 Until GitLab has eliminated most of these inefficiencies or the use of
@@ -98,13 +102,13 @@ most commonly-used RPCs can be enabled via feature flags:
 A convenience Rake task can be used to enable or disable these flags
 all together. To enable:
 
-```sh
+```shell
 bundle exec rake gitlab:features:enable_rugged
 ```
 
 To disable:
 
-```sh
+```shell
 bundle exec rake gitlab:features:disable_rugged
 ```
 
@@ -167,8 +171,15 @@ end
 Normally, GitLab CE/EE tests use a local clone of Gitaly in
 `tmp/tests/gitaly` pinned at the version specified in
 `GITALY_SERVER_VERSION`. The `GITALY_SERVER_VERSION` file supports also
-branches and SHA to use a custom commit in <https://gitlab.com/gitlab-org/gitaly>. If
-you want to run tests locally against a modified version of Gitaly you
+branches and SHA to use a custom commit in <https://gitlab.com/gitlab-org/gitaly>.
+
+NOTE: **Note:**
+With the introduction of auto-deploy for Gitaly, the format of
+`GITALY_SERVER_VERSION` was aligned with Omnibus syntax.
+It no longer supports `=revision`, it will evaluate the file content as a Git
+reference (branch or SHA), only if it matches a semver it will prepend a `v`.
+
+If you want to run tests locally against a modified version of Gitaly you
 can replace `tmp/tests/gitaly` with a symlink. This is much faster
 because if will avoid a Gitaly re-install each time you run `rspec`.
 
@@ -185,8 +196,7 @@ to manually run `make` again.
 
 Note that CI tests will not use your locally modified version of
 Gitaly. To use a custom Gitaly version in CI you need to update
-GITALY_SERVER_VERSION. You can use the format `=revision` to use a
-non-tagged commit from <https://gitlab.com/gitlab-org/gitaly> in CI.
+GITALY_SERVER_VERSION as described at the beginning of this paragraph.
 
 To use a different Gitaly repository, e.g., if your changes are present
 on a fork, you can specify a `GITALY_REPO_URL` environment variable when
@@ -207,6 +217,21 @@ To use a custom Gitaly repository in CI, for instance if you want your
 GitLab fork to always use your own Gitaly fork, set `GITALY_REPO_URL`
 as a [CI environment variable](../ci/variables/README.md#gitlab-cicd-environment-variables).
 
+### Use a locally modified version of Gitaly RPC client
+
+If you are making changes to the RPC client, such as adding a new endpoint or adding a new
+parameter to an existing endpoint, follow the guide for
+[Gitaly proto](https://gitlab.com/gitlab-org/gitaly/blob/master/proto/README.md). After pushing
+the branch with the changes (`new-feature-branch`, for example):
+
+1. Change the `gitaly` line in the Rails' `Gemfile` to:
+
+   ```ruby
+   gem 'gitaly', git: 'https://gitlab.com/gitlab-org/gitaly.git', branch: 'new-feature-branch'
+   ```
+
+1. Run `bundle install` to use the modified RPC client.
+
 ---
 
 [Return to Development documentation](README.md)
@@ -219,13 +244,13 @@ Here are the steps to gate a new feature in Gitaly behind a feature flag.
 
 1. Create a package scoped flag name:
 
-   ```go
+   ```golang
    var findAllTagsFeatureFlag = "go-find-all-tags"
    ```
 
 1. Create a switch in the code using the `featureflag` package:
 
-   ```go
+   ```golang
    if featureflag.IsEnabled(ctx, findAllTagsFeatureFlag) {
      // go implementation
    } else {
@@ -235,7 +260,7 @@ Here are the steps to gate a new feature in Gitaly behind a feature flag.
 
 1. Create Prometheus metrics:
 
-   ```go
+   ```golang
    var findAllTagsRequests = prometheus.NewCounterVec(
      prometheus.CounterOpts{
        Name: "gitaly_find_all_tags_requests_total",
@@ -259,7 +284,7 @@ Here are the steps to gate a new feature in Gitaly behind a feature flag.
 
 1. Set headers in tests:
 
-   ```go
+   ```golang
    import (
      "google.golang.org/grpc/metadata"
 
@@ -277,27 +302,12 @@ Here are the steps to gate a new feature in Gitaly behind a feature flag.
 
 ### GitLab Rails
 
-1. In GitLab Rails:
-
-   1. Add the feature flag to `SERVER_FEATURE_FLAGS` in `lib/feature/gitaly.rb`:
-
-      ```ruby
-      SERVER_FEATURE_FLAGS = %w[go-find-all-tags].freeze
-      ```
-
-   1. Search for `["gitaly"]["features"]` (currently in `spec/requests/api/internal/base_spec.rb`)
-      and fix the expected results for the tests by adding the new feature flag into it:
-
-      ```ruby
-      expect(json_response["gitaly"]["features"]).to eq('gitaly-feature-get-all-lfs-pointers-go' => 'true', 'gitaly-feature-go-find-all-tags' => 'true')
-      ```
-
 1. Test in a Rails console by setting the feature flag:
 
    NOTE: **Note:**
    Pay attention to the name of the flag and the one used in the Rails console.
    There is a difference between them (dashes replaced by underscores and name
-   prefix is changed).
+   prefix is changed). Make sure to prefix all flags with `gitaly_`.
 
    ```ruby
    Feature.enable('gitaly_go_find_all_tags')
@@ -322,7 +332,7 @@ the integration by using GDK:
       submitting commit, observing history, etc.).
    1. Check that the list of current metrics has the new counter for the feature flag:
 
-      ```sh
+      ```shell
       curl --silent http://localhost:9236/metrics | grep go_find_all_tags
       ```
 
@@ -331,7 +341,7 @@ the integration by using GDK:
    1. Navigate to GDK's root directory.
    1. Start a Rails console:
 
-      ```sh
+      ```shell
       bundle install && bundle exec rails console
       ```
 
@@ -352,6 +362,6 @@ the integration by using GDK:
       your changes (project creation, submitting commit, observing history, etc.).
    1. Verify the feature is on by observing the metrics for it:
 
-      ```sh
+      ```shell
       curl --silent http://localhost:9236/metrics | grep go_find_all_tags
       ```

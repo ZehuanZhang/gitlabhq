@@ -36,18 +36,28 @@ module Mutations
                required: false,
                description: 'The project full path the snippet is associated with'
 
+      argument :uploaded_files, [GraphQL::STRING_TYPE],
+               required: false,
+               description: 'The paths to files uploaded in the snippet description'
+
       def resolve(args)
         project_path = args.delete(:project_path)
 
         if project_path.present?
           project = find_project!(project_path: project_path)
         elsif !can_create_personal_snippet?
-          raise_resource_not_avaiable_error!
+          raise_resource_not_available_error!
         end
 
-        snippet = CreateSnippetService.new(project,
+        # We need to rename `uploaded_files` into `files` because
+        # it's the expected key param
+        args[:files] = args.delete(:uploaded_files)
+
+        service_response = ::Snippets::CreateService.new(project,
                                            context[:current_user],
                                            args).execute
+
+        snippet = service_response.payload[:snippet]
 
         {
           snippet: snippet.valid? ? snippet : nil,
@@ -66,11 +76,11 @@ module Mutations
       end
 
       def authorized_resource?(project)
-        Ability.allowed?(context[:current_user], :create_project_snippet, project)
+        Ability.allowed?(context[:current_user], :create_snippet, project)
       end
 
       def can_create_personal_snippet?
-        Ability.allowed?(context[:current_user], :create_personal_snippet)
+        Ability.allowed?(context[:current_user], :create_snippet)
       end
     end
   end

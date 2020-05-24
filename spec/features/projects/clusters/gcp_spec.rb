@@ -14,6 +14,11 @@ describe 'Gcp Cluster', :js, :do_not_mock_admin_mode do
     allow(Projects::ClustersController).to receive(:STATUS_POLLING_INTERVAL) { 100 }
   end
 
+  def submit_form
+    execute_script('document.querySelector(".js-gke-cluster-creation-submit").removeAttribute("disabled")')
+    execute_script('document.querySelector(".js-gke-cluster-creation-submit").click()')
+  end
+
   context 'when user has signed with Google' do
     let(:project_id) { 'test-project-1234' }
 
@@ -33,8 +38,12 @@ describe 'Gcp Cluster', :js, :do_not_mock_admin_mode do
         click_link 'Google GKE'
       end
 
+      it 'highlights Google GKE logo' do
+        expect(page).to have_css('.js-create-gcp-cluster-button.active')
+      end
+
       context 'when user filled form with valid parameters' do
-        subject { click_button 'Create Kubernetes cluster' }
+        subject { submit_form }
 
         before do
           allow_any_instance_of(GoogleApi::CloudPlatform::Client)
@@ -47,8 +56,8 @@ describe 'Gcp Cluster', :js, :do_not_mock_admin_mode do
 
           allow(WaitForClusterCreationWorker).to receive(:perform_in).and_return(nil)
 
-          execute_script('document.querySelector(".js-gke-cluster-creation-submit").removeAttribute("disabled")')
-          sleep 2 # wait for ajax
+          expect(page).to have_css('.js-gcp-project-id-dropdown')
+
           execute_script('document.querySelector(".js-gcp-project-id-dropdown input").setAttribute("type", "text")')
           execute_script('document.querySelector(".js-gcp-zone-dropdown input").setAttribute("type", "text")')
           execute_script('document.querySelector(".js-gcp-machine-type-dropdown input").setAttribute("type", "text")')
@@ -86,8 +95,7 @@ describe 'Gcp Cluster', :js, :do_not_mock_admin_mode do
 
       context 'when user filled form with invalid parameters' do
         before do
-          execute_script('document.querySelector(".js-gke-cluster-creation-submit").removeAttribute("disabled")')
-          click_button 'Create Kubernetes cluster'
+          submit_form
         end
 
         it 'user sees a validation error' do
@@ -111,7 +119,7 @@ describe 'Gcp Cluster', :js, :do_not_mock_admin_mode do
       context 'when user disables the cluster' do
         before do
           page.find(:css, '.js-cluster-enable-toggle-area .js-project-feature-toggle').click
-          page.within('#cluster-integration') { click_button 'Save changes' }
+          page.within('.js-cluster-integration-form') { click_button 'Save changes' }
         end
 
         it 'user sees the successful message' do
@@ -122,7 +130,7 @@ describe 'Gcp Cluster', :js, :do_not_mock_admin_mode do
       context 'when user changes cluster parameters' do
         before do
           fill_in 'cluster_platform_kubernetes_attributes_namespace', with: 'my-namespace'
-          page.within('#js-cluster-details') { click_button 'Save changes' }
+          page.within('.js-provider-details') { click_button 'Save changes' }
         end
 
         it 'user sees the successful message' do
@@ -133,6 +141,7 @@ describe 'Gcp Cluster', :js, :do_not_mock_admin_mode do
 
       context 'when user destroys the cluster' do
         before do
+          click_link 'Advanced Settings'
           click_button 'Remove integration and resources'
           fill_in 'confirm_cluster_name_input', with: cluster.name
           click_button 'Remove integration'
@@ -192,10 +201,11 @@ describe 'Gcp Cluster', :js, :do_not_mock_admin_mode do
     end
   end
 
-  context 'when third party offers are disabled' do
+  context 'when third party offers are disabled', :clean_gitlab_redis_shared_state do
     let(:admin) { create(:admin) }
 
     before do
+      stub_feature_flags(instance_level_integrations: false)
       stub_env('IN_MEMORY_APPLICATION_SETTINGS', 'false')
       sign_in(admin)
       gitlab_enable_admin_mode_sign_in(admin)

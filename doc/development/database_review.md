@@ -12,7 +12,7 @@ A database review is required for:
   including files in:
   - `db/`
   - `lib/gitlab/background_migration/`
-- Changes to the database tooling, e.g.:
+- Changes to the database tooling. For example:
   - migration or ActiveRecord helpers in `lib/gitlab/database/`
   - load balancing
 - Changes that produce SQL queries that are beyond the obvious. It is
@@ -45,13 +45,6 @@ A database **reviewer**'s role is to:
   reassign MR to the database **maintainer** suggested by Reviewer
   Roulette.
 
-#### When there are no database maintainers available
-
-Currently we have a [critical shortage of database maintainers](https://gitlab.com/gitlab-org/gitlab/issues/29717). Until we are able to increase the number of database maintainers to support the volume of reviews, we have implemented this temporary solution. If the database **reviewer** cannot find an available database **maintainer** then:
-
-1. Assign the MR for a second review by a **database trainee maintainer** for further review.
-1. Once satisfied with the review process, and if the database **maintainer** is still not available, skip the database maintainer approval step and assign the merge request to a backend maintainer for final review and approval.
-
 A database **maintainer**'s role is to:
 
 - Perform the final database review on the MR.
@@ -64,7 +57,7 @@ A database **maintainer**'s role is to:
 ### Distributing review workload
 
 Review workload is distributed using [reviewer roulette](code_review.md#reviewer-roulette)
-([example](https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/25181#note_147551725)).
+([example](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/25181#note_147551725)).
 The MR author should then co-assign the suggested database
 **reviewer**. When they give their sign-off, they will hand over to
 the suggested database **maintainer**.
@@ -81,11 +74,15 @@ the following preparations into account.
 
 #### Preparation when adding migrations
 
-- Ensure `db/schema.rb` is updated.
+- Ensure `db/structure.sql` is updated as [documented](migration_style_guide.md#schema-changes).
 - Make migrations reversible by using the `change` method or include a `down` method when using `up`.
   - Include either a rollback procedure or describe how to rollback changes.
-- Add the output of the migration(s) to the MR description.
-- Add tests for the migration in `spec/migrations` if necessary. See [Testing Rails migrations at GitLab](testing_guide/testing_migrations_guide.html) for more details.
+- Add the output of both migrating and rolling back for all migrations into the MR description.
+  - Ensure the down method reverts the changes in `db/structure.sql`.
+  - Update the migration output whenever you modify the migrations during the review process.
+- Add tests for the migration in `spec/migrations` if necessary. See [Testing Rails migrations at GitLab](testing_guide/testing_migrations_guide.md) for more details.
+- When [high-traffic](https://gitlab.com/gitlab-org/gitlab/-/blob/master/rubocop/migration_helpers.rb#L12) tables are involved in the migration, use the [`with_lock_retries`](migration_style_guide.md#retry-mechanism-when-acquiring-database-locks) helper method. Review the relevant [examples in our documentation](migration_style_guide.md#examples) for use cases and solutions.
+- Ensure RuboCop checks are not disabled unless there's a valid reason to.
 
 #### Preparation when adding or modifying queries
 
@@ -119,11 +116,13 @@ the following preparations into account.
 - Add foreign keys to any columns pointing to data in other tables, including [an index](migration_style_guide.md#adding-foreign-key-constraints).
 - Add indexes for fields that are used in statements such as `WHERE`, `ORDER BY`, `GROUP BY`, and `JOIN`s.
 
-#### Preparation when removing columns, tables, indexes or other structures
+#### Preparation when removing columns, tables, indexes, or other structures
 
 - Follow the [guidelines on dropping columns](what_requires_downtime.md#dropping-columns).
-- Generally it's best practice, but not a hard rule, to remove indexes and foreign keys in a post-deployment migration.
+- Generally it's best practice (but not a hard rule) to remove indexes and foreign keys in a post-deployment migration.
   - Exceptions include removing indexes and foreign keys for small tables.
+- If you're adding a composite index, another index might become redundant, so remove that in the same migration.
+  For example adding `index(column_A, column_B, column_C)` makes the indexes `index(column_A, column_B)` and `index(column_A)` redundant.
 
 ### How to review for database
 
@@ -135,7 +134,7 @@ the following preparations into account.
     - [Check indexes are present for foreign keys](migration_style_guide.md#adding-foreign-key-constraints)
   - Ensure that migrations execute in a transaction or only contain
     concurrent index/foreign key helpers (with transactions disabled)
-  - Check consistency with `db/schema.rb` and that migrations are [reversible](migration_style_guide.md#reversibility)
+  - Check consistency with `db/structure.sql` and that migrations are [reversible](migration_style_guide.md#reversibility)
   - Check queries timing (If any): Queries executed in a migration
     need to fit comfortably within `15s` - preferably much less than that - on GitLab.com.
   - For column removals, make sure the column has been [ignored in a previous release](what_requires_downtime.md#dropping-columns)
@@ -156,14 +155,14 @@ the following preparations into account.
 - Check migrations are reversible and implement a `#down` method
 - Check data migrations:
   - Establish a time estimate for execution on GitLab.com.
-  - Depending on timing, data migrations can be placed on regular, post-deploy or background migrations.
+  - Depending on timing, data migrations can be placed on regular, post-deploy, or background migrations.
   - Data migrations should be reversible too or come with a description of how to reverse, when possible.
     This applies to all types of migrations (regular, post-deploy, background).
 - Query performance
   - Check for any obviously complex queries and queries the author specifically
     points out for review (if any)
   - If not present yet, ask the author to provide SQL queries and query plans
-    (e.g. by using [chatops](understanding_explain_plans.md#chatops) or direct
+    (for example, by using [chatops](understanding_explain_plans.md#chatops) or direct
     database access)
   - For given queries, review parameters regarding data distribution
   - [Check query plans](understanding_explain_plans.md) and suggest improvements
@@ -172,7 +171,7 @@ the following preparations into account.
   - If queries rely on prior migrations that are not present yet on production
     (eg indexes, columns), you can use a [one-off instance from the restore
     pipeline](https://ops.gitlab.net/gitlab-com/gl-infra/gitlab-restore/postgres-gprd)
-    in order to establish a proper testing environment.
+    in order to establish a proper testing environment. If you don't have access to this project, reach out to #database on Slack to get advice on how to proceed.
   - Avoid N+1 problems and minimalize the [query count](merge_request_performance_guidelines.md#query-counts).
 
 ### Timing guidelines for migrations
@@ -185,6 +184,6 @@ NOTE: **Note:** Keep in mind that all runtimes should be measured against GitLab
 
 | Migration Type | Execution Time Recommended | Notes |
 |----|----|---|
-| Regular migrations on `db/migrate` | `3 minutes` | A valid exception  are index creation as this can take a long time. |
+| Regular migrations on `db/migrate` | `3 minutes` | A valid exception are index creation as this can take a long time. |
 | Post migrations on `db/post_migrate` | `10 minutes` | |
-| Background migrations | --- | Since these are suitable for larger tables, it's not possible to set a precise timing guideline, however, any query must stay well below `10s` of execution time. |
+| Background migrations | --- | Since these are suitable for larger tables, it's not possible to set a precise timing guideline, however, any single query must stay below `1 second` execution time with cold caches. |

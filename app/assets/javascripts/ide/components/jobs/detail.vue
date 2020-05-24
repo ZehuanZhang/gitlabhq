@@ -1,6 +1,6 @@
 <script>
 import { mapActions, mapState } from 'vuex';
-import _ from 'underscore';
+import { throttle } from 'lodash';
 import { __ } from '../../../locale';
 import tooltip from '../../../vue_shared/directives/tooltip';
 import Icon from '../../../vue_shared/components/icon.vue';
@@ -53,7 +53,7 @@ export default {
         this.$refs.buildTrace.scrollTo(0, 0);
       }
     },
-    scrollBuildLog: _.throttle(function buildLogScrollDebounce() {
+    scrollBuildLog: throttle(function buildLogScrollDebounce() {
       const { scrollTop } = this.$refs.buildTrace;
       const { offsetHeight, scrollHeight } = this.$refs.buildTrace;
 
@@ -79,7 +79,7 @@ export default {
         <icon name="chevron-left" /> {{ __('View jobs') }}
       </button>
     </header>
-    <div class="top-bar d-flex border-left-0">
+    <div class="top-bar d-flex border-left-0 mr-3">
       <job-description :job="detailJob" />
       <div class="controllers ml-auto">
         <a
@@ -97,7 +97,7 @@ export default {
         <scroll-button :disabled="isScrolledToBottom" direction="down" @click="scrollDown" />
       </div>
     </div>
-    <pre ref="buildTrace" class="build-trace mb-0 h-100" @scroll="scrollBuildLog">
+    <pre ref="buildTrace" class="build-trace mb-0 h-100 mr-3" @scroll="scrollBuildLog">
       <code
         v-show="!detailJob.isLoading"
         class="bash"

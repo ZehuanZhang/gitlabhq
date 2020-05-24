@@ -10,12 +10,14 @@ class GitlabSchema < GraphQL::Schema
   DEFAULT_MAX_DEPTH = 15
   AUTHENTICATED_MAX_DEPTH = 20
 
+  use GraphQL::Pagination::Connections
   use BatchLoader::GraphQL
   use Gitlab::Graphql::Authorize
   use Gitlab::Graphql::Present
   use Gitlab::Graphql::CallsGitaly
-  use Gitlab::Graphql::Connections
+  use Gitlab::Graphql::Pagination::Connections
   use Gitlab::Graphql::GenericTracing
+  use Gitlab::Graphql::Timeout, max_seconds: Gitlab.config.gitlab.graphql_timeout
 
   query_analyzer Gitlab::Graphql::QueryAnalyzers::LoggerAnalyzer.new
   query_analyzer Gitlab::Graphql::QueryAnalyzers::RecursionAnalyzer.new
@@ -141,3 +143,16 @@ class GitlabSchema < GraphQL::Schema
     end
   end
 end
+
+GitlabSchema.prepend_if_ee('EE::GitlabSchema') # rubocop: disable Cop/InjectEnterpriseEditionModule
+
+# Force the schema to load as a workaround for intermittent errors we
+# see due to a lack of thread safety.
+#
+# TODO: We can remove this workaround when we convert the schema to use
+# the new query interpreter runtime.
+#
+# See:
+# - https://gitlab.com/gitlab-org/gitlab/-/issues/211478
+# - https://gitlab.com/gitlab-org/gitlab/-/issues/210556
+GitlabSchema.graphql_definition

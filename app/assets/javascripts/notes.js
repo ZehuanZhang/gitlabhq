@@ -1,6 +1,6 @@
-/* eslint-disable no-restricted-properties, camelcase,
+/* eslint-disable no-restricted-properties, babel/camelcase,
 no-unused-expressions, default-case,
-consistent-return, no-alert, no-param-reassign, no-else-return,
+consistent-return, no-alert, no-param-reassign,
 no-shadow, no-useless-escape,
 class-methods-use-this */
 
@@ -11,11 +11,11 @@ old_notes_spec.js is the spec for the legacy, jQuery notes application. It has n
  */
 
 import $ from 'jquery';
-import _ from 'underscore';
+import { escape, uniqueId } from 'lodash';
 import Cookies from 'js-cookie';
 import Autosize from 'autosize';
 import 'jquery.caret'; // required by at.js
-import 'at.js';
+import '@gitlab/at.js';
 import Vue from 'vue';
 import { GlSkeletonLoading } from '@gitlab/ui';
 import AjaxCache from '~/lib/utils/ajax_cache';
@@ -256,7 +256,7 @@ export default class Notes {
         discussionNoteForm = $textarea.closest('.js-discussion-note-form');
         if (discussionNoteForm.length) {
           if ($textarea.val() !== '') {
-            if (!window.confirm(__('Are you sure you want to cancel creating this comment?'))) {
+            if (!window.confirm(__('Your comment will be discarded.'))) {
               return;
             }
           }
@@ -268,7 +268,7 @@ export default class Notes {
           originalText = $textarea.closest('form').data('originalNote');
           newText = $textarea.val();
           if (originalText !== newText) {
-            if (!window.confirm(__('Are you sure you want to cancel editing this comment?'))) {
+            if (!window.confirm(__('Are you sure you want to discard this comment?'))) {
               return;
             }
           }
@@ -964,11 +964,11 @@ export default class Notes {
 
     form
       .prepend(
-        `<div class="avatar-note-form-holder"><div class="content"><a href="${escape(
+        `<a href="${escape(
           gon.current_username,
         )}" class="user-avatar-link d-none d-sm-block"><img class="avatar s40" src="${encodeURI(
-          gon.current_user_avatar_url,
-        )}" alt="${escape(gon.current_user_fullname)}" /></a></div></div>`,
+          gon.current_user_avatar_url || gon.default_avatar_url,
+        )}" alt="${escape(gon.current_user_fullname)}" /></a>`,
       )
       .append('</div>')
       .find('.js-close-discussion-note-form')
@@ -1123,10 +1123,9 @@ export default class Notes {
     if (row.is('.js-temp-notes-holder')) {
       // remove temporary row for diff lines
       return row.remove();
-    } else {
-      // only remove the form
-      return form.remove();
     }
+    // only remove the form
+    return form.remove();
   }
 
   cancelDiscussionForm(e) {
@@ -1397,7 +1396,7 @@ export default class Notes {
   }
 
   /**
-   * Check if note does not exists on page
+   * Check if note does not exist on page
    */
   static isNewNote(noteEntity, noteIds) {
     return $.inArray(noteEntity.id, noteIds) === -1;
@@ -1449,7 +1448,7 @@ export default class Notes {
     return {
       // eslint-disable-next-line no-jquery/no-serialize
       formData: $form.serialize(),
-      formContent: _.escape(content),
+      formContent: escape(content),
       formAction: $form.attr('action'),
       formContentOriginal: content,
     };
@@ -1516,18 +1515,16 @@ export default class Notes {
       `<li id="${uniqueId}" class="note being-posted fade-in-half timeline-entry">
          <div class="timeline-entry-inner">
             <div class="timeline-icon">
-               <a href="/${_.escape(currentUsername)}">
+               <a href="/${escape(currentUsername)}">
                  <img class="avatar s40" src="${currentUserAvatar}" />
                </a>
             </div>
             <div class="timeline-content ${discussionClass}">
                <div class="note-header">
                   <div class="note-header-info">
-                     <a href="/${_.escape(currentUsername)}">
-                       <span class="d-none d-sm-inline-block bold">${_.escape(
-                         currentUsername,
-                       )}</span>
-                       <span class="note-headline-light">${_.escape(currentUsername)}</span>
+                     <a href="/${escape(currentUsername)}">
+                       <span class="d-none d-sm-inline-block bold">${escape(currentUsername)}</span>
+                       <span class="note-headline-light">${escape(currentUsername)}</span>
                      </a>
                   </div>
                </div>
@@ -1541,8 +1538,8 @@ export default class Notes {
       </li>`,
     );
 
-    $tempNote.find('.d-none.d-sm-inline-block').text(_.escape(currentUserFullname));
-    $tempNote.find('.note-headline-light').text(`@${_.escape(currentUsername)}`);
+    $tempNote.find('.d-none.d-sm-inline-block').text(escape(currentUserFullname));
+    $tempNote.find('.note-headline-light').text(`@${escape(currentUsername)}`);
 
     return $tempNote;
   }
@@ -1627,7 +1624,7 @@ export default class Notes {
 
     // Show placeholder note
     if (tempFormContent) {
-      noteUniqueId = _.uniqueId('tempNote_');
+      noteUniqueId = uniqueId('tempNote_');
       $notesContainer.append(
         this.createPlaceholderNote({
           formContent: tempFormContent,
@@ -1642,7 +1639,7 @@ export default class Notes {
 
     // Show placeholder system note
     if (hasQuickActions) {
-      systemNoteUniqueId = _.uniqueId('tempSystemNote_');
+      systemNoteUniqueId = uniqueId('tempSystemNote_');
       $notesContainer.append(
         this.createPlaceholderSystemNote({
           formContent: this.getQuickActionDescription(
@@ -1810,11 +1807,7 @@ export default class Notes {
     $editingNote.removeClass('is-editing fade-in-full').addClass('being-posted fade-in-half');
     $editingNote
       .find('.note-headline-meta a')
-      .html(
-        `<i class="fa fa-spinner fa-spin" aria-label="${__(
-          'Comment is being updated',
-        )}" aria-hidden="true"></i>`,
-      );
+      .html('<span class="spinner align-text-bottom"></span>');
 
     // Make request to update comment on server
     axios
@@ -1825,9 +1818,9 @@ export default class Notes {
       })
       .catch(() => {
         // Submission failed, revert back to original note
-        $noteBodyText.html(_.escape(cachedNoteBodyText));
+        $noteBodyText.html(escape(cachedNoteBodyText));
         $editingNote.removeClass('being-posted fade-in');
-        $editingNote.find('.fa.fa-spinner').remove();
+        $editingNote.find('.spinner').remove();
 
         // Show Flash message about failure
         this.updateNoteError();

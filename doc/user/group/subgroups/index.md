@@ -4,9 +4,9 @@ type: reference, howto, concepts
 
 # Subgroups
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/issues/2772) in GitLab 9.0.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/2772) in GitLab 9.0.
 
-Subgroups, also known as nested groups or hierarchical groups, allow you to have up to 20
+GitLab supports up to 20 levels of subgroups, also known as nested groups or hierarchical groups.
 levels of groups.
 
 By using subgroups you can do the following:
@@ -63,9 +63,6 @@ Another example of GitLab as a company would be the following:
   - Category Subgroup - Executive team
 
 ---
-
-The maximum subgroups a group can have, including the first one in the
-hierarchy, is 21.
 
 When performing actions such as transferring or importing a project between
 subgroups, the behavior is the same as when performing these actions at the
@@ -142,7 +139,7 @@ From the image above, we can deduce the following things:
 - Administrator is the Owner and member of **all** subgroups and for that reason,
   as with User3, there is no indication of an ancestor group.
 
-[From](https://gitlab.com/gitlab-org/gitlab/issues/21727) GitLab 12.6, you can filter
+[From](https://gitlab.com/gitlab-org/gitlab/-/issues/21727) GitLab 12.6, you can filter
 this list using dropdown on the right side:
 
 ![Group members filter](img/group_members_filter_v12_6.png)
@@ -193,11 +190,6 @@ Here's a list of what you can't do with subgroups:
   the hierarchy. For example, `group/subgroup01/project` **cannot** be shared
   with `group`, but can be shared with `group/subgroup02` or
   `group/subgroup01/subgroup03`.
-
-[ce-2772]: https://gitlab.com/gitlab-org/gitlab-foss/issues/2772
-[permissions]: ../../permissions.md#group-members-permissions
-[reserved]: ../../reserved_names.md
-[issue]: https://gitlab.com/gitlab-org/gitlab-foss/issues/30472#note_27747600
 
 <!-- ## Troubleshooting
 

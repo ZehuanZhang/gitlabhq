@@ -11,14 +11,20 @@ class IssuableBaseService < BaseService
     @skip_milestone_email = @params.delete(:skip_milestone_email)
   end
 
-  def filter_params(issuable)
+  def can_admin_issuable?(issuable)
     ability_name = :"admin_#{issuable.to_ability_name}"
 
-    unless can?(current_user, ability_name, issuable)
+    can?(current_user, ability_name, issuable)
+  end
+
+  def filter_params(issuable)
+    unless can_admin_issuable?(issuable)
       params.delete(:milestone_id)
       params.delete(:labels)
       params.delete(:add_label_ids)
+      params.delete(:add_labels)
       params.delete(:remove_label_ids)
+      params.delete(:remove_labels)
       params.delete(:label_ids)
       params.delete(:assignee_ids)
       params.delete(:assignee_id)
@@ -42,7 +48,7 @@ class IssuableBaseService < BaseService
 
     assignee_ids = params[:assignee_ids].select { |assignee_id| assignee_can_read?(issuable, assignee_id) }
 
-    if params[:assignee_ids].map(&:to_s) == [IssuableFinder::NONE]
+    if params[:assignee_ids].map(&:to_s) == [IssuableFinder::Params::NONE]
       params[:assignee_ids] = []
     elsif assignee_ids.any?
       params[:assignee_ids] = assignee_ids
@@ -66,7 +72,7 @@ class IssuableBaseService < BaseService
     milestone_id = params[:milestone_id]
     return unless milestone_id
 
-    params[:milestone_id] = '' if milestone_id == IssuableFinder::NONE
+    params[:milestone_id] = '' if milestone_id == IssuableFinder::Params::NONE
     groups = project.group&.self_and_ancestors&.select(:id)
 
     milestone =
@@ -87,6 +93,8 @@ class IssuableBaseService < BaseService
     elsif params[label_key]
       params[label_id_key] = labels_service.find_or_create_by_titles(label_key, find_only: find_only).map(&:id)
     end
+
+    params.delete(label_key) if params[label_key].nil?
   end
 
   def filter_labels_in_param(key)
@@ -164,7 +172,7 @@ class IssuableBaseService < BaseService
     before_create(issuable)
 
     issuable_saved = issuable.with_transaction_returning_status do
-      issuable.save && issuable.store_mentions!
+      issuable.save
     end
 
     if issuable_saved
@@ -213,7 +221,7 @@ class IssuableBaseService < BaseService
       issuable.assign_attributes(params)
 
       if has_title_or_description_changed?(issuable)
-        issuable.assign_attributes(last_edited_at: Time.now, last_edited_by: current_user)
+        issuable.assign_attributes(last_edited_at: Time.current, last_edited_by: current_user)
       end
 
       before_update(issuable)
@@ -229,11 +237,12 @@ class IssuableBaseService < BaseService
       ensure_milestone_available(issuable)
 
       issuable_saved = issuable.with_transaction_returning_status do
-        issuable.save(touch: should_touch) && issuable.store_mentions!
+        issuable.save(touch: should_touch)
       end
 
       if issuable_saved
-        Issuable::CommonSystemNotesService.new(project, current_user).execute(issuable, old_labels: old_associations[:labels])
+        Issuable::CommonSystemNotesService.new(project, current_user).execute(
+          issuable, old_labels: old_associations[:labels], old_milestone: old_associations[:milestone])
 
         handle_changes(issuable, old_associations: old_associations)
 
@@ -261,7 +270,7 @@ class IssuableBaseService < BaseService
 
     if issuable.changed? || params.present?
       issuable.assign_attributes(params.merge(updated_by: current_user,
-                                              last_edited_at: Time.now,
+                                              last_edited_at: Time.current,
                                               last_edited_by: current_user))
 
       before_update(issuable, skip_spam_check: true)
@@ -356,7 +365,8 @@ class IssuableBaseService < BaseService
       {
         labels: issuable.labels.to_a,
         mentioned_users: issuable.mentioned_users(current_user).to_a,
-        assignees: issuable.assignees.to_a
+        assignees: issuable.assignees.to_a,
+        milestone: issuable.try(:milestone)
       }
     associations[:total_time_spent] = issuable.total_time_spent if issuable.respond_to?(:total_time_spent)
     associations[:description] = issuable.description

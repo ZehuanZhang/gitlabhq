@@ -1,11 +1,9 @@
 # frozen_string_literal: true
 
 module RepositoryCheck
-  class SingleRepositoryWorker
+  class SingleRepositoryWorker # rubocop:disable Scalability/IdempotentWorker
     include ApplicationWorker
     include RepositoryCheckQueue
-
-    prepend_if_ee('::EE::RepositoryCheck::SingleRepositoryWorker') # rubocop: disable Cop/InjectEnterpriseEditionModule
 
     def perform(project_id)
       project = Project.find(project_id)
@@ -68,3 +66,5 @@ module RepositoryCheck
     end
   end
 end
+
+RepositoryCheck::SingleRepositoryWorker.prepend_if_ee('::EE::RepositoryCheck::SingleRepositoryWorker')

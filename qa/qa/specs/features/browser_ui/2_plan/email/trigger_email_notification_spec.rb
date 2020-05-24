@@ -3,13 +3,15 @@
 module QA
   context 'Plan', :orchestrated, :smtp do
     describe 'Email Notification' do
+      include Support::Api
+
       let(:user) do
         Resource::User.fabricate_or_use(Runtime::Env.gitlab_qa_username_1, Runtime::Env.gitlab_qa_password_1)
       end
 
       let(:project) do
-        Resource::Project.fabricate_via_api! do |resource|
-          resource.name = 'email-notification-test'
+        Resource::Project.fabricate_via_api! do |project|
+          project.name = 'email-notification-test'
         end
       end
 
@@ -22,8 +24,15 @@ module QA
 
         expect(page).to have_content(/@#{user.username}(\n| )?Given access/)
 
-        # Wait for Action Mailer to deliver messages
-        mailhog_json = Support::Retrier.retry_until(sleep_interval: 1) do
+        mailhog_items = mailhog_json.dig('items')
+
+        expect(mailhog_items).to include(an_object_satisfying { |o| /project was granted/ === o.dig('Content', 'Headers', 'Subject', 0) })
+      end
+
+      private
+
+      def mailhog_json
+        Support::Retrier.retry_until(sleep_interval: 1) do
           Runtime::Logger.debug(%Q[retrieving "#{QA::Runtime::MailHog.api_messages_url}"])
 
           mailhog_response = get QA::Runtime::MailHog.api_messages_url
@@ -33,10 +42,6 @@ module QA
           # Expect at least two invitation messages: group and project
           mailhog_data if mailhog_data.dig('total') >= 2
         end
-
-        # Check json result from mailhog
-        mailhog_items = mailhog_json.dig('items')
-        expect(mailhog_items).to include(an_object_satisfying { |o| /project was granted/ === o.dig('Content', 'Headers', 'Subject', 0) })
       end
     end
   end

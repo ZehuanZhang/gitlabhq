@@ -14,7 +14,7 @@ describe ApplicationController do
     end
 
     it 'redirects if the user is over their password expiry' do
-      user.password_expires_at = Time.new(2002)
+      user.password_expires_at = Time.zone.local(2002)
 
       expect(user.ldap_user?).to be_falsey
       allow(controller).to receive(:current_user).and_return(user)
@@ -25,7 +25,7 @@ describe ApplicationController do
     end
 
     it 'does not redirect if the user is under their password expiry' do
-      user.password_expires_at = Time.now + 20010101
+      user.password_expires_at = Time.current + 20010101
 
       expect(user.ldap_user?).to be_falsey
       allow(controller).to receive(:current_user).and_return(user)
@@ -35,7 +35,7 @@ describe ApplicationController do
     end
 
     it 'does not redirect if the user is over their password expiry but they are an ldap user' do
-      user.password_expires_at = Time.new(2002)
+      user.password_expires_at = Time.zone.local(2002)
 
       allow(user).to receive(:ldap_user?).and_return(true)
       allow(controller).to receive(:current_user).and_return(user)
@@ -47,7 +47,7 @@ describe ApplicationController do
     it 'does not redirect if the user is over their password expiry but password authentication is disabled for the web interface' do
       stub_application_setting(password_authentication_enabled_for_web: false)
       stub_application_setting(password_authentication_enabled_for_git: false)
-      user.password_expires_at = Time.new(2002)
+      user.password_expires_at = Time.zone.local(2002)
 
       allow(controller).to receive(:current_user).and_return(user)
       expect(controller).not_to receive(:redirect_to)
@@ -156,7 +156,7 @@ describe ApplicationController do
       it 'returns 200 response' do
         get :index, format: requested_format
 
-        expect(response).to have_gitlab_http_status 200
+        expect(response).to have_gitlab_http_status(:ok)
       end
     end
 
@@ -164,7 +164,7 @@ describe ApplicationController do
       it 'returns 404 response' do
         get :index
 
-        expect(response).to have_gitlab_http_status 404
+        expect(response).to have_gitlab_http_status(:not_found)
       end
     end
   end
@@ -181,7 +181,7 @@ describe ApplicationController do
 
       get :index
 
-      expect(response).to have_gitlab_http_status(404)
+      expect(response).to have_gitlab_http_status(:not_found)
     end
 
     it 'redirects to login page if not authenticated' do
@@ -202,7 +202,7 @@ describe ApplicationController do
 
         get :index, format: 'unknown'
 
-        expect(response).to have_gitlab_http_status(401)
+        expect(response).to have_gitlab_http_status(:unauthorized)
       end
     end
   end
@@ -306,13 +306,6 @@ describe ApplicationController do
 
       it 'returns true if a 2FA requirement is set on the user' do
         user.require_two_factor_authentication_from_group = true
-        allow(controller).to receive(:current_user).and_return(user)
-
-        expect(subject).to be_truthy
-      end
-
-      it 'returns true if user has signed up using omniauth-ultraauth' do
-        user = create(:omniauth_user, provider: 'ultraauth')
         allow(controller).to receive(:current_user).and_return(user)
 
         expect(subject).to be_truthy
@@ -489,7 +482,7 @@ describe ApplicationController do
       it 'redirects if the user did not accept the terms' do
         get :index
 
-        expect(response).to have_gitlab_http_status(302)
+        expect(response).to have_gitlab_http_status(:found)
       end
 
       it 'does not redirect when the user accepted terms' do
@@ -497,7 +490,7 @@ describe ApplicationController do
 
         get :index
 
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
       end
     end
   end
@@ -531,39 +524,12 @@ describe ApplicationController do
       expect(controller.last_payload).to include('correlation_id' => 'new-id')
     end
 
-    context '422 errors' do
-      it 'logs a response with a string' do
-        response = spy(ActionDispatch::Response, status: 422, body: 'Hello world', content_type: 'application/json', cookies: {})
-        allow(controller).to receive(:response).and_return(response)
-        get :index
+    it 'adds context metadata to the payload' do
+      sign_in user
 
-        expect(controller.last_payload[:response]).to eq('Hello world')
-      end
+      get :index
 
-      it 'logs a response with an array' do
-        body = ['I want', 'my hat back']
-        response = spy(ActionDispatch::Response, status: 422, body: body, content_type: 'application/json', cookies: {})
-        allow(controller).to receive(:response).and_return(response)
-        get :index
-
-        expect(controller.last_payload[:response]).to eq(body)
-      end
-
-      it 'does not log a string with an empty body' do
-        response = spy(ActionDispatch::Response, status: 422, body: nil, content_type: 'application/json', cookies: {})
-        allow(controller).to receive(:response).and_return(response)
-        get :index
-
-        expect(controller.last_payload.has_key?(:response)).to be_falsey
-      end
-
-      it 'does not log an HTML body' do
-        response = spy(ActionDispatch::Response, status: 422, body: 'This is a test', content_type: 'application/html', cookies: {})
-        allow(controller).to receive(:response).and_return(response)
-        get :index
-
-        expect(controller.last_payload.has_key?(:response)).to be_falsey
-      end
+      expect(controller.last_payload[:metadata]).to include('meta.user' => user.username)
     end
   end
 
@@ -581,21 +547,21 @@ describe ApplicationController do
     it 'renders a 404 without a message' do
       get :index
 
-      expect(response).to have_gitlab_http_status(404)
+      expect(response).to have_gitlab_http_status(:not_found)
       expect(response).to render_template('errors/not_found')
     end
 
     it 'renders a 403 when a message is passed to access denied' do
       get :index, params: { message: 'None shall pass' }
 
-      expect(response).to have_gitlab_http_status(403)
+      expect(response).to have_gitlab_http_status(:forbidden)
       expect(response).to render_template('errors/access_denied')
     end
 
     it 'renders a status passed to access denied' do
       get :index, params: { status: 401 }
 
-      expect(response).to have_gitlab_http_status(401)
+      expect(response).to have_gitlab_http_status(:unauthorized)
     end
   end
 
@@ -725,6 +691,7 @@ describe ApplicationController do
         get :index
 
         expect(response.headers['Cache-Control']).to be_nil
+        expect(response.headers['Pragma']).to be_nil
       end
     end
 
@@ -735,6 +702,7 @@ describe ApplicationController do
         get :index
 
         expect(response.headers['Cache-Control']).to eq 'max-age=0, private, must-revalidate, no-store'
+        expect(response.headers['Pragma']).to eq 'no-cache'
       end
 
       it 'does not set the "no-store" header for XHR requests' do
@@ -781,7 +749,7 @@ describe ApplicationController do
     end
   end
 
-  describe '#current_user_mode', :do_not_mock_admin_mode do
+  describe '#current_user_mode' do
     include_context 'custom session'
 
     controller(described_class) do
@@ -896,7 +864,7 @@ describe ApplicationController do
     end
   end
 
-  context '#set_current_context' do
+  describe '#set_current_context' do
     controller(described_class) do
       def index
         Labkit::Context.with_context do |context|
@@ -939,6 +907,65 @@ describe ApplicationController do
       get :index, format: :json
 
       expect(json_response['meta.project']).to eq(project.full_path)
+    end
+
+    it 'sets the caller_id as controller#action' do
+      get :index, format: :json
+
+      expect(json_response['meta.caller_id']).to eq('AnonymousController#index')
+    end
+
+    it 'assigns the context to a variable for logging' do
+      get :index, format: :json
+
+      expect(assigns(:current_context)).to include('meta.user' => user.username)
+    end
+
+    it 'assigns the context when the action caused an error' do
+      allow(controller).to receive(:index) { raise 'Broken' }
+
+      expect { get :index, format: :json }.to raise_error('Broken')
+
+      expect(assigns(:current_context)).to include('meta.user' => user.username)
+    end
+  end
+
+  describe '#current_user' do
+    controller(described_class) do
+      def index; end
+    end
+
+    let_it_be(:impersonator) { create(:user) }
+    let_it_be(:user) { create(:user) }
+
+    before do
+      sign_in(user)
+    end
+
+    context 'when being impersonated' do
+      before do
+        allow(controller).to receive(:session).and_return({ impersonator_id: impersonator.id })
+      end
+
+      it 'returns a User with impersonator', :aggregate_failures do
+        get :index
+
+        expect(controller.current_user).to be_a(User)
+        expect(controller.current_user.impersonator).to eq(impersonator)
+      end
+    end
+
+    context 'when not being impersonated' do
+      before do
+        allow(controller).to receive(:session).and_return({})
+      end
+
+      it 'returns a User', :aggregate_failures do
+        get :index
+
+        expect(controller.current_user).to be_a(User)
+        expect(controller.current_user.impersonator).to be_nil
+      end
     end
   end
 end

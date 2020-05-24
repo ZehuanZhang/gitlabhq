@@ -9,7 +9,8 @@ module API
       before do
         Gitlab::ApplicationContext.push(
           user: -> { actor&.user },
-          project: -> { project }
+          project: -> { project },
+          caller_id: route.origin
         )
       end
 
@@ -29,26 +30,23 @@ module API
           project.http_url_to_repo
         end
 
-        def ee_post_receive_response_hook(response)
-          # Hook for EE to add messages
-        end
-
         def check_allowed(params)
           # This is a separate method so that EE can alter its behaviour more
           # easily.
 
           # Stores some Git-specific env thread-safely
           env = parse_env
-          Gitlab::Git::HookEnv.set(gl_repository, env) if project
+          Gitlab::Git::HookEnv.set(gl_repository, env) if container
 
           actor.update_last_used_at!
-          access_checker = access_checker_for(actor, params[:protocol])
 
           check_result = begin
-                           result = access_checker.check(params[:action], params[:changes])
-                           @project ||= access_checker.project
-                           result
-                         rescue Gitlab::GitAccess::UnauthorizedError => e
+                           access_check!(actor, params)
+                         rescue Gitlab::GitAccess::ForbiddenError => e
+                           # The return code needs to be 401. If we return 403
+                           # the custom message we return won't be shown to the user
+                           # and, instead, the default message 'GitLab: API is not accessible'
+                           # will be displayed
                            return response_with_status(code: 401, success: false, message: e.message)
                          rescue Gitlab::GitAccess::TimeoutError => e
                            return response_with_status(code: 503, success: false, message: e.message)
@@ -62,7 +60,7 @@ module API
           when ::Gitlab::GitAccessResult::Success
             payload = {
               gl_repository: gl_repository,
-              gl_project_path: gl_project_path,
+              gl_project_path: gl_repository_path,
               gl_id: Gitlab::GlId.gl_id(actor.user),
               gl_username: actor.username,
               git_config_options: [],
@@ -71,13 +69,14 @@ module API
             }
 
             # Custom option for git-receive-pack command
+            if Feature.enabled?(:gitaly_upload_pack_filter, project, default_enabled: true)
+              payload[:git_config_options] << "uploadpack.allowFilter=true" << "uploadpack.allowAnySHA1InWant=true"
+            end
+
             receive_max_input_size = Gitlab::CurrentSettings.receive_max_input_size.to_i
+
             if receive_max_input_size > 0
               payload[:git_config_options] << "receive.maxInputSize=#{receive_max_input_size.megabytes}"
-
-              if Feature.enabled?(:gitaly_upload_pack_filter, project)
-                payload[:git_config_options] << "uploadpack.allowFilter=true" << "uploadpack.allowAnySHA1InWant=true"
-              end
             end
 
             response_with_status(**payload)
@@ -85,6 +84,17 @@ module API
             response_with_status(code: 300, payload: check_result.payload, gl_console_messages: check_result.console_messages)
           else
             response_with_status(code: 500, success: false, message: UNKNOWN_CHECK_RESULT_ERROR)
+          end
+        end
+
+        def access_check!(actor, params)
+          access_checker = access_checker_for(actor, params[:protocol])
+          access_checker.check(params[:action], params[:changes]).tap do |result|
+            break result if @project || !repo_type.project?
+
+            # If we have created a project directly from a git push
+            # we have to assign its value to both @project and @container
+            @project = @container = access_checker.project
           end
         end
       end
@@ -194,59 +204,10 @@ module API
           { reference_counter_increased: reference_counter_increased }
         end
 
-        post '/notify_post_receive' do
-          status 200
-
-          # TODO: Re-enable when Gitaly is processing the post-receive notification
-          # return unless Gitlab::GitalyClient.enabled?
-          #
-          # begin
-          #   repository = wiki? ? project.wiki.repository : project.repository
-          #   Gitlab::GitalyClient::NotificationService.new(repository.raw_repository).post_receive
-          # rescue GRPC::Unavailable => e
-          #   render_api_error!(e, 500)
-          # end
-        end
-
         post '/post_receive' do
           status 200
 
-          response = Gitlab::InternalPostReceive::Response.new
-
-          # Try to load the project and users so we have the application context
-          # available for logging before we schedule any jobs.
-          user = actor.user
-          project
-
-          push_options = Gitlab::PushOptions.new(params[:push_options])
-
-          response.reference_counter_decreased = Gitlab::ReferenceCounter.new(params[:gl_repository]).decrease
-
-          PostReceive.perform_async(params[:gl_repository], params[:identifier],
-                                    params[:changes], push_options.as_json)
-
-          mr_options = push_options.get(:merge_request)
-          if mr_options.present?
-            message = process_mr_push_options(mr_options, project, user, params[:changes])
-            response.add_alert_message(message)
-          end
-
-          broadcast_message = BroadcastMessage.current&.last&.message
-          response.add_alert_message(broadcast_message)
-
-          response.add_merge_request_urls(merge_request_urls)
-
-          # Neither User nor Project are guaranteed to be returned; an orphaned write deploy
-          # key could be used
-          if user && project
-            redirect_message = Gitlab::Checks::ProjectMoved.fetch_message(user.id, project.id)
-            project_created_message = Gitlab::Checks::ProjectCreated.fetch_message(user.id, project.id)
-
-            response.add_basic_message(redirect_message)
-            response.add_basic_message(project_created_message)
-          end
-
-          ee_post_receive_response_hook(response)
+          response = PostReceiveService.new(actor.user, repository, project, params).execute
 
           present response, with: Entities::InternalPostReceive::Response
         end

@@ -32,6 +32,12 @@ describe ProjectCiCdSetting do
     end
   end
 
+  describe '#forward_deployment_enabled' do
+    it 'is true by default' do
+      expect(described_class.new.forward_deployment_enabled).to be_truthy
+    end
+  end
+
   describe '#default_git_depth' do
     let(:default_value) { described_class::DEFAULT_GIT_DEPTH }
 
@@ -47,18 +53,6 @@ describe ProjectCiCdSetting do
       project.save!
 
       expect(project.reload.ci_cd_settings.default_git_depth).to eq(0)
-    end
-
-    context 'when feature flag :ci_set_project_default_git_depth is disabled' do
-      let(:project) { create(:project) }
-
-      before do
-        stub_feature_flags(ci_set_project_default_git_depth: { enabled: false } )
-      end
-
-      it 'does not set default value for new records' do
-        expect(project.ci_cd_settings.default_git_depth).to eq(nil)
-      end
     end
   end
 end

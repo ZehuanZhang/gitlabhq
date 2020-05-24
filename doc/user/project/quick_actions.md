@@ -10,7 +10,7 @@ You can enter these commands while creating a new issue or merge request, or
 in comments of issues, epics, merge requests, and commits. Each command should be
 on a separate line in order to be properly detected and executed.
 
-> From [GitLab 12.1](https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/26672), once an action is executed, an alert is displayed when a quick action is successfully applied.
+> From [GitLab 12.1](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/26672), once an action is executed, an alert is displayed when a quick action is successfully applied.
 
 ## Quick Actions for issues, merge requests and epics
 
@@ -42,7 +42,7 @@ The following quick actions are applicable to descriptions, discussions and thre
 | `/remove_milestone`                   | ✓     | ✓             |      | Remove milestone |
 | `/label ~label1 ~label2`              | ✓     | ✓             | ✓    | Add label(s). Label names can also start without `~` but mixed syntax is not supported |
 | `/relabel ~label1 ~label2`            | ✓     | ✓             | ✓    | Replace existing label(s) with those specified |
-| `/unlabel ~label1 ~label2`            | ✓     | ✓             | ✓    | Remove all or specific label(s) |
+| `/unlabel ~label1 ~label2` or `/remove_label ~label1 ~label2` | ✓     | ✓             | ✓    | Remove all or specific label(s) |
 | `/copy_metadata <#issue>`             | ✓     | ✓             |      | Copy labels and milestone from another issue in the project |
 | `/copy_metadata <!merge_request>`     | ✓     | ✓             |      | Copy labels and milestone from another merge request in the project |
 | `/estimate <<W>w <DD>d <hh>h <mm>m>`  | ✓     | ✓             |      | Set time estimate. For example, `/estimate 1w 3d 2h 14m` |
@@ -64,17 +64,17 @@ The following quick actions are applicable to descriptions, discussions and thre
 | `/create_merge_request <branch name>` | ✓     |               |      | Create a new merge request starting from the current issue |
 | `/relate #issue1 #issue2`             | ✓     |               |      | Mark issues as related **(STARTER)** |
 | `/move <path/to/project>`             | ✓     |               |      | Move this issue to another project |
-| `/zoom <Zoom URL>`                    | ✓     |               |      | Add Zoom meeting to this issue. ([Introduced in GitLab 12.4](https://gitlab.com/gitlab-org/gitlab/merge_requests/16609)) |
-| `/remove_zoom`                        | ✓     |               |      | Remove Zoom meeting from this issue. ([Introduced in GitLab 12.4](https://gitlab.com/gitlab-org/gitlab/merge_requests/16609)) |
+| `/zoom <Zoom URL>`                    | ✓     |               |      | Add Zoom meeting to this issue. ([Introduced in GitLab 12.4](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/16609)) |
+| `/remove_zoom`                        | ✓     |               |      | Remove Zoom meeting from this issue. ([Introduced in GitLab 12.4](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/16609)) |
 | `/target_branch <local branch name>`  |       | ✓             |      | Set target branch |
 | `/wip`                                |       | ✓             |      | Toggle the Work In Progress status |
 | `/approve`                            |       | ✓             |      | Approve the merge request **(STARTER)** |
-| `/submit_review`                      |       | ✓             |      | Submit a pending review. ([Introduced in GitLab 12.7](https://gitlab.com/gitlab-org/gitlab/issues/8041)) **(PREMIUM)** |
-| `/merge`                              |       | ✓             |      | Merge (when pipeline succeeds) |
-| `/child_epic <epic>`                  |       |               | ✓    | Add child epic to `<epic>`. The `<epic>` value should be in the format of `&epic`, `group&epic`, or a URL to an epic. ([Introduced in GitLab 12.0](https://gitlab.com/gitlab-org/gitlab/issues/7330)) **(ULTIMATE)** |
-| `/remove_child_epic <epic>`           |       |               | ✓    | Remove child epic from `<epic>`. The `<epic>` value should be in the format of `&epic`, `group&epic`, or a URL to an epic. ([Introduced in GitLab 12.0](https://gitlab.com/gitlab-org/gitlab/issues/7330)) **(ULTIMATE)** |
-| `/parent_epic <epic>`                 |       |               | ✓    | Set parent epic to `<epic>`. The `<epic>` value should be in the format of `&epic`, `group&epic`, or a URL to an epic. ([introduced in GitLab 12.1](https://gitlab.com/gitlab-org/gitlab/issues/10556)) **(ULTIMATE)** |
-| `/remove_parent_epic`                 |       |               | ✓    | Remove parent epic from epic ([introduced in GitLab 12.1](https://gitlab.com/gitlab-org/gitlab/issues/10556)) **(ULTIMATE)** |
+| `/submit_review`                      |       | ✓             |      | Submit a pending review. ([Introduced in GitLab 12.7](https://gitlab.com/gitlab-org/gitlab/-/issues/8041)) **(PREMIUM)** |
+| `/merge`                              |       | ✓             |      | Merge changes. Depending on the project setting, this may be [when the pipeline succeeds](merge_requests/merge_when_pipeline_succeeds.md), adding to a [Merge Train](../../ci/merge_request_pipelines/pipelines_for_merged_results/merge_trains/index.md), etc).  |
+| `/child_epic <epic>`                  |       |               | ✓    | Add child epic to `<epic>`. The `<epic>` value should be in the format of `&epic`, `group&epic`, or a URL to an epic. ([Introduced in GitLab 12.0](https://gitlab.com/gitlab-org/gitlab/-/issues/7330)) **(ULTIMATE)** |
+| `/remove_child_epic <epic>`           |       |               | ✓    | Remove child epic from `<epic>`. The `<epic>` value should be in the format of `&epic`, `group&epic`, or a URL to an epic. ([Introduced in GitLab 12.0](https://gitlab.com/gitlab-org/gitlab/-/issues/7330)) **(ULTIMATE)** |
+| `/parent_epic <epic>`                 |       |               | ✓    | Set parent epic to `<epic>`. The `<epic>` value should be in the format of `&epic`, `group&epic`, or a URL to an epic. ([introduced in GitLab 12.1](https://gitlab.com/gitlab-org/gitlab/-/issues/10556)) **(ULTIMATE)** |
+| `/remove_parent_epic`                 |       |               | ✓    | Remove parent epic from epic ([introduced in GitLab 12.1](https://gitlab.com/gitlab-org/gitlab/-/issues/10556)) **(ULTIMATE)** |
 
 ## Autocomplete characters
 

@@ -1,5 +1,23 @@
+import { flatMap } from 'lodash';
+import { NOT_IN_DB_PREFIX } from '../constants';
+
 const metricsIdsInPanel = panel =>
   panel.metrics.filter(metric => metric.metricId && metric.result).map(metric => metric.metricId);
+
+/**
+ * Returns a reference to the currently selected dashboard
+ * from the list of dashboards.
+ *
+ * @param {Object} state
+ */
+export const selectedDashboard = state => {
+  const { allDashboards } = state;
+  return (
+    allDashboards.find(d => d.path === state.currentDashboard) ||
+    allDashboards.find(d => d.default) ||
+    null
+  );
+};
 
 /**
  * Get all state for metric in the dashboard or a group. The
@@ -11,7 +29,7 @@ const metricsIdsInPanel = panel =>
  * states in all the metric in the dashboard or group.
  */
 export const getMetricStates = state => groupKey => {
-  let groups = state.dashboard.panel_groups;
+  let groups = state.dashboard.panelGroups;
   if (groupKey) {
     groups = groups.filter(group => group.key === groupKey);
   }
@@ -43,7 +61,7 @@ export const getMetricStates = state => groupKey => {
  * filtered by group key.
  */
 export const metricsWithData = state => groupKey => {
-  let groups = state.dashboard.panel_groups;
+  let groups = state.dashboard.panelGroups;
   if (groupKey) {
     groups = groups.filter(group => group.key === groupKey);
   }
@@ -57,6 +75,54 @@ export const metricsWithData = state => groupKey => {
 
   return res;
 };
+
+/**
+ * Metrics loaded from project-defined dashboards do not have a metric_id.
+ * This getter checks which metrics are stored in the db (have a metric id)
+ * This is hopefully a temporary solution until BE processes metrics before passing to FE
+ *
+ * Related:
+ * https://gitlab.com/gitlab-org/gitlab/-/issues/28241
+ * https://gitlab.com/gitlab-org/gitlab/-/merge_requests/27447
+ */
+export const metricsSavedToDb = state => {
+  const metricIds = [];
+  state.dashboard.panelGroups.forEach(({ panels }) => {
+    panels.forEach(({ metrics }) => {
+      const metricIdsInDb = metrics
+        .filter(({ metricId }) => !metricId.startsWith(NOT_IN_DB_PREFIX))
+        .map(({ metricId }) => metricId);
+
+      metricIds.push(...metricIdsInDb);
+    });
+  });
+  return metricIds;
+};
+
+/**
+ * Filter environments by names.
+ *
+ * This is used in the environments dropdown with searchable input.
+ *
+ * @param {Object} state
+ * @returns {Array} List of environments
+ */
+export const filteredEnvironments = state =>
+  state.environments.filter(env =>
+    env.name.toLowerCase().includes((state.environmentsSearchTerm || '').trim().toLowerCase()),
+  );
+
+/**
+ * Maps an variables object to an array along with stripping
+ * the variable prefix.
+ *
+ * @param {Object} variables - Custom variables provided by the user
+ * @returns {Array} The custom variables array to be send to the API
+ * in the format of [variable1, variable1_value]
+ */
+
+export const getCustomVariablesArray = state =>
+  flatMap(state.variables, (variable, key) => [key, variable.value]);
 
 // prevent babel-plugin-rewire from generating an invalid default during karma tests
 export default () => {};

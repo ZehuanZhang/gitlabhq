@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-$: << File.expand_path(File.dirname(__FILE__))
+$: << File.expand_path(__dir__)
 
 Encoding.default_external = 'UTF-8'
 
@@ -16,6 +16,8 @@ module QA
   module Flow
     autoload :Login, 'qa/flow/login'
     autoload :Project, 'qa/flow/project'
+    autoload :Saml, 'qa/flow/saml'
+    autoload :User, 'qa/flow/user'
   end
 
   ##
@@ -70,10 +72,10 @@ module QA
     autoload :DeployKey, 'qa/resource/deploy_key'
     autoload :DeployToken, 'qa/resource/deploy_token'
     autoload :ProtectedBranch, 'qa/resource/protected_branch'
+    autoload :Pipeline, 'qa/resource/pipeline'
     autoload :CiVariable, 'qa/resource/ci_variable'
     autoload :Runner, 'qa/resource/runner'
     autoload :PersonalAccessToken, 'qa/resource/personal_access_token'
-    autoload :KubernetesCluster, 'qa/resource/kubernetes_cluster'
     autoload :User, 'qa/resource/user'
     autoload :ProjectMilestone, 'qa/resource/project_milestone'
     autoload :Members, 'qa/resource/members'
@@ -85,6 +87,12 @@ module QA
     autoload :Tag, 'qa/resource/tag'
     autoload :ProjectMember, 'qa/resource/project_member'
     autoload :UserGPG, 'qa/resource/user_gpg'
+    autoload :Visibility, 'qa/resource/visibility'
+
+    module KubernetesCluster
+      autoload :Base, 'qa/resource/kubernetes_cluster/base'
+      autoload :ProjectCluster, 'qa/resource/kubernetes_cluster/project_cluster'
+    end
 
     module Events
       autoload :Base, 'qa/resource/events/base'
@@ -131,11 +139,11 @@ module QA
         autoload :LDAPNoServer, 'qa/scenario/test/integration/ldap_no_server'
         autoload :LDAPTLS, 'qa/scenario/test/integration/ldap_tls'
         autoload :InstanceSAML, 'qa/scenario/test/integration/instance_saml'
-        autoload :OAuth, 'qa/scenario/test/integration/oauth'
         autoload :Kubernetes, 'qa/scenario/test/integration/kubernetes'
         autoload :Mattermost, 'qa/scenario/test/integration/mattermost'
         autoload :ObjectStorage, 'qa/scenario/test/integration/object_storage'
         autoload :SMTP, 'qa/scenario/test/integration/smtp'
+        autoload :GitalyHA, 'qa/scenario/test/integration/gitaly_ha'
       end
 
       module Sanity
@@ -154,14 +162,20 @@ module QA
     autoload :Base, 'qa/page/base'
     autoload :View, 'qa/page/view'
     autoload :Element, 'qa/page/element'
+    autoload :PageConcern, 'qa/page/page_concern'
     autoload :Validator, 'qa/page/validator'
     autoload :Validatable, 'qa/page/validatable'
+
+    module SubMenus
+      autoload :Common, 'qa/page/sub_menus/common'
+    end
 
     module Main
       autoload :Login, 'qa/page/main/login'
       autoload :Menu, 'qa/page/main/menu'
       autoload :OAuth, 'qa/page/main/oauth'
       autoload :SignUp, 'qa/page/main/sign_up'
+      autoload :Terms, 'qa/page/main/terms'
     end
 
     module Settings
@@ -177,6 +191,7 @@ module QA
         autoload :New, 'qa/page/dashboard/snippet/new'
         autoload :Index, 'qa/page/dashboard/snippet/index'
         autoload :Show, 'qa/page/dashboard/snippet/show'
+        autoload :Edit, 'qa/page/dashboard/snippet/edit'
       end
     end
 
@@ -235,11 +250,12 @@ module QA
       end
 
       module Settings
-        autoload :Common, 'qa/page/project/settings/common'
         autoload :Advanced, 'qa/page/project/settings/advanced'
         autoload :Main, 'qa/page/project/settings/main'
         autoload :Repository, 'qa/page/project/settings/repository'
         autoload :CICD, 'qa/page/project/settings/ci_cd'
+        autoload :Integrations, 'qa/page/project/settings/integrations'
+        autoload :GeneralPipelines, 'qa/page/project/settings/general_pipelines'
         autoload :AutoDevops, 'qa/page/project/settings/auto_devops'
         autoload :DeployKeys, 'qa/page/project/settings/deploy_keys'
         autoload :DeployTokens, 'qa/page/project/settings/deploy_tokens'
@@ -250,6 +266,17 @@ module QA
         autoload :Members, 'qa/page/project/settings/members'
         autoload :MirroringRepositories, 'qa/page/project/settings/mirroring_repositories'
         autoload :VisibilityFeaturesPermissions, 'qa/page/project/settings/visibility_features_permissions'
+
+        module Services
+          autoload :Jira, 'qa/page/project/settings/services/jira'
+        end
+        autoload :Operations, 'qa/page/project/settings/operations'
+        autoload :Incidents, 'qa/page/project/settings/incidents'
+        autoload :Integrations, 'qa/page/project/settings/integrations'
+
+        module Services
+          autoload :Prometheus, 'qa/page/project/settings/services/prometheus'
+        end
       end
 
       module SubMenus
@@ -288,6 +315,10 @@ module QA
           autoload :Add, 'qa/page/project/operations/kubernetes/add'
           autoload :AddExisting, 'qa/page/project/operations/kubernetes/add_existing'
           autoload :Show, 'qa/page/project/operations/kubernetes/show'
+        end
+
+        module Metrics
+          autoload :Show, 'qa/page/project/operations/metrics/show'
         end
       end
 
@@ -359,6 +390,12 @@ module QA
           autoload :Index, 'qa/page/admin/overview/users/index'
           autoload :Show, 'qa/page/admin/overview/users/show'
         end
+
+        module Groups
+          autoload :Index, 'qa/page/admin/overview/groups/index'
+          autoload :Show, 'qa/page/admin/overview/groups/show'
+          autoload :Edit, 'qa/page/admin/overview/groups/edit'
+        end
       end
     end
 
@@ -375,8 +412,10 @@ module QA
     # Classes describing components that are used by several pages.
     #
     module Component
+      autoload :Breadcrumbs, 'qa/page/component/breadcrumbs'
       autoload :CiBadgeLink, 'qa/page/component/ci_badge_link'
       autoload :ClonePanel, 'qa/page/component/clone_panel'
+      autoload :DesignManagement, 'qa/page/component/design_management'
       autoload :LazyLoader, 'qa/page/component/lazy_loader'
       autoload :LegacyClonePanel, 'qa/page/component/legacy_clone_panel'
       autoload :Dropzone, 'qa/page/component/dropzone'
@@ -386,6 +425,8 @@ module QA
       autoload :UsersSelect, 'qa/page/component/users_select'
       autoload :Note, 'qa/page/component/note'
       autoload :ConfirmModal, 'qa/page/component/confirm_modal'
+      autoload :CustomMetric, 'qa/page/component/custom_metric'
+      autoload :DesignManagement, 'qa/page/component/design_management'
 
       module Issuable
         autoload :Common, 'qa/page/component/issuable/common'
@@ -393,6 +434,10 @@ module QA
 
       module WebIDE
         autoload :Alert, 'qa/page/component/web_ide/alert'
+      end
+
+      module Project
+        autoload :Templates, 'qa/page/component/project/templates'
       end
     end
   end
@@ -413,12 +458,14 @@ module QA
     autoload :Shellout, 'qa/service/shellout'
     autoload :KubernetesCluster, 'qa/service/kubernetes_cluster'
     autoload :Omnibus, 'qa/service/omnibus'
+    autoload :PraefectManager, 'qa/service/praefect_manager'
 
     module ClusterProvider
       autoload :Base, 'qa/service/cluster_provider/base'
       autoload :Gcloud, 'qa/service/cluster_provider/gcloud'
       autoload :Minikube, 'qa/service/cluster_provider/minikube'
       autoload :K3d, 'qa/service/cluster_provider/k3d'
+      autoload :K3s, 'qa/service/cluster_provider/k3s'
     end
 
     module DockerRun
@@ -429,6 +476,8 @@ module QA
       autoload :NodeJs, 'qa/service/docker_run/node_js'
       autoload :GitlabRunner, 'qa/service/docker_run/gitlab_runner'
       autoload :MailHog, 'qa/service/docker_run/mail_hog'
+      autoload :SamlIdp, 'qa/service/docker_run/saml_idp'
+      autoload :K3s, 'qa/service/docker_run/k3s'
     end
   end
 
@@ -464,19 +513,13 @@ module QA
         autoload :Configure, 'qa/vendor/jenkins/page/configure'
         autoload :NewCredentials, 'qa/vendor/jenkins/page/new_credentials'
         autoload :NewJob, 'qa/vendor/jenkins/page/new_job'
+        autoload :LastJobConsole, 'qa/vendor/jenkins/page/last_job_console'
         autoload :ConfigureJob, 'qa/vendor/jenkins/page/configure_job'
       end
     end
 
-    module Github
-      module Page
-        autoload :Base, 'qa/vendor/github/page/base'
-        autoload :Login, 'qa/vendor/github/page/login'
-      end
-    end
-
-    module OnePassword
-      autoload :CLI, 'qa/vendor/one_password/cli'
+    module Jira
+      autoload :JiraAPI, 'qa/vendor/jira/jira_api'
     end
   end
 

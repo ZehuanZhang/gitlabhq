@@ -11,6 +11,10 @@ class Namespace < ApplicationRecord
   include FeatureGate
   include FromUnion
   include Gitlab::Utils::StrongMemoize
+  include IgnorableColumns
+
+  ignore_column :plan_id, remove_with: '13.1', remove_after: '2020-06-22'
+  ignore_column :trial_ends_on, remove_with: '13.2', remove_after: '2020-07-22'
 
   # Prevent users from creating unreasonably deep level of nesting.
   # The number 20 was taken based on maximum nesting level of
@@ -68,6 +72,7 @@ class Namespace < ApplicationRecord
   after_destroy :rm_dir
 
   scope :for_user, -> { where('type IS NULL') }
+  scope :sort_by_type, -> { order(Gitlab::Database.nulls_first_order(:type)) }
 
   scope :with_statistics, -> do
     joins('LEFT JOIN project_statistics ps ON ps.namespace_id = namespaces.id')
@@ -129,8 +134,12 @@ class Namespace < ApplicationRecord
       return unless host.ends_with?(gitlab_host)
 
       name = host.delete_suffix(gitlab_host)
-      Namespace.find_by_full_path(name)
+      Namespace.where(parent_id: nil).by_path(name)
     end
+  end
+
+  def default_branch_protection
+    super || Gitlab::CurrentSettings.default_branch_protection
   end
 
   def visibility_level_field
@@ -167,6 +176,10 @@ class Namespace < ApplicationRecord
     kind == 'user'
   end
 
+  def group?
+    type == 'Group'
+  end
+
   def find_fork_of(project)
     return unless project.fork_network
 
@@ -186,7 +199,11 @@ class Namespace < ApplicationRecord
   # any ancestor can disable emails for all descendants
   def emails_disabled?
     strong_memoize(:emails_disabled) do
-      self_and_ancestors.where(emails_disabled: true).exists?
+      if parent_id
+        self_and_ancestors.where(emails_disabled: true).exists?
+      else
+        !!emails_disabled
+      end
     end
   end
 
@@ -317,13 +334,31 @@ class Namespace < ApplicationRecord
   end
 
   def pages_virtual_domain
-    Pages::VirtualDomain.new(all_projects_with_pages, trim_prefix: full_path)
+    Pages::VirtualDomain.new(
+      all_projects_with_pages.includes(:route, :project_feature),
+      trim_prefix: full_path
+    )
   end
 
   def closest_setting(name)
     self_and_ancestors(hierarchy_order: :asc)
       .find { |n| !n.read_attribute(name).nil? }
       .try(name)
+  end
+
+  def actual_plan
+    Plan.default
+  end
+
+  def actual_limits
+    # We default to PlanLimits.new otherwise a lot of specs would fail
+    # On production each plan should already have associated limits record
+    # https://gitlab.com/gitlab-org/gitlab/issues/36037
+    actual_plan.actual_limits
+  end
+
+  def actual_plan_name
+    actual_plan.name
   end
 
   private
@@ -359,7 +394,7 @@ class Namespace < ApplicationRecord
 
   def nesting_level_allowed
     if ancestors.count > Group::NUMBER_OF_ANCESTORS_ALLOWED
-      errors.add(:parent_id, "has too deep level of nesting")
+      errors.add(:parent_id, 'has too deep level of nesting')
     end
   end
 

@@ -1,6 +1,7 @@
 import $ from 'jquery';
-import 'at.js';
-import _ from 'underscore';
+import '@gitlab/at.js';
+import { escape, template } from 'lodash';
+import SidebarMediator from '~/sidebar/sidebar_mediator';
 import glRegexp from './lib/utils/regexp';
 import AjaxCache from './lib/utils/ajax_cache';
 import { spriteIcon } from './lib/utils/common_utils';
@@ -10,7 +11,7 @@ function sanitize(str) {
 }
 
 export function membersBeforeSave(members) {
-  return _.map(members, member => {
+  return members.map(member => {
     const GROUP_TYPE = 'Group';
 
     let title = '';
@@ -53,8 +54,8 @@ export const defaultAutocompleteConfig = {
 };
 
 class GfmAutoComplete {
-  constructor(dataSources) {
-    this.dataSources = dataSources || {};
+  constructor(dataSources = {}) {
+    this.dataSources = dataSources;
     this.cachedData = {};
     this.isLoadingData = {};
   }
@@ -121,7 +122,7 @@ class GfmAutoComplete {
           cssClasses.push('has-warning');
         }
 
-        return _.template(tpl)({
+        return template(tpl)({
           ...value,
           className: cssClasses.join(' '),
         });
@@ -136,7 +137,7 @@ class GfmAutoComplete {
             tpl += '<%- referencePrefix %>';
           }
         }
-        return _.template(tpl)({ referencePrefix });
+        return template(tpl, { interpolate: /<%=([\s\S]+?)%>/g })({ referencePrefix });
       },
       suffix: '',
       callbacks: {
@@ -199,6 +200,16 @@ class GfmAutoComplete {
   }
 
   setupMembers($input) {
+    const fetchData = this.fetchData.bind(this);
+    const MEMBER_COMMAND = {
+      ASSIGN: '/assign',
+      UNASSIGN: '/unassign',
+      REASSIGN: '/reassign',
+      CC: '/cc',
+    };
+    let assignees = [];
+    let command = '';
+
     // Team Members
     $input.atwho({
       at: '@',
@@ -225,6 +236,49 @@ class GfmAutoComplete {
       callbacks: {
         ...this.getDefaultCallbacks(),
         beforeSave: membersBeforeSave,
+        matcher(flag, subtext) {
+          const subtextNodes = subtext
+            .split(/\n+/g)
+            .pop()
+            .split(GfmAutoComplete.regexSubtext);
+
+          // Check if @ is followed by '/assign', '/reassign', '/unassign' or '/cc' commands.
+          command = subtextNodes.find(node => {
+            if (Object.values(MEMBER_COMMAND).includes(node)) {
+              return node;
+            }
+            return null;
+          });
+
+          // Cache assignees list for easier filtering later
+          assignees =
+            SidebarMediator.singleton?.store?.assignees?.map(
+              assignee => `${assignee.username} ${assignee.name}`,
+            ) || [];
+
+          const match = GfmAutoComplete.defaultMatcher(flag, subtext, this.app.controllers);
+          return match && match.length ? match[1] : null;
+        },
+        filter(query, data, searchKey) {
+          if (GfmAutoComplete.isLoading(data)) {
+            fetchData(this.$inputor, this.at);
+            return data;
+          }
+
+          if (data === GfmAutoComplete.defaultLoadingData) {
+            return $.fn.atwho.default.callbacks.filter(query, data, searchKey);
+          }
+
+          if (command === MEMBER_COMMAND.ASSIGN) {
+            // Only include members which are not assigned to Issuable currently
+            return data.filter(member => !assignees.includes(member.search));
+          } else if (command === MEMBER_COMMAND.UNASSIGN) {
+            // Only include members which are assigned to Issuable currently
+            return data.filter(member => assignees.includes(member.search));
+          }
+
+          return data;
+        },
       },
     });
   }
@@ -638,14 +692,14 @@ GfmAutoComplete.Emoji = {
 // Team Members
 GfmAutoComplete.Members = {
   templateFunction({ avatarTag, username, title, icon }) {
-    return `<li>${avatarTag} ${username} <small>${_.escape(title)}</small> ${icon}</li>`;
+    return `<li>${avatarTag} ${username} <small>${escape(title)}</small> ${icon}</li>`;
   },
 };
 GfmAutoComplete.Labels = {
   templateFunction(color, title) {
-    return `<li><span class="dropdown-label-box" style="background: ${_.escape(
+    return `<li><span class="dropdown-label-box" style="background: ${escape(
       color,
-    )}"></span> ${_.escape(title)}</li>`;
+    )}"></span> ${escape(title)}</li>`;
   },
 };
 // Issues, MergeRequests and Snippets
@@ -655,18 +709,18 @@ GfmAutoComplete.Issues = {
     return value.reference || '${atwho-at}${id}';
   },
   templateFunction({ id, title, reference }) {
-    return `<li><small>${reference || id}</small> ${_.escape(title)}</li>`;
+    return `<li><small>${reference || id}</small> ${escape(title)}</li>`;
   },
 };
 // Milestones
 GfmAutoComplete.Milestones = {
   templateFunction(title) {
-    return `<li>${_.escape(title)}</li>`;
+    return `<li>${escape(title)}</li>`;
   },
 };
 GfmAutoComplete.Loading = {
   template:
-    '<li style="pointer-events: none;"><i class="fa fa-spinner fa-spin"></i> Loading...</li>',
+    '<li style="pointer-events: none;"><span class="spinner align-text-bottom mr-1"></span>Loading...</li>',
 };
 
 export default GfmAutoComplete;

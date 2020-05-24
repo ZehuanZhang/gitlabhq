@@ -6,6 +6,9 @@ class Projects::MilestonesController < Projects::ApplicationController
 
   before_action :check_issuables_available!
   before_action :milestone, only: [:edit, :update, :destroy, :show, :merge_requests, :participants, :labels, :promote]
+  before_action do
+    push_frontend_feature_flag(:burnup_charts)
+  end
 
   # Allow read any milestone
   before_action :authorize_read_milestone!
@@ -24,7 +27,6 @@ class Projects::MilestonesController < Projects::ApplicationController
 
     respond_to do |format|
       format.html do
-        @project_namespace = @project.namespace.becomes(Namespace)
         # We need to show group milestones in the JSON response
         # so that people can filter by and assign group milestones,
         # but we don't need to show them on the project milestones page itself.
@@ -47,8 +49,6 @@ class Projects::MilestonesController < Projects::ApplicationController
   end
 
   def show
-    @project_namespace = @project.namespace.becomes(Namespace)
-
     respond_to do |format|
       format.html
     end

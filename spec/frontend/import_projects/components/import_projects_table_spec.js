@@ -17,11 +17,12 @@ describe('ImportProjectsTable', () => {
   };
 
   function initStore() {
-    const stubbedActions = Object.assign({}, actions, {
+    const stubbedActions = {
+      ...actions,
       fetchJobs: jest.fn(),
       fetchRepos: jest.fn(actions.requestRepos),
       fetchImport: jest.fn(actions.requestImport),
-    });
+    };
 
     const store = new Vuex.Store({
       state: state(),
@@ -58,7 +59,7 @@ describe('ImportProjectsTable', () => {
     vm.$destroy();
   });
 
-  it('renders a loading icon whilst repos are loading', () =>
+  it('renders a loading icon while repos are loading', () =>
     vm.$nextTick().then(() => {
       expect(vm.$el.querySelector('.js-loading-button-icon')).not.toBeNull();
     }));

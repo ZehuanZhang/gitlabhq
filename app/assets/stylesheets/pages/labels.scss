@@ -65,14 +65,14 @@
   padding: 0 $grid-size;
   line-height: 16px;
   border-radius: $label-border-radius;
-  color: $white-light;
+  color: $white;
 }
 
 .dropdown-labels-error {
   padding: 5px 10px;
   margin-bottom: 10px;
   background-color: $red-500;
-  color: $white-light;
+  color: $white;
 }
 
 .manage-labels-list {
@@ -80,13 +80,13 @@
   margin-bottom: 0;
 
   > li:not(.empty-message):not(.no-border) {
-    background-color: $white-light;
+    background-color: $white;
     margin-bottom: 5px;
     display: flex;
     justify-content: space-between;
     padding: $gl-padding;
     border-radius: $border-radius-default;
-    border: 1px solid $gray-100;
+    border: 1px solid $gray-50;
 
     &:last-child {
       margin-bottom: 0;
@@ -126,6 +126,11 @@
 
   .color-label {
     padding: $gl-padding-4 $grid-size;
+  }
+
+  .prepend-description-left {
+    vertical-align: top;
+    line-height: 24px;
   }
 }
 
@@ -271,7 +276,7 @@
 }
 
 .label-badge-gray {
-  background-color: $gray-100;
+  background-color: $gray-50;
 }
 
 .label-links {
@@ -302,13 +307,12 @@
   }
 
   .label-name {
-    width: 150px;
+    width: 200px;
     flex-shrink: 0;
 
-    .badge {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 100%;
+    .scoped-label-wrapper,
+    .gl-label {
+      line-height: $gl-line-height;
     }
   }
 
@@ -442,6 +446,14 @@
     .scoped-label {
       top: 1px;
     }
+  }
+}
+
+.gl-label-scoped {
+  box-shadow: 0 0 0 2px currentColor inset;
+
+  &.gl-label-sm {
+    box-shadow: 0 0 0 1px inset;
   }
 }
 

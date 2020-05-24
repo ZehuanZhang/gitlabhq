@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-describe Gitlab::BackgroundMigration::MigrateFingerprintSha256WithinKeys, :migration, schema: 20200106071113 do
+describe Gitlab::BackgroundMigration::MigrateFingerprintSha256WithinKeys, schema: 20200106071113 do
   subject(:fingerprint_migrator) { described_class.new }
 
   let(:key_table) { table(:keys) }
@@ -35,6 +35,25 @@ describe Gitlab::BackgroundMigration::MigrateFingerprintSha256WithinKeys, :migra
 
     expect(key_2.fingerprint_md5).to eq('39:e3:64:a6:24:ea:45:a2:8c:55:2a:e9:4d:4f:1f:b4')
     expect(key_2.fingerprint_sha256).to eq('zMNbLekgdjtcgDv8VSC0z5lpdACMG3Q4PUoIz5+H2jM')
+  end
+
+  context 'with invalid keys' do
+    before do
+      key = Key.find(1017)
+      # double space after "ssh-rsa" leads to a
+      # OpenSSL::PKey::PKeyError in Net::SSH::KeyFactory.load_data_public_key
+      key.update_column(:key, key.key.gsub('ssh-rsa ', 'ssh-rsa  '))
+    end
+
+    it 'ignores errors and does not set the fingerprint' do
+      fingerprint_migrator.perform(1, 10000)
+
+      key_1 = Key.find(1017)
+      key_2 = Key.find(1027)
+
+      expect(key_1.fingerprint_sha256).to be_nil
+      expect(key_2.fingerprint_sha256).not_to be_nil
+    end
   end
 
   it 'migrates all keys' do

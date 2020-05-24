@@ -1,10 +1,11 @@
 # File Locking **(PREMIUM)**
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab/merge_requests/440) in [GitLab Premium](https://about.gitlab.com/pricing/) 8.9.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/440) in [GitLab Premium](https://about.gitlab.com/pricing/) 8.9.
 
-File Locking helps you avoid merge conflicts and better manage your binary files.
-Lock any file or directory, make your changes, and then unlock it so another
-member of the team can edit it.
+Working with multiple people on the same file can be a risk. Conflicts when merging a non-text file are hard to overcome and will require a lot of manual work to resolve. File Locking helps you avoid these merge conflicts and better manage your binary files.
+
+With File Locking, you can lock any file or directory, make your changes, and
+then unlock it so another member of the team can edit it.
 
 ## Overview
 
@@ -81,7 +82,7 @@ pre-receive hook will reject your changes when you try to push. In the
 following example, a user who has no permissions on the locked `.gitignore`
 file will see the message below:
 
-```bash
+```shell
 Counting objects: 3, done.
 Delta compression using up to 4 threads.
 Compressing objects: 100% (3/3), done.

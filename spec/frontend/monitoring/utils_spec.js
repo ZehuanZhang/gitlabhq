@@ -1,15 +1,30 @@
 import * as monitoringUtils from '~/monitoring/utils';
-import { timeWindows, timeWindowsKeyNames } from '~/monitoring/constants';
+import * as urlUtils from '~/lib/utils/url_utility';
+import { TEST_HOST } from 'jest/helpers/test_constants';
 import {
-  graphDataPrometheusQuery,
-  graphDataPrometheusQueryRange,
+  mockProjectDir,
+  singleStatMetricsResult,
   anomalyMockGraphData,
+  barMockData,
 } from './mock_data';
+import { metricsDashboardViewModel, graphData } from './fixture_data';
+
+const mockPath = `${TEST_HOST}${mockProjectDir}/-/environments/29/metrics`;
+
+const generatedLink = 'http://chart.link.com';
+
+const chartTitle = 'Some metric chart';
+
+const range = {
+  start: '2019-01-01T00:00:00.000Z',
+  end: '2019-01-10T00:00:00.000Z',
+};
+
+const rollingRange = {
+  duration: { seconds: 120 },
+};
 
 describe('monitoring/utils', () => {
-  const generatedLink = 'http://chart.link.com';
-  const chartTitle = 'Some metric chart';
-
   describe('trackGenerateLinkToChartEventOptions', () => {
     it('should return Cluster Monitoring options if located on Cluster Health Dashboard', () => {
       document.body.dataset.page = 'groups:clusters:show';
@@ -58,92 +73,6 @@ describe('monitoring/utils', () => {
     });
   });
 
-  describe('getTimeDiff', () => {
-    function secondsBetween({ start, end }) {
-      return (new Date(end) - new Date(start)) / 1000;
-    }
-
-    function minutesBetween(timeRange) {
-      return secondsBetween(timeRange) / 60;
-    }
-
-    function hoursBetween(timeRange) {
-      return minutesBetween(timeRange) / 60;
-    }
-
-    it('defaults to an 8 hour (28800s) difference', () => {
-      const params = monitoringUtils.getTimeDiff();
-
-      expect(hoursBetween(params)).toEqual(8);
-    });
-
-    it('accepts time window as an argument', () => {
-      const params = monitoringUtils.getTimeDiff('thirtyMinutes');
-
-      expect(minutesBetween(params)).toEqual(30);
-    });
-
-    it('returns a value for every defined time window', () => {
-      const nonDefaultWindows = Object.keys(timeWindows).filter(window => window !== 'eightHours');
-
-      nonDefaultWindows.forEach(timeWindow => {
-        const params = monitoringUtils.getTimeDiff(timeWindow);
-
-        // Ensure we're not returning the default
-        expect(hoursBetween(params)).not.toEqual(8);
-      });
-    });
-  });
-
-  describe('getTimeWindow', () => {
-    [
-      {
-        args: [
-          {
-            start: '2019-10-01T18:27:47.000Z',
-            end: '2019-10-01T21:27:47.000Z',
-          },
-        ],
-        expected: timeWindowsKeyNames.threeHours,
-      },
-      {
-        args: [
-          {
-            start: '2019-10-01T28:27:47.000Z',
-            end: '2019-10-01T21:27:47.000Z',
-          },
-        ],
-        expected: null,
-      },
-      {
-        args: [
-          {
-            start: '',
-            end: '',
-          },
-        ],
-        expected: null,
-      },
-      {
-        args: [
-          {
-            start: null,
-            end: null,
-          },
-        ],
-        expected: null,
-      },
-      {
-        args: [{}],
-        expected: null,
-      },
-    ].forEach(({ args, expected }) => {
-      it(`returns "${expected}" with args=${JSON.stringify(args)}`, () => {
-        expect(monitoringUtils.getTimeWindow(...args)).toEqual(expected);
-      });
-    });
-  });
-
   describe('graphDataValidatorForValues', () => {
     /*
      * When dealing with a metric using the query format, e.g.
@@ -153,7 +82,7 @@ describe('monitoring/utils', () => {
     it('validates data with the query format', () => {
       const validGraphData = monitoringUtils.graphDataValidatorForValues(
         true,
-        graphDataPrometheusQuery,
+        singleStatMetricsResult,
       );
 
       expect(validGraphData).toBe(true);
@@ -165,199 +94,9 @@ describe('monitoring/utils', () => {
      * the validator will look for the `values` key instead of `value`
      */
     it('validates data with the query_range format', () => {
-      const validGraphData = monitoringUtils.graphDataValidatorForValues(
-        false,
-        graphDataPrometheusQueryRange,
-      );
+      const validGraphData = monitoringUtils.graphDataValidatorForValues(false, graphData);
 
       expect(validGraphData).toBe(true);
-    });
-  });
-
-  describe('stringToISODate', () => {
-    ['', 'null', undefined, 'abc'].forEach(input => {
-      it(`throws error for invalid input like ${input}`, done => {
-        try {
-          monitoringUtils.stringToISODate(input);
-        } catch (e) {
-          expect(e).toBeDefined();
-          done();
-        }
-      });
-    });
-    [
-      {
-        input: '2019-09-09 01:01:01',
-        output: '2019-09-09T01:01:01Z',
-      },
-      {
-        input: '2019-09-09 00:00:00',
-        output: '2019-09-09T00:00:00Z',
-      },
-      {
-        input: '2019-09-09 23:59:59',
-        output: '2019-09-09T23:59:59Z',
-      },
-      {
-        input: '2019-09-09',
-        output: '2019-09-09T00:00:00Z',
-      },
-    ].forEach(({ input, output }) => {
-      it(`returns ${output} from ${input}`, () => {
-        expect(monitoringUtils.stringToISODate(input)).toBe(output);
-      });
-    });
-  });
-
-  describe('ISODateToString', () => {
-    [
-      {
-        input: new Date('2019-09-09T00:00:00.000Z'),
-        output: '2019-09-09 00:00:00',
-      },
-      {
-        input: new Date('2019-09-09T07:00:00.000Z'),
-        output: '2019-09-09 07:00:00',
-      },
-    ].forEach(({ input, output }) => {
-      it(`ISODateToString return ${output} for ${input}`, () => {
-        expect(monitoringUtils.ISODateToString(input)).toBe(output);
-      });
-    });
-  });
-
-  describe('truncateZerosInDateTime', () => {
-    [
-      {
-        input: '',
-        output: '',
-      },
-      {
-        input: '2019-10-10',
-        output: '2019-10-10',
-      },
-      {
-        input: '2019-10-10 00:00:01',
-        output: '2019-10-10 00:00:01',
-      },
-      {
-        input: '2019-10-10 00:00:00',
-        output: '2019-10-10',
-      },
-    ].forEach(({ input, output }) => {
-      it(`truncateZerosInDateTime return ${output} for ${input}`, () => {
-        expect(monitoringUtils.truncateZerosInDateTime(input)).toBe(output);
-      });
-    });
-  });
-
-  describe('isValidDate', () => {
-    [
-      {
-        input: '2019-09-09T00:00:00.000Z',
-        output: true,
-      },
-      {
-        input: '2019-09-09T000:00.000Z',
-        output: false,
-      },
-      {
-        input: 'a2019-09-09T000:00.000Z',
-        output: false,
-      },
-      {
-        input: '2019-09-09T',
-        output: false,
-      },
-      {
-        input: '2019-09-09',
-        output: true,
-      },
-      {
-        input: '2019-9-9',
-        output: true,
-      },
-      {
-        input: '2019-9-',
-        output: true,
-      },
-      {
-        input: '2019--',
-        output: false,
-      },
-      {
-        input: '2019',
-        output: true,
-      },
-      {
-        input: '',
-        output: false,
-      },
-      {
-        input: null,
-        output: false,
-      },
-    ].forEach(({ input, output }) => {
-      it(`isValidDate return ${output} for ${input}`, () => {
-        expect(monitoringUtils.isValidDate(input)).toBe(output);
-      });
-    });
-  });
-
-  describe('isDateTimePickerInputValid', () => {
-    [
-      {
-        input: null,
-        output: false,
-      },
-      {
-        input: '',
-        output: false,
-      },
-      {
-        input: 'xxxx-xx-xx',
-        output: false,
-      },
-      {
-        input: '9999-99-19',
-        output: false,
-      },
-      {
-        input: '2019-19-23',
-        output: false,
-      },
-      {
-        input: '2019-09-23',
-        output: true,
-      },
-      {
-        input: '2019-09-23 x',
-        output: false,
-      },
-      {
-        input: '2019-09-29 0:0:0',
-        output: false,
-      },
-      {
-        input: '2019-09-29 00:00:00',
-        output: true,
-      },
-      {
-        input: '2019-09-29 24:24:24',
-        output: false,
-      },
-      {
-        input: '2019-09-29 23:24:24',
-        output: true,
-      },
-      {
-        input: '2019-09-29 23:24:24 ',
-        output: false,
-      },
-    ].forEach(({ input, output }) => {
-      it(`returns ${output} for ${input}`, () => {
-        expect(monitoringUtils.isDateTimePickerInputValid(input)).toBe(output);
-      });
     });
   });
 
@@ -366,7 +105,7 @@ describe('monitoring/utils', () => {
     let threeMetrics;
     let fourMetrics;
     beforeEach(() => {
-      oneMetric = graphDataPrometheusQuery;
+      oneMetric = singleStatMetricsResult;
       threeMetrics = anomalyMockGraphData;
 
       const metrics = [...threeMetrics.metrics];
@@ -389,6 +128,385 @@ describe('monitoring/utils', () => {
 
     it('validation fails for wrong format, more than 3 metrics', () => {
       expect(monitoringUtils.graphDataValidatorForAnomalyValues(fourMetrics)).toBe(false);
+    });
+  });
+
+  describe('timeRangeFromUrl', () => {
+    beforeEach(() => {
+      jest.spyOn(urlUtils, 'queryToObject');
+    });
+
+    afterEach(() => {
+      urlUtils.queryToObject.mockRestore();
+    });
+
+    const { timeRangeFromUrl } = monitoringUtils;
+
+    it('returns a fixed range when query contains `start` and `end` parameters are given', () => {
+      urlUtils.queryToObject.mockReturnValueOnce(range);
+      expect(timeRangeFromUrl()).toEqual(range);
+    });
+
+    it('returns a rolling range when query contains `duration_seconds` parameters are given', () => {
+      const { seconds } = rollingRange.duration;
+
+      urlUtils.queryToObject.mockReturnValueOnce({
+        dashboard: '.gitlab/dashboard/my_dashboard.yml',
+        duration_seconds: `${seconds}`,
+      });
+
+      expect(timeRangeFromUrl()).toEqual(rollingRange);
+    });
+
+    it('returns null when no time range parameters are given', () => {
+      urlUtils.queryToObject.mockReturnValueOnce({
+        dashboard: '.gitlab/dashboards/custom_dashboard.yml',
+        param1: 'value1',
+        param2: 'value2',
+      });
+
+      expect(timeRangeFromUrl()).toBe(null);
+    });
+  });
+
+  describe('getPromCustomVariablesFromUrl', () => {
+    const { getPromCustomVariablesFromUrl } = monitoringUtils;
+
+    beforeEach(() => {
+      jest.spyOn(urlUtils, 'queryToObject');
+    });
+
+    afterEach(() => {
+      urlUtils.queryToObject.mockRestore();
+    });
+
+    it('returns an object with only the custom variables', () => {
+      urlUtils.queryToObject.mockReturnValueOnce({
+        dashboard: '.gitlab/dashboards/custom_dashboard.yml',
+        y_label: 'memory usage',
+        group: 'kubernetes',
+        title: 'Kubernetes memory total',
+        start: '2020-05-06',
+        end: '2020-05-07',
+        duration_seconds: '86400',
+        direction: 'left',
+        anchor: 'top',
+        pod: 'POD',
+        'var-pod': 'POD',
+      });
+
+      expect(getPromCustomVariablesFromUrl()).toEqual(expect.objectContaining({ pod: 'POD' }));
+    });
+
+    it('returns an empty object when no custom variables are present', () => {
+      urlUtils.queryToObject.mockReturnValueOnce({
+        dashboard: '.gitlab/dashboards/custom_dashboard.yml',
+      });
+
+      expect(getPromCustomVariablesFromUrl()).toStrictEqual({});
+    });
+  });
+
+  describe('removeTimeRangeParams', () => {
+    const { removeTimeRangeParams } = monitoringUtils;
+
+    it('returns when query contains `start` and `end` parameters are given', () => {
+      expect(removeTimeRangeParams(`${mockPath}?start=${range.start}&end=${range.end}`)).toEqual(
+        mockPath,
+      );
+    });
+  });
+
+  describe('timeRangeToUrl', () => {
+    const { timeRangeToUrl } = monitoringUtils;
+
+    beforeEach(() => {
+      jest.spyOn(urlUtils, 'mergeUrlParams');
+      jest.spyOn(urlUtils, 'removeParams');
+    });
+
+    afterEach(() => {
+      urlUtils.mergeUrlParams.mockRestore();
+      urlUtils.removeParams.mockRestore();
+    });
+
+    it('returns a fixed range when query contains `start` and `end` parameters are given', () => {
+      const toUrl = `${mockPath}?start=${range.start}&end=${range.end}`;
+      const fromUrl = mockPath;
+
+      urlUtils.removeParams.mockReturnValueOnce(fromUrl);
+      urlUtils.mergeUrlParams.mockReturnValueOnce(toUrl);
+
+      expect(timeRangeToUrl(range)).toEqual(toUrl);
+      expect(urlUtils.mergeUrlParams).toHaveBeenCalledWith(range, fromUrl);
+    });
+
+    it('returns a rolling range when query contains `duration_seconds` parameters are given', () => {
+      const { seconds } = rollingRange.duration;
+
+      const toUrl = `${mockPath}?duration_seconds=${seconds}`;
+      const fromUrl = mockPath;
+
+      urlUtils.removeParams.mockReturnValueOnce(fromUrl);
+      urlUtils.mergeUrlParams.mockReturnValueOnce(toUrl);
+
+      expect(timeRangeToUrl(rollingRange)).toEqual(toUrl);
+      expect(urlUtils.mergeUrlParams).toHaveBeenCalledWith(
+        { duration_seconds: `${seconds}` },
+        fromUrl,
+      );
+    });
+  });
+
+  describe('expandedPanelPayloadFromUrl', () => {
+    const { expandedPanelPayloadFromUrl } = monitoringUtils;
+    const [panelGroup] = metricsDashboardViewModel.panelGroups;
+    const [panel] = panelGroup.panels;
+
+    const { group } = panelGroup;
+    const { title, y_label: yLabel } = panel;
+
+    it('returns payload for a panel when query parameters are given', () => {
+      const search = `?group=${group}&title=${title}&y_label=${yLabel}`;
+
+      expect(expandedPanelPayloadFromUrl(metricsDashboardViewModel, search)).toEqual({
+        group: panelGroup.group,
+        panel,
+      });
+    });
+
+    it('returns null when no parameters are given', () => {
+      expect(expandedPanelPayloadFromUrl(metricsDashboardViewModel, '')).toBe(null);
+    });
+
+    it('throws an error when no group is provided', () => {
+      const search = `?title=${panel.title}&y_label=${yLabel}`;
+      expect(() => expandedPanelPayloadFromUrl(metricsDashboardViewModel, search)).toThrow();
+    });
+
+    it('throws an error when no title is provided', () => {
+      const search = `?title=${title}&y_label=${yLabel}`;
+      expect(() => expandedPanelPayloadFromUrl(metricsDashboardViewModel, search)).toThrow();
+    });
+
+    it('throws an error when no y_label group is provided', () => {
+      const search = `?group=${group}&title=${title}`;
+      expect(() => expandedPanelPayloadFromUrl(metricsDashboardViewModel, search)).toThrow();
+    });
+
+    test.each`
+      group            | title            | yLabel             | missingField
+      ${'NOT_A_GROUP'} | ${title}         | ${yLabel}          | ${'group'}
+      ${group}         | ${'NOT_A_TITLE'} | ${yLabel}          | ${'title'}
+      ${group}         | ${title}         | ${'NOT_A_Y_LABEL'} | ${'y_label'}
+    `('throws an error when $missingField is incorrect', params => {
+      const search = `?group=${params.group}&title=${params.title}&y_label=${params.yLabel}`;
+      expect(() => expandedPanelPayloadFromUrl(metricsDashboardViewModel, search)).toThrow();
+    });
+  });
+
+  describe('panelToUrl', () => {
+    const { panelToUrl } = monitoringUtils;
+
+    const dashboard = 'metrics.yml';
+    const [panelGroup] = metricsDashboardViewModel.panelGroups;
+    const [panel] = panelGroup.panels;
+
+    const getUrlParams = url => urlUtils.queryToObject(url.split('?')[1]);
+
+    it('returns URL for a panel when query parameters are given', () => {
+      const params = getUrlParams(panelToUrl(dashboard, {}, panelGroup.group, panel));
+
+      expect(params).toEqual(
+        expect.objectContaining({
+          dashboard,
+          group: panelGroup.group,
+          title: panel.title,
+          y_label: panel.y_label,
+        }),
+      );
+    });
+
+    it('returns a dashboard only URL if group is missing', () => {
+      const params = getUrlParams(panelToUrl(dashboard, {}, null, panel));
+      expect(params).toEqual(expect.objectContaining({ dashboard: 'metrics.yml' }));
+    });
+
+    it('returns a dashboard only URL if panel is missing', () => {
+      const params = getUrlParams(panelToUrl(dashboard, {}, panelGroup.group, null));
+      expect(params).toEqual(expect.objectContaining({ dashboard: 'metrics.yml' }));
+    });
+
+    it('returns URL for a panel when query paramters are given including custom variables', () => {
+      const params = getUrlParams(panelToUrl(dashboard, { pod: 'pod' }, panelGroup.group, null));
+      expect(params).toEqual(expect.objectContaining({ dashboard: 'metrics.yml', pod: 'pod' }));
+    });
+  });
+
+  describe('barChartsDataParser', () => {
+    const singleMetricExpected = {
+      SLA: [
+        ['0.9935198135198128', 'api'],
+        ['0.9975296513504401', 'git'],
+        ['0.9994716394716395', 'registry'],
+        ['0.9948251748251747', 'sidekiq'],
+        ['0.9535664335664336', 'web'],
+        ['0.9335664335664336', 'postgresql_database'],
+      ],
+    };
+
+    const multipleMetricExpected = {
+      ...singleMetricExpected,
+      SLA_2: Object.values(singleMetricExpected)[0],
+    };
+
+    const barMockDataWithMultipleMetrics = {
+      ...barMockData,
+      metrics: [
+        barMockData.metrics[0],
+        {
+          ...barMockData.metrics[0],
+          label: 'SLA_2',
+        },
+      ],
+    };
+
+    [
+      {
+        input: { metrics: undefined },
+        output: {},
+        testCase: 'barChartsDataParser returns {} with undefined',
+      },
+      {
+        input: { metrics: null },
+        output: {},
+        testCase: 'barChartsDataParser returns {} with null',
+      },
+      {
+        input: { metrics: [] },
+        output: {},
+        testCase: 'barChartsDataParser returns {} with []',
+      },
+      {
+        input: barMockData,
+        output: singleMetricExpected,
+        testCase: 'barChartsDataParser returns single series object with single metrics',
+      },
+      {
+        input: barMockDataWithMultipleMetrics,
+        output: multipleMetricExpected,
+        testCase: 'barChartsDataParser returns multiple series object with multiple metrics',
+      },
+    ].forEach(({ input, output, testCase }) => {
+      it(testCase, () => {
+        expect(monitoringUtils.barChartsDataParser(input.metrics)).toEqual(
+          expect.objectContaining(output),
+        );
+      });
+    });
+  });
+
+  describe('removePrefixFromLabel', () => {
+    it.each`
+      input               | expected
+      ${undefined}        | ${''}
+      ${null}             | ${''}
+      ${''}               | ${''}
+      ${'    '}           | ${'    '}
+      ${'pod-1'}          | ${'pod-1'}
+      ${'pod-var-1'}      | ${'pod-var-1'}
+      ${'pod-1-var'}      | ${'pod-1-var'}
+      ${'podvar--1'}      | ${'podvar--1'}
+      ${'povar-d-1'}      | ${'povar-d-1'}
+      ${'var-pod-1'}      | ${'pod-1'}
+      ${'var-var-pod-1'}  | ${'var-pod-1'}
+      ${'varvar-pod-1'}   | ${'varvar-pod-1'}
+      ${'var-pod-1-var-'} | ${'pod-1-var-'}
+    `('removePrefixFromLabel returns $expected with input $input', ({ input, expected }) => {
+      expect(monitoringUtils.removePrefixFromLabel(input)).toEqual(expected);
+    });
+  });
+
+  describe('mergeURLVariables', () => {
+    beforeEach(() => {
+      jest.spyOn(urlUtils, 'queryToObject');
+    });
+
+    afterEach(() => {
+      urlUtils.queryToObject.mockRestore();
+    });
+
+    it('returns empty object if variables are not defined in yml or URL', () => {
+      urlUtils.queryToObject.mockReturnValueOnce({});
+
+      expect(monitoringUtils.mergeURLVariables({})).toEqual({});
+    });
+
+    it('returns empty object if variables are defined in URL but not in yml', () => {
+      urlUtils.queryToObject.mockReturnValueOnce({
+        'var-env': 'one',
+        'var-instance': 'localhost',
+      });
+
+      expect(monitoringUtils.mergeURLVariables({})).toEqual({});
+    });
+
+    it('returns yml variables if variables defined in yml but not in the URL', () => {
+      urlUtils.queryToObject.mockReturnValueOnce({});
+
+      const params = {
+        env: 'one',
+        instance: 'localhost',
+      };
+
+      expect(monitoringUtils.mergeURLVariables(params)).toEqual(params);
+    });
+
+    it('returns yml variables if variables defined in URL do not match with yml variables', () => {
+      const urlParams = {
+        'var-env': 'one',
+        'var-instance': 'localhost',
+      };
+      const ymlParams = {
+        pod: { value: 'one' },
+        service: { value: 'database' },
+      };
+      urlUtils.queryToObject.mockReturnValueOnce(urlParams);
+
+      expect(monitoringUtils.mergeURLVariables(ymlParams)).toEqual(ymlParams);
+    });
+
+    it('returns merged yml and URL variables if there is some match', () => {
+      const urlParams = {
+        'var-env': 'one',
+        'var-instance': 'localhost:8080',
+      };
+      const ymlParams = {
+        instance: { value: 'localhost' },
+        service: { value: 'database' },
+      };
+
+      const merged = {
+        instance: { value: 'localhost:8080' },
+        service: { value: 'database' },
+      };
+
+      urlUtils.queryToObject.mockReturnValueOnce(urlParams);
+
+      expect(monitoringUtils.mergeURLVariables(ymlParams)).toEqual(merged);
+    });
+  });
+
+  describe('convertVariablesForURL', () => {
+    it.each`
+      input                               | expected
+      ${undefined}                        | ${{}}
+      ${null}                             | ${{}}
+      ${{}}                               | ${{}}
+      ${{ env: { value: 'prod' } }}       | ${{ 'var-env': 'prod' }}
+      ${{ 'var-env': { value: 'prod' } }} | ${{ 'var-var-env': 'prod' }}
+    `('convertVariablesForURL returns $expected with input $input', ({ input, expected }) => {
+      expect(monitoringUtils.convertVariablesForURL(input)).toEqual(expected);
     });
   });
 });

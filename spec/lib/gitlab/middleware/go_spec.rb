@@ -89,6 +89,13 @@ describe Gitlab::Middleware::Go do
                     it 'returns the full project path' do
                       expect_response_with_path(go, enabled_protocol, project.full_path, project.default_branch)
                     end
+
+                    context 'with an empty ssh_user' do
+                      it 'returns the full project path' do
+                        allow(Gitlab.config.gitlab_shell).to receive(:ssh_user).and_return('')
+                        expect_response_with_path(go, enabled_protocol, project.full_path, project.default_branch)
+                      end
+                    end
                   end
 
                   context 'without access to the project' do
@@ -234,14 +241,16 @@ describe Gitlab::Middleware::Go do
     def expect_response_with_path(response, protocol, path, branch)
       repository_url = case protocol
                        when :ssh
-                         "ssh://#{Gitlab.config.gitlab.user}@#{Gitlab.config.gitlab.host}/#{path}.git"
+                         shell = Gitlab.config.gitlab_shell
+                         user = "#{shell.ssh_user}@" unless shell.ssh_user.empty?
+                         "ssh://#{user}#{shell.ssh_host}/#{path}.git"
                        when :http, nil
                          "http://#{Gitlab.config.gitlab.host}/#{path}.git"
                        end
       project_url = "http://#{Gitlab.config.gitlab.host}/#{path}"
       expect(response[0]).to eq(200)
       expect(response[1]['Content-Type']).to eq('text/html')
-      expected_body = %{<html><head><meta name="go-import" content="#{Gitlab.config.gitlab.host}/#{path} git #{repository_url}" /><meta name="go-source" content="#{Gitlab.config.gitlab.host}/#{path} #{project_url} #{project_url}/tree/#{branch}{/dir} #{project_url}/blob/#{branch}{/dir}/{file}#L{line}" /></head><body>go get #{Gitlab.config.gitlab.url}/#{path}</body></html>}
+      expected_body = %{<html><head><meta name="go-import" content="#{Gitlab.config.gitlab.host}/#{path} git #{repository_url}" /><meta name="go-source" content="#{Gitlab.config.gitlab.host}/#{path} #{project_url} #{project_url}/-/tree/#{branch}{/dir} #{project_url}/-/blob/#{branch}{/dir}/{file}#L{line}" /></head><body>go get #{Gitlab.config.gitlab.url}/#{path}</body></html>}
       expect(response[2].body).to eq([expected_body])
     end
   end

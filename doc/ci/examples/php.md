@@ -13,7 +13,7 @@ using the Shell executor.
 
 While it is possible to test PHP apps on any system, this would require manual
 configuration from the developer. To overcome this we will be using the
-official [PHP docker image][php-hub] that can be found in Docker Hub.
+official [PHP docker image](https://hub.docker.com/_/php) that can be found in Docker Hub.
 
 This will allow us to test PHP projects against different versions of PHP.
 However, not everything is plug 'n' play, you still need to configure some
@@ -40,7 +40,7 @@ done.
 Let's create a `ci/docker_install.sh` file in the root directory of our
 repository with the following content:
 
-```bash
+```shell
 #!/bin/bash
 
 # We need to install dependencies only for Docker
@@ -153,7 +153,7 @@ dependencies are installed.
 For example, in a VM running Debian 8 we first update the cache, then we
 install `phpunit` and `php5-mysql`:
 
-```bash
+```shell
 sudo apt-get update -y
 sudo apt-get install -y phpunit php5-mysql
 ```
@@ -170,16 +170,16 @@ Finally, push to GitLab and let the tests begin!
 
 ### Test against different PHP versions in Shell builds
 
-The [phpenv][] project allows you to easily manage different versions of PHP
+The [phpenv](https://github.com/phpenv/phpenv) project allows you to easily manage different versions of PHP
 each with its own config. This is especially useful when testing PHP projects
 with the Shell executor.
 
 You will have to install it on your build machine under the `gitlab-runner`
-user following [the upstream installation guide][phpenv-installation].
+user following [the upstream installation guide](https://github.com/phpenv/phpenv#installation).
 
 Using phpenv also allows to easily configure the PHP environment with:
 
-```
+```shell
 phpenv config-add my_config.ini
 ```
 
@@ -198,7 +198,7 @@ some extensions that are not currently present on the build machine.
 
 To install additional extensions simply execute:
 
-```bash
+```shell
 pecl install <extension>
 ```
 
@@ -269,7 +269,7 @@ documentation.
 With GitLab Runner 1.0 you can also test any changes locally. From your
 terminal execute:
 
-```bash
+```shell
 # Check using docker executor
 gitlab-runner exec docker test:app
 
@@ -279,14 +279,9 @@ gitlab-runner exec shell test:app
 
 ## Example project
 
-We have set up an [Example PHP Project][php-example-repo] for your convenience
+We have set up an [Example PHP Project](https://gitlab.com/gitlab-examples/php) for your convenience
 that runs on [GitLab.com](https://gitlab.com) using our publicly available
 [shared runners](../runners/README.md).
 
 Want to hack on it? Simply fork it, commit, and push your changes. Within a few
 moments the changes will be picked by a public runner and the job will begin.
-
-[php-hub]: https://hub.docker.com/_/php
-[phpenv]: https://github.com/phpenv/phpenv
-[phpenv-installation]: https://github.com/phpenv/phpenv#installation
-[php-example-repo]: https://gitlab.com/gitlab-examples/php

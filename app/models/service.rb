@@ -8,6 +8,17 @@ class Service < ApplicationRecord
   include ProjectServicesLoggable
   include DataFields
 
+  SERVICE_NAMES = %w[
+    alerts asana assembla bamboo bugzilla buildkite campfire custom_issue_tracker discord
+    drone_ci emails_on_push external_wiki flowdock hangouts_chat hipchat irker jira
+    mattermost mattermost_slash_commands microsoft_teams packagist pipelines_email
+    pivotaltracker prometheus pushover redmine slack slack_slash_commands teamcity unify_circuit webex_teams youtrack
+  ].freeze
+
+  DEV_SERVICE_NAMES = %w[
+    mock_ci mock_deployment mock_monitoring
+  ].freeze
+
   serialize :properties, JSON # rubocop:disable Cop/ActiveRecordSerialize
 
   default_value_for :active, false
@@ -32,8 +43,13 @@ class Service < ApplicationRecord
   belongs_to :project, inverse_of: :services
   has_one :service_hook
 
-  validates :project_id, presence: true, unless: proc { |service| service.template? }
+  validates :project_id, presence: true, unless: -> { template? || instance? }
+  validates :project_id, absence: true, if: -> { template? || instance? }
+  validates :type, uniqueness: { scope: :project_id }, unless: -> { template? || instance? }, on: :create
   validates :type, presence: true
+  validates :template, uniqueness: { scope: :type }, if: -> { template? }
+  validates :instance, uniqueness: { scope: :type }, if: -> { instance? }
+  validate :validate_is_instance_or_template
 
   scope :visible, -> { where.not(type: 'GitlabIssueTrackerService') }
   scope :issue_trackers, -> { where(category: 'issue_tracker') }
@@ -41,6 +57,9 @@ class Service < ApplicationRecord
   scope :active, -> { where(active: true) }
   scope :without_defaults, -> { where(default: false) }
   scope :by_type, -> (type) { where(type: type) }
+  scope :by_active_flag, -> (flag) { where(active: flag) }
+  scope :templates, -> { where(template: true, type: available_services_types) }
+  scope :instances, -> { where(instance: true, type: available_services_types) }
 
   scope :push_hooks, -> { where(push_events: true, active: true) }
   scope :tag_push_hooks, -> { where(tag_push_events: true, active: true) }
@@ -62,16 +81,16 @@ class Service < ApplicationRecord
     active
   end
 
+  def operating?
+    active && persisted?
+  end
+
   def show_active_box?
     true
   end
 
   def editable?
     true
-  end
-
-  def template?
-    template
   end
 
   def category
@@ -113,6 +132,14 @@ class Service < ApplicationRecord
   # This list is used in `Service#as_json(only: json_fields)`.
   def json_fields
     %w(active)
+  end
+
+  def to_service_hash
+    as_json(methods: :type, except: %w[id template instance project_id])
+  end
+
+  def to_data_fields_hash
+    data_fields.as_json(only: data_fields.class.column_names).except('id', 'service_id')
   end
 
   def test_data(project, user)
@@ -181,8 +208,10 @@ class Service < ApplicationRecord
     { success: result.present?, result: result }
   end
 
+  # Disable test for instance-level services.
+  # https://gitlab.com/gitlab-org/gitlab/-/issues/213138
   def can_test?
-    true
+    !instance?
   end
 
   # Provide convenient accessor methods
@@ -258,71 +287,75 @@ class Service < ApplicationRecord
     self.category == :issue_tracker
   end
 
-  def self.available_services_names
-    service_names = %w[
-      asana
-      assembla
-      bamboo
-      buildkite
-      bugzilla
-      campfire
-      custom_issue_tracker
-      discord
-      drone_ci
-      emails_on_push
-      external_wiki
-      flowdock
-      hangouts_chat
-      hipchat
-      irker
-      jira
-      mattermost_slash_commands
-      mattermost
-      packagist
-      pipelines_email
-      pivotaltracker
-      prometheus
-      pushover
-      redmine
-      youtrack
-      slack_slash_commands
-      slack
-      teamcity
-      microsoft_teams
-      unify_circuit
-    ]
+  def self.find_or_create_templates
+    create_nonexistent_templates
+    templates
+  end
 
-    if Rails.env.development?
-      service_names += %w[mock_ci mock_deployment mock_monitoring]
+  private_class_method def self.create_nonexistent_templates
+    nonexistent_services = list_nonexistent_services_for(templates)
+    return if nonexistent_services.empty?
+
+    # Create within a transaction to perform the lowest possible SQL queries.
+    transaction do
+      nonexistent_services.each do |service_type|
+        service_type.constantize.create(template: true)
+      end
     end
+  end
+
+  def self.find_or_initialize_instances
+    instances + build_nonexistent_instances
+  end
+
+  private_class_method def self.build_nonexistent_instances
+    list_nonexistent_services_for(instances).map do |service_type|
+      service_type.constantize.new
+    end
+  end
+
+  private_class_method def self.list_nonexistent_services_for(scope)
+    available_services_types - scope.map(&:type)
+  end
+
+  def self.available_services_names
+    service_names = services_names
+    service_names += dev_services_names
 
     service_names.sort_by(&:downcase)
   end
 
-  def self.build_from_template(project_id, template)
-    service = template.dup
+  def self.services_names
+    SERVICE_NAMES
+  end
 
-    if template.supports_data_fields?
-      data_fields = template.data_fields.dup
+  def self.dev_services_names
+    return [] unless Rails.env.development?
+
+    DEV_SERVICE_NAMES
+  end
+
+  def self.available_services_types
+    available_services_names.map { |service_name| "#{service_name}_service".camelize }
+  end
+
+  def self.services_types
+    services_names.map { |service_name| "#{service_name}_service".camelize }
+  end
+
+  def self.build_from_integration(project_id, integration)
+    service = integration.dup
+
+    if integration.supports_data_fields?
+      data_fields = integration.data_fields.dup
       data_fields.service = service
     end
 
     service.template = false
+    service.instance = false
     service.project_id = project_id
-    service.active = false if service.active? && !service.valid?
+    service.active = false if service.invalid?
     service
-  end
-
-  def deprecated?
-    false
-  end
-
-  def deprecation_message
-    nil
-  end
-
-  def self.find_by_template
-    find_by(template: true)
   end
 
   # override if needed
@@ -331,6 +364,10 @@ class Service < ApplicationRecord
   end
 
   private
+
+  def validate_is_instance_or_template
+    errors.add(:template, 'The service should be a service template or instance-level integration') if template? && instance?
+  end
 
   def cache_project_has_external_issue_tracker
     if project && !project.destroyed?

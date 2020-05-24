@@ -11,6 +11,7 @@ module API
     SUDO_PARAM = :sudo
     API_USER_ENV = 'gitlab.api.user'
     API_EXCEPTION_ENV = 'gitlab.api.exception'
+    API_RESPONSE_STATUS_CODE = 'gitlab.api.response_status_code'
 
     def declared_params(options = {})
       options = { include_parent_namespaces: false }.merge(options)
@@ -31,6 +32,7 @@ module API
       check_unmodified_since!(last_updated)
 
       status 204
+      body false
 
       if block_given?
         yield resource
@@ -141,6 +143,12 @@ module API
       end
     end
 
+    def check_namespace_access(namespace)
+      return namespace if can?(current_user, :read_namespace, namespace)
+
+      not_found!('Namespace')
+    end
+
     # rubocop: disable CodeReuse/ActiveRecord
     def find_namespace(id)
       if id.to_s =~ /^\d+$/
@@ -152,13 +160,15 @@ module API
     # rubocop: enable CodeReuse/ActiveRecord
 
     def find_namespace!(id)
-      namespace = find_namespace(id)
+      check_namespace_access(find_namespace(id))
+    end
 
-      if can?(current_user, :read_namespace, namespace)
-        namespace
-      else
-        not_found!('Namespace')
-      end
+    def find_namespace_by_path(path)
+      Namespace.find_by_full_path(path)
+    end
+
+    def find_namespace_by_path!(path)
+      check_namespace_access(find_namespace_by_path(path))
     end
 
     def find_branch!(branch_name)
@@ -169,9 +179,19 @@ module API
       end
     end
 
+    def find_tag!(tag_name)
+      if Gitlab::GitRefValidator.validate(tag_name)
+        user_project.repository.find_tag(tag_name) || not_found!('Tag')
+      else
+        render_api_error!('The tag refname is invalid', 400)
+      end
+    end
+
     # rubocop: disable CodeReuse/ActiveRecord
-    def find_project_issue(iid)
-      IssuesFinder.new(current_user, project_id: user_project.id).find_by!(iid: iid)
+    def find_project_issue(iid, project_id = nil)
+      project = project_id ? find_project!(project_id) : user_project
+
+      ::IssuesFinder.new(current_user, project_id: project.id).find_by!(iid: iid)
     end
     # rubocop: enable CodeReuse/ActiveRecord
 
@@ -240,6 +260,10 @@ module API
       authorize! :admin_project, user_project
     end
 
+    def authorize_admin_group
+      authorize! :admin_group, user_group
+    end
+
     def authorize_read_builds!
       authorize! :read_build, user_project
     end
@@ -257,9 +281,19 @@ module API
     end
 
     def require_gitlab_workhorse!
+      verify_workhorse_api!
+
       unless env['HTTP_GITLAB_WORKHORSE'].present?
         forbidden!('Request should be executed via GitLab Workhorse')
       end
+    end
+
+    def verify_workhorse_api!
+      Gitlab::Workhorse.verify_api_request!(request.headers)
+    rescue => e
+      Gitlab::ErrorTracking.track_exception(e)
+
+      forbidden!
     end
 
     def require_pages_enabled!
@@ -315,7 +349,7 @@ module API
 
     def order_options_with_tie_breaker
       order_options = { params[:order_by] => params[:sort] }
-      order_options['id'] ||= 'desc'
+      order_options['id'] ||= params[:sort] || 'asc'
       order_options
     end
 
@@ -346,6 +380,14 @@ module API
 
     def not_allowed!
       render_api_error!('405 Method Not Allowed', 405)
+    end
+
+    def not_acceptable!
+      render_api_error!('406 Not Acceptable', 406)
+    end
+
+    def service_unavailable!
+      render_api_error!('503 Service Unavailable', 503)
     end
 
     def conflict!(message = nil)
@@ -383,6 +425,11 @@ module API
     end
 
     def render_api_error!(message, status)
+      # grape-logging doesn't pass the status code, so this is a
+      # workaround for getting that information in the loggers:
+      # https://github.com/aserafin/grape_logging/issues/71
+      env[API_RESPONSE_STATUS_CODE] = Rack::Utils.status_code(status)
+
       error!({ 'message' => message }, status, header)
     end
 
@@ -390,7 +437,7 @@ module API
       if report_exception?(exception)
         define_params_for_grape_middleware
         Gitlab::ErrorTracking.with_context(current_user) do
-          Gitlab::ErrorTracking.track_exception(exception, params)
+          Gitlab::ErrorTracking.track_exception(exception)
         end
       end
 
@@ -433,7 +480,7 @@ module API
 
     def present_disk_file!(path, filename, content_type = 'application/octet-stream')
       filename ||= File.basename(path)
-      header['Content-Disposition'] = ::Gitlab::ContentDisposition.format(disposition: 'attachment', filename: filename)
+      header['Content-Disposition'] = ActionDispatch::Http::ContentDisposition.format(disposition: 'attachment', filename: filename)
       header['Content-Transfer-Encoding'] = 'binary'
       content_type content_type
 
@@ -474,19 +521,28 @@ module API
 
     protected
 
-    def project_finder_params_ce
-      finder_params = { without_deleted: true }
+    def project_finder_params_visibility_ce
+      finder_params = {}
+      finder_params[:min_access_level] = params[:min_access_level] if params[:min_access_level]
+      finder_params[:visibility_level] = Gitlab::VisibilityLevel.level_value(params[:visibility]) if params[:visibility]
       finder_params[:owned] = true if params[:owned].present?
       finder_params[:non_public] = true if params[:membership].present?
       finder_params[:starred] = true if params[:starred].present?
-      finder_params[:visibility_level] = Gitlab::VisibilityLevel.level_value(params[:visibility]) if params[:visibility]
       finder_params[:archived] = archived_param unless params[:archived].nil?
+      finder_params
+    end
+
+    def project_finder_params_ce
+      finder_params = project_finder_params_visibility_ce
+      finder_params[:without_deleted] = true
       finder_params[:search] = params[:search] if params[:search]
+      finder_params[:search_namespaces] = true if params[:search_namespaces].present?
       finder_params[:user] = params.delete(:user) if params[:user]
       finder_params[:custom_attributes] = params[:custom_attributes] if params[:custom_attributes]
-      finder_params[:min_access_level] = params[:min_access_level] if params[:min_access_level]
       finder_params[:id_after] = params[:id_after] if params[:id_after]
       finder_params[:id_before] = params[:id_before] if params[:id_before]
+      finder_params[:last_activity_after] = params[:last_activity_after] if params[:last_activity_after]
+      finder_params[:last_activity_before] = params[:last_activity_before] if params[:last_activity_before]
       finder_params
     end
 
@@ -541,7 +597,7 @@ module API
     def send_git_blob(repository, blob)
       env['api.format'] = :txt
       content_type 'text/plain'
-      header['Content-Disposition'] = ::Gitlab::ContentDisposition.format(disposition: 'inline', filename: blob.name)
+      header['Content-Disposition'] = ActionDispatch::Http::ContentDisposition.format(disposition: 'inline', filename: blob.name)
 
       # Let Workhorse examine the content and determine the better content disposition
       header[Gitlab::Workhorse::DETECT_HEADER] = "true"
@@ -553,8 +609,8 @@ module API
       header(*Gitlab::Workhorse.send_git_archive(repository, **kwargs))
     end
 
-    def send_artifacts_entry(build, entry)
-      header(*Gitlab::Workhorse.send_artifacts_entry(build, entry))
+    def send_artifacts_entry(file, entry)
+      header(*Gitlab::Workhorse.send_artifacts_entry(file, entry))
     end
 
     # The Grape Error Middleware only has access to `env` but not `params` nor

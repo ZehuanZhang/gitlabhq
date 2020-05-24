@@ -15,10 +15,22 @@ If you choose a size larger than what is currently configured for the web server
 you will likely get errors. See the [troubleshooting section](#troubleshooting) for more
 details.
 
-## Repository size limit **(STARTER)**
+## Maximum namespace storage size
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab/merge_requests/740) in [GitLab Enterprise Edition 8.12](https://about.gitlab.com/blog/2016/09/22/gitlab-8-12-released/#limit-project-size-ee).
-> Available in [GitLab Starter](https://about.gitlab.com/pricing/).
+This sets a maximum size limit on each namespace. The following are included in the namespace size:
+
+- repository
+- wiki
+- LFS objects
+- build artifacts
+- packages
+
+NOTE: **Note:**
+This limit is not currently enforced but will be in a future release.
+
+## Repository size limit **(STARTER ONLY)**
+
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/740) in [GitLab Enterprise Edition 8.12](https://about.gitlab.com/releases/2016/09/22/gitlab-8-12-released/#limit-project-size-ee).
 
 Repositories within your GitLab instance can grow quickly, especially if you are
 using LFS. Their size can grow exponentially, rapidly consuming available storage.
@@ -32,7 +44,7 @@ For instance, consider the following workflow:
 
 1. Your team develops apps which require large files to be stored in
    the application repository.
-1. Although you have enabled [Git LFS](../../../administration/lfs/manage_large_binaries_with_git_lfs.md#git-lfs)
+1. Although you have enabled [Git LFS](../../../topics/git/lfs/index.md#git-large-file-storage-lfs)
    to your project, your storage has grown significantly.
 1. Before you exceed available storage, you set up a limit of 10 GB
    per repository.
@@ -81,13 +93,13 @@ If you wanted to increase the max attachment size to 200m in a GitLab
 [Omnibus](https://docs.gitlab.com/omnibus/) install, for example, you might need to
 add the line below to `/etc/gitlab/gitlab.rb` before increasing the max attachment size:
 
-```
+```ruby
 nginx['client_max_body_size'] = "200m"
 ```
 
 ## Limiting lifetime of personal access tokens **(ULTIMATE ONLY)**
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab/issues/3649) in [GitLab Ultimate](https://about.gitlab.com/pricing/) 12.6.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/3649) in [GitLab Ultimate](https://about.gitlab.com/pricing/) 12.6.
 
 Users can optionally specify an expiration date for
 [personal access tokens](../../profile/personal_access_tokens.md).
@@ -117,9 +129,9 @@ Once a lifetime for personal access tokens is set, GitLab will:
   allowed lifetime. Three hours is given to allow administrators to change the allowed lifetime,
   or remove it, before revocation takes place.
 
-## Disabling user profile name changes **(CORE ONLY)**
+## Disabling user profile name changes **(PREMIUM ONLY)**
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab/issues/24605) in GitLab 12.7.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/24605) in GitLab 12.7.
 
 To maintain integrity of user details in [Audit Events](../../../administration/audit_events.md), GitLab administrators can choose to disable a user's ability to change their profile name.
 

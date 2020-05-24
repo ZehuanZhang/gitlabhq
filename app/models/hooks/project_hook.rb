@@ -3,6 +3,9 @@
 class ProjectHook < WebHook
   include TriggerableHooks
   include Presentable
+  include Limitable
+
+  self.limit_scope = :project
 
   triggerable_hooks [
     :push_hooks,
@@ -21,7 +24,7 @@ class ProjectHook < WebHook
   validates :project, presence: true
 
   def pluralized_name
-    _('Project Hooks')
+    _('Webhooks')
   end
 end
 

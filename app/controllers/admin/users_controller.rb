@@ -75,7 +75,9 @@ class Admin::UsersController < Admin::ApplicationController
   end
 
   def block
-    if update_user { |user| user.block }
+    result = Users::BlockService.new(current_user).execute(user)
+
+    if result[:status] = :success
       redirect_back_or_admin_user(notice: _("Successfully blocked"))
     else
       redirect_back_or_admin_user(alert: _("Error occurred. User was not blocked"))
@@ -143,7 +145,7 @@ class Admin::UsersController < Admin::ApplicationController
         password_confirmation: params[:user][:password_confirmation]
       }
 
-      password_params[:password_expires_at] = Time.now unless changing_own_password?
+      password_params[:password_expires_at] = Time.current unless changing_own_password?
 
       user_params_with_pass.merge!(password_params)
     end

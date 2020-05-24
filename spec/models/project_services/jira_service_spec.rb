@@ -3,7 +3,6 @@
 require 'spec_helper'
 
 describe JiraService do
-  include Gitlab::Routing
   include AssetsHelpers
 
   let(:title) { 'custom title' }
@@ -70,11 +69,23 @@ describe JiraService do
   end
 
   describe '.reference_pattern' do
-    it_behaves_like 'allows project key on reference pattern'
+    using RSpec::Parameterized::TableSyntax
 
-    it 'does not allow # on the code' do
-      expect(described_class.reference_pattern.match('#123')).to be_nil
-      expect(described_class.reference_pattern.match('1#23#12')).to be_nil
+    where(:key, :result) do
+      '#123'               | ''
+      '1#23#12'            | ''
+      'JIRA-1234A'         | 'JIRA-1234'
+      'JIRA-1234-some_tag' | 'JIRA-1234'
+      'JIRA-1234_some_tag' | 'JIRA-1234'
+      'EXT_EXT-1234'       | 'EXT_EXT-1234'
+      'EXT3_EXT-1234'      | 'EXT3_EXT-1234'
+      '3EXT_EXT-1234'      | ''
+    end
+
+    with_them do
+      specify do
+        expect(described_class.reference_pattern.match(key).to_s).to eq(result)
+      end
     end
   end
 
@@ -153,7 +164,7 @@ describe JiraService do
         end
       end
 
-      context '#update' do
+      describe '#update' do
         context 'basic update' do
           let(:new_username) { 'new_username' }
           let(:new_url) { 'http://jira-new.example.com' }
@@ -422,7 +433,7 @@ describe JiraService do
             GlobalID: 'GitLab',
             relationship: 'mentioned on',
             object: {
-              url: "#{Gitlab.config.gitlab.url}/#{project.full_path}/commit/#{commit_id}",
+              url: "#{Gitlab.config.gitlab.url}/#{project.full_path}/-/commit/#{commit_id}",
               title: "Solved by commit #{commit_id}.",
               icon: { title: 'GitLab', url16x16: favicon_path },
               status: { resolved: true }
@@ -438,6 +449,27 @@ describe JiraService do
 
           expect(WebMock).not_to have_requested(:post, @comment_url)
           expect(WebMock).to have_requested(:post, @remote_link_url)
+        end
+      end
+
+      context 'when Remote Link already exists' do
+        let(:remote_link) do
+          double(
+            'remote link',
+            object: {
+              url: "#{Gitlab.config.gitlab.url}/#{project.full_path}/-/commit/#{commit_id}"
+            }.with_indifferent_access
+          )
+        end
+
+        it 'does not create comment' do
+          allow(JIRA::Resource::Remotelink).to receive(:all).and_return([remote_link])
+
+          expect(remote_link).to receive(:save!)
+
+          @jira_service.close_issue(resource, ExternalIssue.new('JIRA-123', project))
+
+          expect(WebMock).not_to have_requested(:post, @comment_url)
         end
       end
 
@@ -465,7 +497,7 @@ describe JiraService do
         @jira_service.close_issue(resource, ExternalIssue.new('JIRA-123', project))
 
         expect(WebMock).to have_requested(:post, @comment_url).with(
-          body: %r{#{custom_base_url}/#{project.full_path}/commit/#{commit_id}}
+          body: %r{#{custom_base_url}/#{project.full_path}/-/commit/#{commit_id}}
         ).once
       end
 
@@ -480,7 +512,7 @@ describe JiraService do
         @jira_service.close_issue(resource, ExternalIssue.new('JIRA-123', project))
 
         expect(WebMock).to have_requested(:post, @comment_url).with(
-          body: %r{#{Gitlab.config.gitlab.url}/#{project.full_path}/commit/#{commit_id}}
+          body: %r{#{Gitlab.config.gitlab.url}/#{project.full_path}/-/commit/#{commit_id}}
         ).once
       end
 
@@ -490,7 +522,14 @@ describe JiraService do
 
         @jira_service.close_issue(resource, ExternalIssue.new('JIRA-123', project))
 
-        expect(@jira_service).to have_received(:log_error).with("Issue transition failed", error: "Bad Request", client_url: "http://jira.example.com")
+        expect(@jira_service).to have_received(:log_error).with(
+          "Issue transition failed",
+          error: hash_including(
+            exception_class: 'StandardError',
+            exception_message: "Bad Request"
+          ),
+          client_url: "http://jira.example.com"
+        )
       end
 
       it 'calls the api with jira_issue_transition_id' do
@@ -543,47 +582,128 @@ describe JiraService do
     end
   end
 
-  describe '#test_settings' do
+  describe '#create_cross_reference_note' do
+    let_it_be(:user)    { build_stubbed(:user) }
+    let_it_be(:project) { create(:project, :repository) }
     let(:jira_service) do
       described_class.new(
-        project: create(:project),
-        url: 'http://jira.example.com',
-        username: 'jira_username',
-        password: 'jira_password'
+        project: project,
+        url: url,
+        username: username,
+        password: password
+      )
+    end
+    let(:jira_issue) { ExternalIssue.new('JIRA-123', project) }
+
+    subject { jira_service.create_cross_reference_note(jira_issue, resource, user) }
+
+    shared_examples 'creates a comment on Jira' do
+      let(:issue_url) { "#{url}/rest/api/2/issue/JIRA-123" }
+      let(:comment_url) { "#{issue_url}/comment" }
+      let(:remote_link_url) { "#{issue_url}/remotelink" }
+
+      before do
+        allow(JIRA::Resource::Remotelink).to receive(:all).and_return([])
+        stub_request(:get, issue_url).with(basic_auth: [username, password])
+        stub_request(:post, comment_url).with(basic_auth: [username, password])
+        stub_request(:post, remote_link_url).with(basic_auth: [username, password])
+      end
+
+      it 'creates a comment on Jira' do
+        subject
+
+        expect(WebMock).to have_requested(:post, comment_url).with(
+          body: /mentioned this issue in/
+        ).once
+      end
+    end
+
+    context 'when resource is a commit' do
+      let(:resource) { project.commit('master') }
+
+      context 'when disabled' do
+        before do
+          allow_next_instance_of(JiraService) do |instance|
+            allow(instance).to receive(:commit_events) { false }
+          end
+        end
+
+        it { is_expected.to eq('Events for commits are disabled.') }
+      end
+
+      context 'when enabled' do
+        it_behaves_like 'creates a comment on Jira'
+      end
+    end
+
+    context 'when resource is a merge request' do
+      let(:resource) { build_stubbed(:merge_request, source_project: project) }
+
+      context 'when disabled' do
+        before do
+          allow_next_instance_of(JiraService) do |instance|
+            allow(instance).to receive(:merge_requests_events) { false }
+          end
+        end
+
+        it { is_expected.to eq('Events for merge requests are disabled.') }
+      end
+
+      context 'when enabled' do
+        it_behaves_like 'creates a comment on Jira'
+      end
+    end
+  end
+
+  describe '#test' do
+    let(:jira_service) do
+      described_class.new(
+        url: url,
+        username: username,
+        password: password
       )
     end
 
-    def test_settings(api_url = nil)
-      api_url ||= 'jira.example.com'
-      test_url = "http://#{api_url}/rest/api/2/serverInfo"
+    def test_settings(url = 'jira.example.com')
+      test_url = "http://#{url}/rest/api/2/serverInfo"
 
-      WebMock.stub_request(:get, test_url).with(basic_auth: %w(jira_username jira_password)).to_return(body: { url: 'http://url' }.to_json )
+      WebMock.stub_request(:get, test_url).with(basic_auth: [username, password])
+        .to_return(body: { url: 'http://url' }.to_json )
 
       jira_service.test(nil)
     end
 
     context 'when the test succeeds' do
-      it 'tries to get Jira project with URL when API URL not set' do
-        test_settings('jira.example.com')
+      it 'gets Jira project with URL when API URL not set' do
+        expect(test_settings).to eq(success: true, result: { 'url' => 'http://url' })
       end
 
-      it 'returns correct result' do
-        expect(test_settings).to eq( { success: true, result: { 'url' => 'http://url' } })
-      end
-
-      it 'tries to get Jira project with API URL if set' do
+      it 'gets Jira project with API URL if set' do
         jira_service.update(api_url: 'http://jira.api.com')
-        test_settings('jira.api.com')
+
+        expect(test_settings('jira.api.com')).to eq(success: true, result: { 'url' => 'http://url' })
       end
     end
 
     context 'when the test fails' do
       it 'returns result with the error' do
         test_url = 'http://jira.example.com/rest/api/2/serverInfo'
-        WebMock.stub_request(:get, test_url).with(basic_auth: %w(jira_username jira_password))
+
+        WebMock.stub_request(:get, test_url).with(basic_auth: [username, password])
           .to_raise(JIRA::HTTPError.new(double(message: 'Some specific failure.')))
 
-        expect(jira_service.test(nil)).to eq( { success: false, result: 'Some specific failure.' })
+        expect(jira_service).to receive(:log_error).with(
+          "Error sending message",
+          hash_including(
+            client_url: url,
+            error: hash_including(
+              exception_class: 'JIRA::HTTPError',
+              exception_message: 'Some specific failure.'
+            )
+          )
+        )
+
+        expect(jira_service.test(nil)).to eq(success: false, result: 'Some specific failure.')
       end
     end
   end
@@ -693,6 +813,87 @@ describe JiraService do
     describe '#new_issue_url' do
       it 'handles trailing slashes' do
         expect(service.new_issue_url).to eq('http://jira.test.com/path/secure/CreateIssue.jspa')
+      end
+    end
+  end
+
+  describe '#jira_projects' do
+    let(:project) { create(:project) }
+    let(:jira_service) do
+      described_class.new(
+        project: project,
+        url: url,
+        username: username,
+        password: password
+      )
+    end
+
+    context 'when request to the jira server fails' do
+      it 'returns error' do
+        test_url = "#{url}/rest/api/2/project/search?maxResults=50&query=&startAt=0"
+        WebMock.stub_request(:get, test_url).with(basic_auth: [username, password])
+          .to_raise(JIRA::HTTPError.new(double(message: 'random error')))
+
+        response = jira_service.jira_projects
+
+        expect(response.error?).to be true
+        expect(response.message).to eq('random error')
+      end
+    end
+
+    context 'with invalid params' do
+      it 'escapes params' do
+        escaped_url = "#{url}/rest/api/2/project/search?query=Test%26maxResults%3D3&maxResults=10&startAt=0"
+        WebMock.stub_request(:get, escaped_url).with(basic_auth: [username, password])
+          .to_return(body: {}.to_json, headers: { "Content-Type": "application/json" })
+
+        response = jira_service.jira_projects(query: 'Test&maxResults=3', limit: 10, start_at: 'zero')
+
+        expect(response.error?).to be false
+      end
+    end
+
+    context 'when no jira_projects are returned' do
+      let(:jira_projects_json) do
+        '{
+          "self": "https://your-domain.atlassian.net/rest/api/2/project/search?startAt=0&maxResults=2",
+          "nextPage": "https://your-domain.atlassian.net/rest/api/2/project/search?startAt=2&maxResults=2",
+          "maxResults": 2,
+          "startAt": 0,
+          "total": 7,
+          "isLast": false,
+          "values": []
+        }'
+      end
+
+      it 'returns empty array of jira projects' do
+        test_url = "#{url}/rest/api/2/project/search?maxResults=50&query=&startAt=0"
+        WebMock.stub_request(:get, test_url).with(basic_auth: [username, password])
+          .to_return(body: jira_projects_json, headers: { "Content-Type": "application/json" })
+
+        response = jira_service.jira_projects
+
+        expect(response.success?).to be true
+        expect(response.payload).not_to be nil
+      end
+    end
+
+    context 'when jira_projects are returned' do
+      include_context 'jira projects request context'
+
+      it 'returns array of jira projects' do
+        response = jira_service.jira_projects
+
+        projects = response.payload[:projects]
+        project_keys = projects.map(&:key)
+        project_names = projects.map(&:name)
+        project_ids = projects.map(&:id)
+
+        expect(response.success?).to be true
+        expect(projects.size).to eq(2)
+        expect(project_keys).to eq(%w(EX ABC))
+        expect(project_names).to eq(%w(Example Alphabetical))
+        expect(project_ids).to eq(%w(10000 10001))
       end
     end
   end

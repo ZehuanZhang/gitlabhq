@@ -14,7 +14,7 @@ module Types
     expose_permissions Types::PermissionTypes::Snippet
 
     field :id, GraphQL::ID_TYPE,
-          description: 'Id of the snippet',
+          description: 'ID of the snippet',
           null: false
 
     field :title, GraphQL::STRING_TYPE,
@@ -35,10 +35,6 @@ module Types
     field :file_name, GraphQL::STRING_TYPE,
           description: 'File Name of the snippet',
           null: true
-
-    field :content, GraphQL::STRING_TYPE,
-          description: 'Content of the snippet',
-          null: false
 
     field :description, GraphQL::STRING_TYPE,
           description: 'Description of the snippet',
@@ -63,6 +59,21 @@ module Types
     field :raw_url, type: GraphQL::STRING_TYPE,
           description: 'Raw URL of the snippet',
           null: false
+
+    field :blob, type: Types::Snippets::BlobType,
+          description: 'Snippet blob',
+          calls_gitaly: true,
+          null: false
+
+    field :ssh_url_to_repo, type: GraphQL::STRING_TYPE,
+          description: 'SSH URL to the snippet repository',
+          calls_gitaly: true,
+          null: true
+
+    field :http_url_to_repo, type: GraphQL::STRING_TYPE,
+          description: 'HTTP URL to the snippet repository',
+          calls_gitaly: true,
+          null: true
 
     markdown_field :description_html, null: true, method: :description
   end

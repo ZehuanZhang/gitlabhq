@@ -149,7 +149,7 @@ before and after. If the hit ratio does not improve, the higher limit is
 probably not making a meaningful difference. Here is an example
 Prometheus query to see the hit rate:
 
-```text
+```plaintext
 sum(rate(gitaly_catfile_cache_total{type="hit"}[5m])) / sum(rate(gitaly_catfile_cache_total{type=~"(hit)|(miss)"}[5m]))
 ```
 
@@ -190,7 +190,7 @@ For historical reasons
 the Git hooks that allow GitLab to validate and react to Git pushes.
 Because Gitaly "owns" Git pushes, GitLab Shell must therefore be
 installed alongside Gitaly. This will be [simplified in the
-future](https://gitlab.com/gitlab-org/gitaly/issues/1226).
+future](https://gitlab.com/gitlab-org/gitaly/-/issues/1226).
 
 | Name | Type | Required | Description |
 | ---- | ---- | -------- | ----------- |
@@ -233,7 +233,7 @@ The following values configure logging in Gitaly under the `[logging]` section.
 | `sentry_environment` | string | no | [Sentry Environment](https://docs.sentry.io/enriching-error-data/environments/) for exception monitoring. |
 | `ruby_sentry_dsn` | string | no | Sentry DSN for `gitaly-ruby` exception monitoring. |
 
-While the main Gitaly application logs go to stdout, there are some extra log
+While the main Gitaly application logs go to `stdout`, there are some extra log
 files that go to a configured directory, like the GitLab Shell logs.
 GitLab Shell does not support `panic` or `trace` level logs. `panic` will fall
 back to `error`, while `trace` will fall back to `debug`. Any other invalid log
@@ -258,7 +258,7 @@ You can adjust the `concurrency` of each RPC endpoint.
 | ---- | ---- | -------- | ----------- |
 | `concurrency` | array | yes | An array of RPC endpoints. |
 | `rpc` | string | no | The name of the RPC endpoint (`/gitaly.RepositoryService/GarbageCollect`). |
-| `max_per_repo` | integer | no | Concurrency per RPC per repo. |
+| `max_per_repo` | integer | no | Concurrency per RPC per repository. |
 
 Example:
 

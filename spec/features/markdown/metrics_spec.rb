@@ -2,31 +2,40 @@
 
 require 'spec_helper'
 
-describe 'Metrics rendering', :js, :use_clean_rails_memory_store_caching, :sidekiq_might_not_need_inline do
+describe 'Metrics rendering', :js, :use_clean_rails_memory_store_caching, :sidekiq_inline do
   include PrometheusHelpers
   include GrafanaApiHelpers
+  include MetricsDashboardUrlHelpers
 
-  let(:user) { create(:user) }
-  let(:project) { create(:prometheus_project) }
-  let(:environment) { create(:environment, project: project) }
+  let_it_be(:user) { create(:user) }
+  let_it_be(:project) { create(:prometheus_project) }
+  let_it_be(:environment) { create(:environment, project: project) }
+
   let(:issue) { create(:issue, project: project, description: description) }
   let(:description) { "See [metrics dashboard](#{metrics_url}) for info." }
-  let(:metrics_url) { metrics_project_environment_url(project, environment) }
+  let(:metrics_url) { urls.metrics_project_environment_url(project, environment) }
 
   before do
-    configure_host
+    clear_host_from_memoized_variables
+
+    allow(::Gitlab.config.gitlab)
+      .to receive(:url)
+      .and_return(urls.root_url.chomp('/'))
+
     project.add_developer(user)
     sign_in(user)
   end
 
   after do
-    restore_host
+    clear_host_from_memoized_variables
   end
 
   context 'internal metrics embeds' do
     before do
       import_common_metrics
       stub_any_prometheus_request_with_response
+
+      allow(Prometheus::ProxyService).to receive(:new).and_call_original
     end
 
     it 'shows embedded metrics' do
@@ -35,10 +44,16 @@ describe 'Metrics rendering', :js, :use_clean_rails_memory_store_caching, :sidek
       expect(page).to have_css('div.prometheus-graph')
       expect(page).to have_text('Memory Usage (Total)')
       expect(page).to have_text('Core Usage (Total)')
+
+      # Ensure that the FE is calling the BE with expected params
+      expect(Prometheus::ProxyService)
+        .to have_received(:new)
+        .with(environment, 'GET', 'query_range', hash_including('start', 'end', 'step'))
+        .at_least(:once)
     end
 
     context 'when dashboard params are in included the url' do
-      let(:metrics_url) { metrics_project_environment_url(project, environment, **chart_params) }
+      let(:metrics_url) { urls.metrics_project_environment_url(project, environment, **chart_params) }
 
       let(:chart_params) do
         {
@@ -54,6 +69,41 @@ describe 'Metrics rendering', :js, :use_clean_rails_memory_store_caching, :sidek
         expect(page).to have_css('div.prometheus-graph')
         expect(page).to have_text(chart_params[:title])
         expect(page).to have_text(chart_params[:y_label])
+
+        # Ensure that the FE is calling the BE with expected params
+        expect(Prometheus::ProxyService)
+          .to have_received(:new)
+          .with(environment, 'GET', 'query_range', hash_including('start', 'end', 'step'))
+          .at_least(:once)
+      end
+
+      context 'when two dashboard urls are included' do
+        let(:chart_params_2) do
+          {
+            group: 'System metrics (Kubernetes)',
+            title: 'Core Usage (Total)',
+            y_label: 'Total Cores'
+          }
+        end
+        let(:metrics_url_2) { urls.metrics_project_environment_url(project, environment, **chart_params_2) }
+        let(:description) { "See [metrics dashboard](#{metrics_url}) for info. \n See [metrics dashboard](#{metrics_url_2}) for info." }
+        let(:issue) { create(:issue, project: project, description: description) }
+
+        it 'shows embedded metrics for both urls' do
+          visit project_issue_path(project, issue)
+
+          expect(page).to have_css('div.prometheus-graph')
+          expect(page).to have_text(chart_params[:title])
+          expect(page).to have_text(chart_params[:y_label])
+          expect(page).to have_text(chart_params_2[:title])
+          expect(page).to have_text(chart_params_2[:y_label])
+
+          # Ensure that the FE is calling the BE with expected params
+          expect(Prometheus::ProxyService)
+            .to have_received(:new)
+            .with(environment, 'GET', 'query_range', hash_including('start', 'end', 'step'))
+            .at_least(:once)
+        end
       end
     end
   end
@@ -67,6 +117,8 @@ describe 'Metrics rendering', :js, :use_clean_rails_memory_store_caching, :sidek
       stub_dashboard_request(grafana_base_url)
       stub_datasource_request(grafana_base_url)
       stub_all_grafana_proxy_requests(grafana_base_url)
+
+      allow(Grafana::ProxyService).to receive(:new).and_call_original
     end
 
     it 'shows embedded metrics' do
@@ -75,28 +127,46 @@ describe 'Metrics rendering', :js, :use_clean_rails_memory_store_caching, :sidek
       expect(page).to have_css('div.prometheus-graph')
       expect(page).to have_text('Expired / Evicted')
       expect(page).to have_text('expired - test-attribute-value')
+
+      # Ensure that the FE is calling the BE with expected params
+      expect(Grafana::ProxyService)
+        .to have_received(:new)
+        .with(project, anything, anything, hash_including('query', 'start', 'end', 'step'))
+        .at_least(:once)
+    end
+  end
+
+  context 'transient metrics embeds' do
+    let(:metrics_url) { urls.metrics_dashboard_project_environment_url(project, environment, embed_json: embed_json) }
+    let(:title) { 'Important Metrics' }
+    let(:embed_json) do
+      {
+        panel_groups: [{
+          panels: [{
+            type: "line-graph",
+            title: title,
+            y_label: "metric",
+            metrics: [{
+              query_range: "metric * 0.5 < 1"
+            }]
+          }]
+        }]
+      }.to_json
+    end
+
+    before do
+      stub_any_prometheus_request_with_response
+    end
+
+    it 'shows embedded metrics' do
+      visit project_issue_path(project, issue)
+
+      expect(page).to have_css('div.prometheus-graph')
+      expect(page).to have_text(title)
     end
   end
 
   def import_common_metrics
     ::Gitlab::DatabaseImporters::CommonMetrics::Importer.new.execute
-  end
-
-  def configure_host
-    @original_default_host = default_url_options[:host]
-    @original_gitlab_url = Gitlab.config.gitlab[:url]
-
-    # Ensure we create a metrics url with the right host.
-    # Configure host for route helpers in specs (also updates root_url):
-    default_url_options[:host] = Capybara.server_host
-
-    # Ensure we identify urls with the appropriate host.
-    # Configure host to include port in app:
-    Gitlab.config.gitlab[:url] = root_url.chomp('/')
-  end
-
-  def restore_host
-    default_url_options[:host] = @original_default_host
-    Gitlab.config.gitlab[:url] = @original_gitlab_url
   end
 end

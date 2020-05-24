@@ -3,14 +3,17 @@
 require 'spec_helper'
 
 describe Mentionable do
-  class Example
-    include Mentionable
+  before do
+    stub_const('Example', Class.new)
+    Example.class_eval do
+      include Mentionable
 
-    attr_accessor :project, :message
-    attr_mentionable :message
+      attr_accessor :project, :message
+      attr_mentionable :message
 
-    def author
-      nil
+      def author
+        nil
+      end
     end
   end
 
@@ -24,6 +27,42 @@ describe Mentionable do
       mentionable.project = project
       mentionable.message = 'JIRA-123'
       expect(mentionable.referenced_mentionables).to be_empty
+    end
+  end
+
+  describe '#any_mentionable_attributes_changed?' do
+    message = Struct.new(:text)
+
+    let(:mentionable) { Example.new }
+    let(:changes) do
+      msg = message.new('test')
+
+      changes = {}
+      changes[msg] = ['', 'some message']
+      changes[:random_sym_key] = ['', 'some message']
+      changes["random_string_key"] = ['', 'some message']
+      changes
+    end
+
+    it 'returns true with key string' do
+      changes["message"] = ['', 'some message']
+
+      allow(mentionable).to receive(:saved_changes).and_return(changes)
+
+      expect(mentionable.send(:any_mentionable_attributes_changed?)).to be true
+    end
+
+    it 'returns false with key symbol' do
+      changes[:message] = ['', 'some message']
+      allow(mentionable).to receive(:saved_changes).and_return(changes)
+
+      expect(mentionable.send(:any_mentionable_attributes_changed?)).to be false
+    end
+
+    it 'returns false when no attr_mentionable keys' do
+      allow(mentionable).to receive(:saved_changes).and_return(changes)
+
+      expect(mentionable.send(:any_mentionable_attributes_changed?)).to be false
     end
   end
 end
@@ -285,6 +324,39 @@ describe Snippet, 'Mentionable' do
   describe 'load mentions' do
     it_behaves_like 'load mentions from DB', :project_snippet do
       let(:note) { create(:note_on_project_snippet) }
+      let(:mentionable) { note.noteable }
+    end
+  end
+end
+
+describe PersonalSnippet, 'Mentionable' do
+  describe '#store_mentions!' do
+    it_behaves_like 'mentions in description', :personal_snippet
+    it_behaves_like 'mentions in notes', :personal_snippet do
+      let(:note) { create(:note_on_personal_snippet) }
+      let(:mentionable) { note.noteable }
+    end
+  end
+
+  describe 'load mentions' do
+    it_behaves_like 'load mentions from DB', :personal_snippet do
+      let(:note) { create(:note_on_personal_snippet) }
+      let(:mentionable) { note.noteable }
+    end
+  end
+end
+
+describe DesignManagement::Design do
+  describe '#store_mentions!' do
+    it_behaves_like 'mentions in notes', :design do
+      let(:note) { create(:diff_note_on_design) }
+      let(:mentionable) { note.noteable }
+    end
+  end
+
+  describe 'load mentions' do
+    it_behaves_like 'load mentions from DB', :design do
+      let(:note) { create(:diff_note_on_design) }
       let(:mentionable) { note.noteable }
     end
   end

@@ -15,12 +15,11 @@ RSpec.describe Release do
     it { is_expected.to have_many(:links).class_name('Releases::Link') }
     it { is_expected.to have_many(:milestones) }
     it { is_expected.to have_many(:milestone_releases) }
-    it { is_expected.to have_one(:evidence) }
+    it { is_expected.to have_many(:evidences).class_name('Releases::Evidence') }
   end
 
   describe 'validation' do
     it { is_expected.to validate_presence_of(:project) }
-    it { is_expected.to validate_presence_of(:description) }
     it { is_expected.to validate_presence_of(:tag) }
 
     context 'when a release exists in the database without a name' do
@@ -50,12 +49,6 @@ RSpec.describe Release do
         milestone = build(:milestone, project: project)
         expect { release.milestones << milestone }.to change { MilestoneRelease.count }.by(1)
       end
-    end
-  end
-
-  describe 'callbacks' do
-    it 'creates a new Evidence object on after_commit', :sidekiq_inline do
-      expect { release }.to change(Evidence, :count).by(1)
     end
   end
 
@@ -104,7 +97,7 @@ RSpec.describe Release do
     describe '#create_evidence!' do
       context 'when a release is created' do
         it 'creates one Evidence object too' do
-          expect { release_with_evidence }.to change(Evidence, :count).by(1)
+          expect { release_with_evidence }.to change(Releases::Evidence, :count).by(1)
         end
       end
     end
@@ -113,27 +106,7 @@ RSpec.describe Release do
       it 'also deletes the associated evidence' do
         release_with_evidence
 
-        expect { release_with_evidence.destroy }.to change(Evidence, :count).by(-1)
-      end
-    end
-  end
-
-  describe '#notify_new_release' do
-    context 'when a release is created' do
-      it 'instantiates NewReleaseWorker to send notifications' do
-        expect(NewReleaseWorker).to receive(:perform_async)
-
-        create(:release)
-      end
-    end
-
-    context 'when a release is updated' do
-      let!(:release) { create(:release) }
-
-      it 'does not send any new notification' do
-        expect(NewReleaseWorker).not_to receive(:perform_async)
-
-        release.update!(description: 'new description')
+        expect { release_with_evidence.destroy }.to change(Releases::Evidence, :count).by(-1)
       end
     end
   end
@@ -147,38 +120,6 @@ RSpec.describe Release do
       it 'returns tag' do
         expect(release.name).to eq(release.tag)
       end
-    end
-  end
-
-  describe '#evidence_sha' do
-    subject { release.evidence_sha }
-
-    context 'when a release was created before evidence collection existed' do
-      let!(:release) { create(:release) }
-
-      it { is_expected.to be_nil }
-    end
-
-    context 'when a release was created with evidence collection' do
-      let!(:release) { create(:release, :with_evidence) }
-
-      it { is_expected.to eq(release.evidence.summary_sha) }
-    end
-  end
-
-  describe '#evidence_summary' do
-    subject { release.evidence_summary }
-
-    context 'when a release was created before evidence collection existed' do
-      let!(:release) { create(:release) }
-
-      it { is_expected.to eq({}) }
-    end
-
-    context 'when a release was created with evidence collection' do
-      let!(:release) { create(:release, :with_evidence) }
-
-      it { is_expected.to eq(release.evidence.summary) }
     end
   end
 

@@ -1,5 +1,5 @@
 import { shallowMount, mount } from '@vue/test-utils';
-import { GlButton } from '@gitlab/ui';
+import { GlDeprecatedButton } from '@gitlab/ui';
 import eventHub from '~/environments/event_hub';
 import RollbackComponent from '~/environments/components/environment_rollback.vue';
 
@@ -13,7 +13,6 @@ describe('Rollback Component', () => {
         isLastDeployment: true,
         environment: {},
       },
-      attachToDocument: true,
     });
 
     expect(wrapper.element).toHaveSpriteIcon('repeat');
@@ -26,7 +25,6 @@ describe('Rollback Component', () => {
         isLastDeployment: false,
         environment: {},
       },
-      attachToDocument: true,
     });
 
     expect(wrapper.element).toHaveSpriteIcon('redo');
@@ -42,7 +40,7 @@ describe('Rollback Component', () => {
         },
       },
     });
-    const button = wrapper.find(GlButton);
+    const button = wrapper.find(GlDeprecatedButton);
 
     button.vm.$emit('click');
 

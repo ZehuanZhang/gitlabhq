@@ -1,11 +1,13 @@
 <script>
 import { mapState, mapActions, mapGetters } from 'vuex';
-import { sprintf, __ } from '~/locale';
+import { n__, __ } from '~/locale';
+import { GlModal } from '@gitlab/ui';
 import LoadingButton from '~/vue_shared/components/loading_button.vue';
 import CommitMessageField from './message_field.vue';
 import Actions from './actions.vue';
 import SuccessMessage from './success_message.vue';
-import { activityBarViews, MAX_WINDOW_HEIGHT_COMPACT } from '../../constants';
+import { leftSidebarViews, MAX_WINDOW_HEIGHT_COMPACT } from '../../constants';
+import consts from '../../stores/modules/commit/constants';
 
 export default {
   components: {
@@ -13,6 +15,7 @@ export default {
     LoadingButton,
     CommitMessageField,
     SuccessMessage,
+    GlModal,
   },
   data() {
     return {
@@ -26,18 +29,14 @@ export default {
     ...mapGetters(['hasChanges']),
     ...mapGetters('commit', ['discardDraftButtonDisabled', 'preBuiltCommitMessage']),
     overviewText() {
-      return sprintf(
-        __(
-          '<strong>%{changedFilesLength} unstaged</strong> and <strong>%{stagedFilesLength} staged</strong> changes',
-        ),
-        {
-          stagedFilesLength: this.stagedFiles.length,
-          changedFilesLength: this.changedFiles.length,
-        },
-      );
+      return n__('%d changed file', '%d changed files', this.stagedFiles.length);
     },
     commitButtonText() {
       return this.stagedFiles.length ? __('Commit') : __('Stage & Commit');
+    },
+
+    currentViewIsCommitView() {
+      return this.currentActivityView === leftSidebarViews.commit.name;
     },
   },
   watch: {
@@ -46,27 +45,44 @@ export default {
         this.isCompact = false;
       } else {
         this.isCompact = !(
-          this.currentActivityView === activityBarViews.commit &&
-          window.innerHeight >= MAX_WINDOW_HEIGHT_COMPACT
+          this.currentViewIsCommitView && window.innerHeight >= MAX_WINDOW_HEIGHT_COMPACT
         );
       }
     },
+
     lastCommitMsg() {
       this.isCompact =
-        this.currentActivityView !== activityBarViews.commit && this.lastCommitMsg === '';
+        this.currentActivityView !== leftSidebarViews.commit.name && this.lastCommitMsg === '';
     },
   },
   methods: {
     ...mapActions(['updateActivityBarView']),
-    ...mapActions('commit', ['updateCommitMessage', 'discardDraft', 'commitChanges']),
-    toggleIsSmall() {
-      this.updateActivityBarView(activityBarViews.commit)
-        .then(() => {
-          this.isCompact = !this.isCompact;
-        })
-        .catch(e => {
-          throw e;
-        });
+    ...mapActions('commit', [
+      'updateCommitMessage',
+      'discardDraft',
+      'commitChanges',
+      'updateCommitAction',
+    ]),
+    commit() {
+      return this.commitChanges().catch(() => {
+        this.$refs.createBranchModal.show();
+      });
+    },
+    forceCreateNewBranch() {
+      return this.updateCommitAction(consts.COMMIT_TO_NEW_BRANCH).then(() => this.commit());
+    },
+    toggleIsCompact() {
+      if (this.currentViewIsCommitView) {
+        this.isCompact = !this.isCompact;
+      } else {
+        this.updateActivityBarView(leftSidebarViews.commit.name)
+          .then(() => {
+            this.isCompact = false;
+          })
+          .catch(e => {
+            throw e;
+          });
+      }
     },
     beforeEnterTransition() {
       const elHeight = this.isCompact
@@ -88,7 +104,6 @@ export default {
       this.componentHeight = null;
     },
   },
-  activityBarViews,
 };
 </script>
 
@@ -114,19 +129,19 @@ export default {
           :disabled="!hasChanges"
           type="button"
           class="btn btn-primary btn-sm btn-block qa-begin-commit-button"
-          @click="toggleIsSmall"
+          @click="toggleIsCompact"
         >
           {{ __('Commit…') }}
         </button>
-        <p class="text-center" v-html="overviewText"></p>
+        <p class="text-center bold">{{ overviewText }}</p>
       </div>
-      <form v-if="!isCompact" ref="formEl" @submit.prevent.stop="commitChanges">
+      <form v-if="!isCompact" ref="formEl" @submit.prevent.stop="commit">
         <transition name="fade"> <success-message v-show="lastCommitMsg" /> </transition>
         <commit-message-field
           :text="commitMessage"
           :placeholder="preBuiltCommitMessage"
           @input="updateCommitMessage"
-          @submit="commitChanges"
+          @submit="commit"
         />
         <div class="clearfix prepend-top-15">
           <actions />
@@ -134,7 +149,7 @@ export default {
             :loading="submitCommitLoading"
             :label="commitButtonText"
             container-class="btn btn-success btn-sm float-left qa-commit-button"
-            @click="commitChanges"
+            @click="commit"
           />
           <button
             v-if="!discardDraftButtonDisabled"
@@ -148,11 +163,24 @@ export default {
             v-else
             type="button"
             class="btn btn-default btn-sm float-right"
-            @click="toggleIsSmall"
+            @click="toggleIsCompact"
           >
             {{ __('Collapse') }}
           </button>
         </div>
+        <gl-modal
+          ref="createBranchModal"
+          modal-id="ide-create-branch-modal"
+          :ok-title="__('Create new branch')"
+          :title="__('Branch has changed')"
+          ok-variant="success"
+          @ok="forceCreateNewBranch"
+        >
+          {{
+            __(`This branch has changed since you started editing.
+                Would you like to create a new branch?`)
+          }}
+        </gl-modal>
       </form>
     </transition>
   </div>

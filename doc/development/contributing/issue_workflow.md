@@ -2,7 +2,7 @@
 
 ## Issue tracker guidelines
 
-**[Search the issue tracker](https://gitlab.com/gitlab-org/gitlab-foss/issues)** for similar entries before
+**[Search the issue tracker](https://gitlab.com/gitlab-org/gitlab/issues)** for similar entries before
 submitting your own, there's a good chance somebody else had the same issue or
 feature proposal. Show your support with an award emoji and/or join the
 discussion.
@@ -14,9 +14,9 @@ see fit.
 
 ## Issue triaging
 
-Our issue triage policies are [described in our handbook](https://about.gitlab.com/handbook/engineering/issue-triage/).
+Our issue triage policies are [described in our handbook](https://about.gitlab.com/handbook/engineering/quality/issue-triage/).
 You are very welcome to help the GitLab team triage issues.
-We also organize [issue bash events](https://gitlab.com/gitlab-org/gitlab-foss/issues/17815)
+We also organize [issue bash events](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/17815)
 once every quarter.
 
 The most important thing is making sure valid issues receive feedback from the
@@ -35,12 +35,12 @@ project.
 ## Labels
 
 To allow for asynchronous issue handling, we use [milestones](https://gitlab.com/groups/gitlab-org/-/milestones)
-and [labels](https://gitlab.com/gitlab-org/gitlab-foss/-/labels). Leads and product managers handle most of the
-scheduling into milestones. Labelling is a task for everyone.
+and [labels](https://gitlab.com/gitlab-org/gitlab/-/labels). Leads and product managers handle most of the
+scheduling into milestones. Labeling is a task for everyone.
 
 Most issues will have labels for at least one of the following:
 
-- Type: `~feature`, `~bug`, `~backstage`, etc.
+- Type: `~feature`, `~bug`, `~backstage`, `~documentation`, etc.
 - Stage: `~"devops::plan"`, `~"devops::create"`, etc.
 - Group: `~"group::source code"`, `~"group::knowledge"`, `~"group::editor"`, etc.
 - Category: `~"Category:Code Analytics"`, `~"Category:DevOps Score"`, `~"Category:Templates"`, etc.
@@ -53,10 +53,10 @@ Most issues will have labels for at least one of the following:
 - Severity: ~`S1`, `~S2`, `~S3`, `~S4`
 
 All labels, their meaning and priority are defined on the
-[labels page](https://gitlab.com/gitlab-org/gitlab-foss/-/labels).
+[labels page](https://gitlab.com/gitlab-org/gitlab/-/labels).
 
 If you come across an issue that has none of these, and you're allowed to set
-labels, you can _always_ add the team and type, and often also the subject.
+labels, you can _always_ add the type, stage, group, and often the category/feature labels.
 
 ### Type labels
 
@@ -70,15 +70,18 @@ The current type labels are:
 - ~backstage
 - ~"support request"
 - ~meta
+- ~documentation
 
 A number of type labels have a priority assigned to them, which automatically
 makes them float to the top, depending on their importance.
 
 Type labels are always lowercase, and can have any color, besides blue (which is
-already reserved for subject labels).
+already reserved for category labels).
 
 The descriptions on the [labels page](https://gitlab.com/groups/gitlab-org/-/labels)
 explain what falls under each type label.
+
+The GitLab handbook documents [when something is a bug and when it is a feature request](https://about.gitlab.com/handbook/product/product-management/process/feature-or-bug.html).
 
 ### Facet labels
 
@@ -89,7 +92,7 @@ Following is a non-exhaustive list of facet labels:
 
 - ~enhancement: This label can refine an issue that has the ~feature label.
 - ~"master:broken": This label can refine an issue that has the ~bug label.
-- ~"master:flaky": This label can refine an issue that has the ~bug label.
+- ~"failure::flaky-test": This label can refine an issue that has the ~bug label.
 - ~"technical debt": This label can refine an issue that has the ~backstage label.
 - ~"static analysis": This label can refine an issue that has the ~backstage label.
 - ~"ci-build": This label can refine an issue that has the ~backstage label.
@@ -110,7 +113,7 @@ Stage labels respects the `devops::<stage_key>` naming convention.
 <https://gitlab.com/gitlab-com/www-gitlab-com/blob/master/data/stages.yml>
 with `_` replaced with a space.
 
-For instance, the "Manage" stage is represented by the ~"devops::manage" label in
+For instance, the "Manage" stage is represented by the `~"devops::manage"` label in
 the `gitlab-org` group since its key under `stages` is `manage`.
 
 The current stage labels can be found by [searching the labels list for `devops::`](https://gitlab.com/groups/gitlab-org/-/labels?search=devops::).
@@ -137,7 +140,7 @@ their color is `#A8D695`.
 with `_` replaced with a space.
 
 For instance, the "Continuous Integration" group is represented by the
-~"group::continuous integration"  label in the `gitlab-org` group since its key
+~"group::continuous integration" label in the `gitlab-org` group since its key
 under `stages.manage.groups` is `continuous_integration`.
 
 The current group labels can be found by [searching the labels list for `group::`](https://gitlab.com/groups/gitlab-org/-/labels?search=group::).
@@ -153,13 +156,13 @@ As a team needs some way to collect the work their members are planning to be as
 Normally there is a 1:1 relationship between Stage labels and Group labels. In
 the spirit of "Everyone can contribute", any issue can be picked up by any group,
 depending on current priorities. When picking up an issue belonging to a different
-group, it should be relabelled. For example, if an issue labelled ~"devops::create"
-and ~"group::knowledge" is picked up by someone in the Access group of the Plan stage,
-the issue should be relabelled as ~"group::access" while keeping the original
-~"devops::create" unchanged.
+group, it should be relabeled. For example, if an issue labeled `~"devops::create"`
+and `~"group::knowledge"` is picked up by someone in the Access group of the Plan stage,
+the issue should be relabeled as `~"group::access"` while keeping the original
+`~"devops::create"` unchanged.
 
 We also use stage and group labels to help quantify our [throughput](https://about.gitlab.com/handbook/engineering/management/throughput/).
-Please read [Stage and Group labels in Throughtput](https://about.gitlab.com/handbook/engineering/management/throughput/#stage-and-group-labels-in-throughput) for more information on how the labels are used in this context.
+Please read [Stage and Group labels in Throughput](https://about.gitlab.com/handbook/engineering/management/throughput/#stage-and-group-labels-in-throughput) for more information on how the labels are used in this context.
 
 ### Category labels
 
@@ -185,9 +188,9 @@ their color is `#428BCA`.
 `<Category Name>` is the category name as it is in the single source of truth for categories at
 <https://gitlab.com/gitlab-com/www-gitlab-com/blob/master/data/categories.yml>.
 
-For instance, the "Code Analytics" category is represented by the
-~"Category:Code Analytics" label in the `gitlab-org` group since its
-`code_analytics.name` value is "Code Analytics".
+For instance, the "DevOps Score" category is represented by the
+~"Category:DevOps Score" label in the `gitlab-org` group since its
+`devops_score.name` value is "DevOps Score".
 
 If a category's label doesn't respect this naming convention, it should be specified
 with [the `label` attribute](https://about.gitlab.com/handbook/marketing/website/#category-attributes)
@@ -261,7 +264,7 @@ release. There are three levels of Release Scoping labels:
   milestone. If these issues are not done in the current release, they will
   strongly be considered for the next release.
 - ~"Next Patch Release": Issues to put in the next patch release. Work on these
-  first, and add the "Pick Into X" label to the merge request, along with the
+  first, and add the `~"Pick into X.Y"` label to the merge request, along with the
   appropriate milestone.
 
 Each issue scheduled for the current milestone should be labeled ~Deliverable
@@ -270,45 +273,25 @@ or ~"Stretch". Any open issue for a previous milestone should be labeled
 
 ### Priority labels
 
-Priority labels help us define the time a ~bug fix should be completed. Priority determines how quickly the defect turnaround time must be.
-If there are multiple defects, the priority decides which defect has to be fixed immediately versus later.
-This label documents the planned timeline & urgency which is used to measure against our target SLO on delivering ~bug fixes.
+We have the following priority labels:
 
-| Label | Meaning         | Target SLO (applies only to ~bug and ~security defects)                                                    |
-|-------|-----------------|----------------------------------------------------------------------------|
-| ~P1   | Urgent Priority | The current release + potentially immediate hotfix to GitLab.com (30 days) |
-| ~P2   | High Priority   | The next release (60 days)                                                 |
-| ~P3   | Medium Priority | Within the next 3 releases (approx one quarter or 90 days)                 |
-| ~P4   | Low Priority    | Anything outside the next 3 releases (more than one quarter or 120 days)   |
+- ~P1
+- ~P2
+- ~P3
+- ~P4
+
+Please refer to the issue triage [priority label](https://about.gitlab.com/handbook/engineering/quality/issue-triage/#priority) section in our handbook to see how it's used.
 
 ### Severity labels
 
-Severity labels help us clearly communicate the impact of a ~bug on users.
-There can be multiple facets of the impact. The below is a guideline.
+We have the following severity labels:
 
-| Label | Meaning           | Functionality                                         | Affected Users                   | GitLab.com Availability                            | Performance Degradation      |
-|-------|-------------------|-------------------------------------------------------|----------------------------------|----------------------------------------------------|------------------------------|
-| ~S1   | Blocker           | Unusable feature with no workaround, user is blocked  | Impacts 50% or more of users     | Outage, Significant impact on all of GitLab.com    |                                                       |
-| ~S2   | Critical Severity | Broken Feature, workaround too complex & unacceptable | Impacts between 25%-50% of users | Significant impact on large portions of GitLab.com | Degradation is guaranteed to occur in the near future |
-| ~S3   | Major Severity    | Broken feature with an acceptable workaround          | Impacts up to 25% of users       | Limited impact on important portions of GitLab.com | Degradation is likely to occur in the near future     |
-| ~S4   | Low Severity      | Functionality inconvenience or cosmetic issue         | Impacts less than 5% of users    | Minor impact on GitLab.com                         | Degradation _may_ occur but it's not likely           |
+- ~S1
+- ~S2
+- ~S3
+- ~S4
 
-If a bug seems to fall between two severity labels, assign it to the higher-severity label.
-
-- Example(s) of ~S1
-  - Data corruption/loss.
-  - Security breach.
-  - Unable to create an issue or merge request.
-  - Unable to add a comment or thread to the issue or merge request.
-- Example(s) of ~S2
-  - Cannot submit changes through the web IDE but the commandline works.
-  - A status widget on the merge request page is not working but information can be seen in the test pipeline page.
-- Example(s) of ~S3
-  - Can create merge requests only from the Merge Requests list view, not from an Issue page.
-  - Status is not updated in real time and needs a page refresh.
-- Example(s) of ~S4
-  - Label colors are incorrect.
-  - UI elements are not fully aligned.
+Please refer to the issue triage [severity label](https://about.gitlab.com/handbook/engineering/quality/issue-triage/#severity) section in our handbook to see how it's used.
 
 ### Label for community contributors
 
@@ -364,22 +347,19 @@ there is the ~"stewardship" label.
 
 This label is to be used for issues in which the stewardship of GitLab
 is a topic of discussion. For instance if GitLab Inc. is planning to add
-features from GitLab EE to GitLab CE, related issues would be labelled with
+features from GitLab EE to GitLab CE, related issues would be labeled with
 ~"stewardship".
 
 A recent example of this was the issue for
-[bringing the time tracking API to GitLab CE](https://gitlab.com/gitlab-org/gitlab-foss/issues/25517#note_20019084).
+[bringing the time tracking API to GitLab CE](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/25517#note_20019084).
 
 ## Feature proposals
 
-To create a feature proposal for CE, open an issue on the
-[issue tracker of CE](https://gitlab.com/gitlab-org/gitlab-foss/issues).
-
-For feature proposals for EE, open an issue on the
-[issue tracker of EE](https://gitlab.com/gitlab-org/gitlab/issues).
+To create a feature proposal, open an issue on the
+[issue tracker](https://gitlab.com/gitlab-org/gitlab/issues).
 
 In order to help track the feature proposals, we have created a
-[`feature`](https://gitlab.com/gitlab-org/gitlab-foss/issues?label_name=feature) label. For the time being, users that are not members
+[`feature`](https://gitlab.com/gitlab-org/gitlab/issues?label_name=feature) label. For the time being, users that are not members
 of the project cannot add labels. You can instead ask one of the [core team](https://about.gitlab.com/community/core-team/)
 members to add the label ~feature to the issue or add the following
 code snippet right after your description in a new line: `~feature`.
@@ -422,7 +402,8 @@ below will make it easy to manage this, without unnecessary overhead.
 
 Every monthly release has a corresponding issue on the CE issue tracker to keep
 track of functionality broken by that release and any fixes that need to be
-included in a patch release (see [8.3 Regressions] as an example).
+included in a patch release (see
+[8.3 Regressions](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/4127) as an example).
 
 As outlined in the issue description, the intended workflow is to post one note
 with a reference to an issue describing the regression, and then to update that
@@ -432,16 +413,14 @@ If you're a contributor who doesn't have the required permissions to update
 other users' notes, please post a new note with a reference to both the issue
 and the merge request.
 
-The release manager will [update the notes] in the regression issue as fixes are
-addressed.
-
-[8.3 Regressions]: https://gitlab.com/gitlab-org/gitlab-foss/issues/4127
-[update the notes]: https://gitlab.com/gitlab-org/release-tools/blob/master/doc/pro-tips.md#update-the-regression-issue
+The release manager will
+[update the notes](https://gitlab.com/gitlab-org/release-tools/blob/master/doc/pro-tips.md#update-the-regression-issue)
+in the regression issue as fixes are addressed.
 
 ## Technical and UX debt
 
 In order to track things that can be improved in GitLab's codebase,
-we use the ~"technical debt" label in [GitLab's issue tracker](https://gitlab.com/gitlab-org/gitlab-foss/issues).
+we use the ~"technical debt" label in [GitLab's issue tracker](https://gitlab.com/gitlab-org/gitlab/issues).
 For missed user experience requirements, we use the ~"UX debt" label.
 
 These labels should be added to issues that describe things that can be improved,
@@ -469,7 +448,7 @@ It's common to discover technical debt during development of a new feature. In
 the spirit of "minimum viable change", resolution is often deferred to a
 follow-up issue. However, this cannot be used as an excuse to merge poor-quality
 code that would otherwise not pass review, or to overlook trivial matters that
-don't deserve the be scheduled independently, and would be best resolved in the
+don't deserve to be scheduled independently, and would be best resolved in the
 original merge request - or not tracked at all!
 
 The overheads of scheduling, and rate of change in the GitLab codebase, mean
@@ -482,7 +461,7 @@ fixing in the same MR, but not worth creating a follow-up issue for. Renaming a
 method that is used in many places to make its intent slightly clearer may be
 worth fixing, but it should not happen in the same MR, and is generally not
 worth the overhead of having an issue of its own. These issues would invariably
-be labelled `~P4 ~S4` if we were to create them.
+be labeled `~P4 ~S4` if we were to create them.
 
 More severe technical debt can have implications for development velocity. If
 it isn't addressed in a timely manner, the codebase becomes needlessly difficult

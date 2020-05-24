@@ -1,47 +1,192 @@
-import { commitItemIconMap } from '~/ide/constants';
-import { getCommitIconMap } from '~/ide/utils';
-import { decorateData } from '~/ide/stores/utils';
+import {
+  isTextFile,
+  registerLanguages,
+  trimPathComponents,
+  addFinalNewline,
+  getPathParents,
+} from '~/ide/utils';
+import { languages } from 'monaco-editor';
 
 describe('WebIDE utils', () => {
-  const createFile = (name = 'name', id = name, type = '', parent = null) =>
-    decorateData({
-      id,
-      type,
-      icon: 'icon',
-      url: 'url',
-      name,
-      path: parent ? `${parent.path}/${name}` : name,
-      parentPath: parent ? parent.path : '',
-      lastCommit: {},
+  describe('isTextFile', () => {
+    it('returns false for known binary types', () => {
+      expect(isTextFile('file content', 'image/png', 'my.png')).toBeFalsy();
+      // mime types are case insensitive
+      expect(isTextFile('file content', 'IMAGE/PNG', 'my.png')).toBeFalsy();
     });
 
-  describe('getCommitIconMap', () => {
-    let entry;
+    it('returns true for known text types', () => {
+      expect(isTextFile('file content', 'text/plain', 'my.txt')).toBeTruthy();
+      // mime types are case insensitive
+      expect(isTextFile('file content', 'TEXT/PLAIN', 'my.txt')).toBeTruthy();
+    });
+
+    it('returns true for file extensions that Monaco supports syntax highlighting for', () => {
+      // test based on both MIME and extension
+      expect(isTextFile('{"éêė":"value"}', 'application/json', 'my.json')).toBeTruthy();
+      expect(isTextFile('{"éêė":"value"}', 'application/json', '.tsconfig')).toBeTruthy();
+      expect(isTextFile('SELECT "éêė" from tablename', 'application/sql', 'my.sql')).toBeTruthy();
+    });
+
+    it('returns true even irrespective of whether the mimes, extensions or file names are lowercase or upper case', () => {
+      expect(isTextFile('{"éêė":"value"}', 'application/json', 'MY.JSON')).toBeTruthy();
+      expect(isTextFile('SELECT "éêė" from tablename', 'application/sql', 'MY.SQL')).toBeTruthy();
+      expect(
+        isTextFile('var code = "something"', 'application/javascript', 'Gruntfile'),
+      ).toBeTruthy();
+      expect(
+        isTextFile(
+          'MAINTAINER Александр "alexander11354322283@me.com"',
+          'application/octet-stream',
+          'dockerfile',
+        ),
+      ).toBeTruthy();
+    });
+
+    it('returns false if filename is same as the expected extension', () => {
+      expect(isTextFile('SELECT "éêė" from tablename', 'application/sql', 'sql')).toBeFalsy();
+    });
+
+    it('returns true for ASCII only content for unknown types', () => {
+      expect(isTextFile('plain text', 'application/x-new-type', 'hello.mytype')).toBeTruthy();
+    });
+
+    it('returns true for relevant filenames', () => {
+      expect(
+        isTextFile(
+          'MAINTAINER Александр "alexander11354322283@me.com"',
+          'application/octet-stream',
+          'Dockerfile',
+        ),
+      ).toBeTruthy();
+    });
+
+    it('returns false for non-ASCII content for unknown types', () => {
+      expect(isTextFile('{"éêė":"value"}', 'application/octet-stream', 'my.random')).toBeFalsy();
+    });
+  });
+
+  describe('trimPathComponents', () => {
+    it.each`
+      input                           | output
+      ${'example path '}              | ${'example path'}
+      ${'p/somefile '}                | ${'p/somefile'}
+      ${'p /somefile '}               | ${'p/somefile'}
+      ${'p/ somefile '}               | ${'p/somefile'}
+      ${' p/somefile '}               | ${'p/somefile'}
+      ${'p/somefile  .md'}            | ${'p/somefile  .md'}
+      ${'path / to / some/file.doc '} | ${'path/to/some/file.doc'}
+    `('trims all path components in path: "$input"', ({ input, output }) => {
+      expect(trimPathComponents(input)).toEqual(output);
+    });
+  });
+
+  describe('registerLanguages', () => {
+    let langs;
 
     beforeEach(() => {
-      entry = createFile('Entry item');
+      langs = [
+        {
+          id: 'html',
+          extensions: ['.html'],
+          conf: { comments: { blockComment: ['<!--', '-->'] } },
+          language: { tokenizer: {} },
+        },
+        {
+          id: 'css',
+          extensions: ['.css'],
+          conf: { comments: { blockComment: ['/*', '*/'] } },
+          language: { tokenizer: {} },
+        },
+        {
+          id: 'js',
+          extensions: ['.js'],
+          conf: { comments: { blockComment: ['/*', '*/'] } },
+          language: { tokenizer: {} },
+        },
+      ];
+
+      jest.spyOn(languages, 'register').mockImplementation(() => {});
+      jest.spyOn(languages, 'setMonarchTokensProvider').mockImplementation(() => {});
+      jest.spyOn(languages, 'setLanguageConfiguration').mockImplementation(() => {});
     });
 
-    it('renders "deleted" icon for deleted entries', () => {
-      entry.deleted = true;
-      expect(getCommitIconMap(entry)).toEqual(commitItemIconMap.deleted);
+    it('registers all the passed languages with Monaco', () => {
+      registerLanguages(...langs);
+
+      expect(languages.register.mock.calls).toEqual([
+        [
+          {
+            conf: { comments: { blockComment: ['/*', '*/'] } },
+            extensions: ['.css'],
+            id: 'css',
+            language: { tokenizer: {} },
+          },
+        ],
+        [
+          {
+            conf: { comments: { blockComment: ['/*', '*/'] } },
+            extensions: ['.js'],
+            id: 'js',
+            language: { tokenizer: {} },
+          },
+        ],
+        [
+          {
+            conf: { comments: { blockComment: ['<!--', '-->'] } },
+            extensions: ['.html'],
+            id: 'html',
+            language: { tokenizer: {} },
+          },
+        ],
+      ]);
+
+      expect(languages.setMonarchTokensProvider.mock.calls).toEqual([
+        ['css', { tokenizer: {} }],
+        ['js', { tokenizer: {} }],
+        ['html', { tokenizer: {} }],
+      ]);
+
+      expect(languages.setLanguageConfiguration.mock.calls).toEqual([
+        ['css', { comments: { blockComment: ['/*', '*/'] } }],
+        ['js', { comments: { blockComment: ['/*', '*/'] } }],
+        ['html', { comments: { blockComment: ['<!--', '-->'] } }],
+      ]);
+    });
+  });
+
+  describe('addFinalNewline', () => {
+    it.each`
+      input              | output
+      ${'some text'}     | ${'some text\n'}
+      ${'some text\n'}   | ${'some text\n'}
+      ${'some text\n\n'} | ${'some text\n\n'}
+      ${'some\n text'}   | ${'some\n text\n'}
+    `('adds a newline if it doesnt already exist for input: $input', ({ input, output }) => {
+      expect(addFinalNewline(input)).toEqual(output);
     });
 
-    it('renders "addition" icon for temp entries', () => {
-      entry.tempFile = true;
-      expect(getCommitIconMap(entry)).toEqual(commitItemIconMap.addition);
+    it.each`
+      input                  | output
+      ${'some text'}         | ${'some text\r\n'}
+      ${'some text\r\n'}     | ${'some text\r\n'}
+      ${'some text\n'}       | ${'some text\n\r\n'}
+      ${'some text\r\n\r\n'} | ${'some text\r\n\r\n'}
+      ${'some\r\n text'}     | ${'some\r\n text\r\n'}
+    `('works with CRLF newline style; input: $input', ({ input, output }) => {
+      expect(addFinalNewline(input, '\r\n')).toEqual(output);
     });
+  });
 
-    it('renders "modified" icon for newly-renamed entries', () => {
-      entry.prevPath = 'foo/bar';
-      entry.tempFile = false;
-      expect(getCommitIconMap(entry)).toEqual(commitItemIconMap.modified);
-    });
-
-    it('renders "modified" icon even for temp entries if they are newly-renamed', () => {
-      entry.prevPath = 'foo/bar';
-      entry.tempFile = true;
-      expect(getCommitIconMap(entry)).toEqual(commitItemIconMap.modified);
+  describe('getPathParents', () => {
+    it.each`
+      path                                  | parents
+      ${'foo/bar/baz/index.md'}             | ${['foo/bar/baz', 'foo/bar', 'foo']}
+      ${'foo/bar/baz'}                      | ${['foo/bar', 'foo']}
+      ${'index.md'}                         | ${[]}
+      ${'path with/spaces to/something.md'} | ${['path with/spaces to', 'path with']}
+    `('gets all parent directory names for path: $path', ({ path, parents }) => {
+      expect(getPathParents(path)).toEqual(parents);
     });
   });
 });

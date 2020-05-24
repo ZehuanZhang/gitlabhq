@@ -3,8 +3,8 @@
 require 'spec_helper'
 
 describe API::Notes do
-  let(:user) { create(:user) }
-  let!(:project) { create(:project, :public, namespace: user.namespace) }
+  let!(:user) { create(:user) }
+  let!(:project) { create(:project, :public) }
   let(:private_user) { create(:user) }
 
   before do
@@ -41,7 +41,7 @@ describe API::Notes do
       end
 
       it 'responds with resource not found error' do
-        expect(response.status).to eq 404
+        expect(response).to have_gitlab_http_status(:not_found)
       end
 
       it 'does not create new note' do
@@ -72,7 +72,7 @@ describe API::Notes do
           it "returns an empty array" do
             get api("/projects/#{ext_proj.id}/issues/#{ext_issue.iid}/notes", user)
 
-            expect(response).to have_gitlab_http_status(200)
+            expect(response).to have_gitlab_http_status(:ok)
             expect(response).to include_pagination_headers
             expect(json_response).to be_an Array
             expect(json_response).to be_empty
@@ -86,7 +86,7 @@ describe API::Notes do
             it "returns 404" do
               get api("/projects/#{ext_proj.id}/issues/#{ext_issue.iid}/notes", user)
 
-              expect(response).to have_gitlab_http_status(404)
+              expect(response).to have_gitlab_http_status(:not_found)
             end
           end
         end
@@ -95,7 +95,7 @@ describe API::Notes do
           it "returns a non-empty array" do
             get api("/projects/#{ext_proj.id}/issues/#{ext_issue.iid}/notes", private_user)
 
-            expect(response).to have_gitlab_http_status(200)
+            expect(response).to have_gitlab_http_status(:ok)
             expect(response).to include_pagination_headers
             expect(json_response).to be_an Array
             expect(json_response.first['body']).to eq(cross_reference_note.note)
@@ -114,7 +114,7 @@ describe API::Notes do
 
           shared_examples 'a notes request' do
             it 'is a note array response' do
-              expect(response).to have_gitlab_http_status(200)
+              expect(response).to have_gitlab_http_status(:ok)
               expect(response).to include_pagination_headers
               expect(json_response).to be_an Array
             end
@@ -177,7 +177,7 @@ describe API::Notes do
           it "returns a 404 error" do
             get api("/projects/#{ext_proj.id}/issues/#{ext_issue.iid}/notes/#{cross_reference_note.id}", user)
 
-            expect(response).to have_gitlab_http_status(404)
+            expect(response).to have_gitlab_http_status(:not_found)
           end
 
           context "when issue is confidential" do
@@ -188,7 +188,7 @@ describe API::Notes do
             it "returns 404" do
               get api("/projects/#{project.id}/issues/#{issue.iid}/notes/#{issue_note.id}", private_user)
 
-              expect(response).to have_gitlab_http_status(404)
+              expect(response).to have_gitlab_http_status(:not_found)
             end
           end
         end
@@ -197,7 +197,7 @@ describe API::Notes do
           it "returns an issue note by id" do
             get api("/projects/#{ext_proj.id}/issues/#{ext_issue.iid}/notes/#{cross_reference_note.id}", private_user)
 
-            expect(response).to have_gitlab_http_status(200)
+            expect(response).to have_gitlab_http_status(:ok)
             expect(json_response['body']).to eq(cross_reference_note.note)
           end
         end
@@ -226,18 +226,60 @@ describe API::Notes do
       let(:note) { merge_request_note }
     end
 
+    let(:request_body) { 'Hi!' }
+    let(:request_path) { "/projects/#{project.id}/merge_requests/#{merge_request.iid}/notes" }
+
+    subject { post api(request_path, user), params: { body: request_body } }
+
+    context 'a command only note' do
+      let(:assignee) { create(:user) }
+      let(:request_body) { "/assign #{assignee.to_reference}" }
+
+      before do
+        project.add_developer(assignee)
+        project.add_developer(user)
+      end
+
+      it 'returns 202 Accepted status' do
+        subject
+
+        expect(response).to have_gitlab_http_status(:accepted)
+      end
+
+      it 'does not actually create a new note' do
+        expect { subject }.not_to change { Note.where(system: false).count }
+      end
+
+      it 'does however create a system note about the change' do
+        expect { subject }.to change { Note.system.count }.by(1)
+      end
+
+      it 'applies the commands' do
+        expect { subject }.to change { merge_request.reset.assignees }
+      end
+
+      it 'reports the changes' do
+        subject
+
+        expect(json_response).to include(
+          'commands_changes' => include(
+            'assignee_ids' => [Integer]
+          ),
+          'summary' => include("Assigned #{assignee.to_reference}.")
+        )
+      end
+    end
+
     context 'when the merge request discussion is locked' do
       before do
         merge_request.update_attribute(:discussion_locked, true)
       end
 
       context 'when a user is a team member' do
-        subject { post api("/projects/#{project.id}/merge_requests/#{merge_request.iid}/notes", user), params: { body: 'Hi!' } }
-
         it 'returns 200 status' do
           subject
 
-          expect(response).to have_gitlab_http_status(201)
+          expect(response).to have_gitlab_http_status(:created)
         end
 
         it 'creates a new note' do
@@ -251,7 +293,7 @@ describe API::Notes do
         it 'returns 403 status' do
           subject
 
-          expect(response).to have_gitlab_http_status(403)
+          expect(response).to have_gitlab_http_status(:forbidden)
         end
 
         it 'does not create a new note' do

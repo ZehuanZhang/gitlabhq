@@ -55,30 +55,6 @@ describe('Multi-file store mutations', () => {
     });
   });
 
-  describe('SET_LEFT_PANEL_COLLAPSED', () => {
-    it('sets left panel collapsed', () => {
-      mutations.SET_LEFT_PANEL_COLLAPSED(localState, true);
-
-      expect(localState.leftPanelCollapsed).toBeTruthy();
-
-      mutations.SET_LEFT_PANEL_COLLAPSED(localState, false);
-
-      expect(localState.leftPanelCollapsed).toBeFalsy();
-    });
-  });
-
-  describe('SET_RIGHT_PANEL_COLLAPSED', () => {
-    it('sets right panel collapsed', () => {
-      mutations.SET_RIGHT_PANEL_COLLAPSED(localState, true);
-
-      expect(localState.rightPanelCollapsed).toBeTruthy();
-
-      mutations.SET_RIGHT_PANEL_COLLAPSED(localState, false);
-
-      expect(localState.rightPanelCollapsed).toBeFalsy();
-    });
-  });
-
   describe('CLEAR_STAGED_CHANGES', () => {
     it('clears stagedFiles array', () => {
       localState.stagedFiles.push('a');
@@ -196,16 +172,6 @@ describe('Multi-file store mutations', () => {
     });
   });
 
-  describe('BURST_UNUSED_SEAL', () => {
-    it('updates unusedSeal', () => {
-      expect(localState.unusedSeal).toBe(true);
-
-      mutations.BURST_UNUSED_SEAL(localState);
-
-      expect(localState.unusedSeal).toBe(false);
-    });
-  });
-
   describe('SET_ERROR_MESSAGE', () => {
     it('updates error message', () => {
       mutations.SET_ERROR_MESSAGE(localState, 'error');
@@ -283,7 +249,7 @@ describe('Multi-file store mutations', () => {
       expect(localState.changedFiles).toEqual([]);
     });
 
-    it('removes tempFile from changedFiles when deleted', () => {
+    it('removes tempFile from changedFiles and stagedFiles when deleted', () => {
       localState.entries.filePath = {
         path: 'filePath',
         deleted: false,
@@ -292,10 +258,22 @@ describe('Multi-file store mutations', () => {
       };
 
       localState.changedFiles.push({ ...localState.entries.filePath });
+      localState.stagedFiles.push({ ...localState.entries.filePath });
 
       mutations.DELETE_ENTRY(localState, 'filePath');
 
       expect(localState.changedFiles).toEqual([]);
+      expect(localState.stagedFiles).toEqual([]);
+    });
+
+    it('bursts unused seal', () => {
+      localState.entries.test = file('test');
+
+      expect(localState.unusedSeal).toBe(true);
+
+      mutations.DELETE_ENTRY(localState, 'test');
+
+      expect(localState.unusedSeal).toBe(false);
     });
   });
 
@@ -334,23 +312,6 @@ describe('Multi-file store mutations', () => {
           prevKey: undefined,
         }),
       );
-    });
-  });
-
-  describe('OPEN_NEW_ENTRY_MODAL', () => {
-    it('sets entryModal', () => {
-      localState.entries.testPath = file();
-
-      mutations.OPEN_NEW_ENTRY_MODAL(localState, {
-        type: 'test',
-        path: 'testPath',
-      });
-
-      expect(localState.entryModal).toEqual({
-        type: 'test',
-        path: 'testPath',
-        entry: localState.entries.testPath,
-      });
     });
   });
 
@@ -494,7 +455,7 @@ describe('Multi-file store mutations', () => {
     it('properly handles files with spaces in name', () => {
       const path = 'my fancy path';
       const newPath = 'new path';
-      const oldEntry = { ...file(path, path, 'blob'), url: `project/-/${encodeURI(path)}` };
+      const oldEntry = { ...file(path, path, 'blob'), url: `project/-/${path}` };
 
       localState.entries[path] = oldEntry;
 
@@ -510,12 +471,12 @@ describe('Multi-file store mutations', () => {
         id: newPath,
         path: newPath,
         name: newPath,
-        url: `project/-/new%20path`,
+        url: `project/-/new path`,
         key: expect.stringMatching(newPath),
         prevId: path,
         prevName: path,
         prevPath: path,
-        prevUrl: `project/-/my%20fancy%20path`,
+        prevUrl: `project/-/my fancy path`,
         prevKey: oldEntry.key,
         prevParentPath: oldEntry.parentPath,
       });

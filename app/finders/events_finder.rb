@@ -43,16 +43,24 @@ class EventsFinder
     events = sort(events)
 
     events = events.with_associations if params[:with_associations]
-
     paginated_filtered_by_user_visibility(events)
   end
 
   private
 
   def get_events
-    return EventCollection.new(current_user.authorized_projects).all_project_events if scope == 'all'
+    if current_user && scope == 'all'
+      EventCollection.new(current_user.authorized_projects).all_project_events
+    else
+      # EventCollection is responsible for applying the feature flag
+      apply_feature_flags(source.events)
+    end
+  end
 
-    source.events
+  def apply_feature_flags(events)
+    return events if ::Feature.enabled?(:wiki_events)
+
+    events.not_wiki_page
   end
 
   # rubocop: disable CodeReuse/ActiveRecord

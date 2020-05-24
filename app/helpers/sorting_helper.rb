@@ -1,8 +1,6 @@
 # frozen_string_literal: true
 
 module SortingHelper
-  prepend_if_ee('::EE::SortingHelper') # rubocop: disable Cop/InjectEnterpriseEditionModule
-
   def sort_options_hash
     {
       sort_value_created_date      => sort_title_created_date,
@@ -205,6 +203,13 @@ module SortingHelper
       sort_value_popularity => sort_value_least_popular,
       sort_value_most_popular => sort_value_least_popular
     }.merge(issuable_sort_option_overrides)
+  end
+
+  def audit_logs_sort_order_hash
+    {
+      sort_value_recently_created => sort_title_recently_created,
+      sort_value_oldest_created   => sort_title_oldest_created
+    }
   end
 
   def issuable_sort_option_title(sort_value)
@@ -577,3 +582,5 @@ module SortingHelper
     'expired_asc'
   end
 end
+
+SortingHelper.prepend_if_ee('::EE::SortingHelper')

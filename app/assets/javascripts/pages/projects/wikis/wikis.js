@@ -1,6 +1,13 @@
 import { GlBreakpointInstance as bp } from '@gitlab/ui/dist/utils';
 import { s__, sprintf } from '~/locale';
 
+const MARKDOWN_LINK_TEXT = {
+  markdown: '[Link Title](page-slug)',
+  rdoc: '{Link title}[link:page-slug]',
+  asciidoc: 'link:page-slug[Link title]',
+  org: '[[page-slug]]',
+};
+
 export default class Wikis {
   constructor() {
     this.sidebarEl = document.querySelector('.js-wiki-sidebar');
@@ -28,6 +35,28 @@ export default class Wikis {
 
     window.addEventListener('resize', () => this.renderSidebar());
     this.renderSidebar();
+
+    const changeFormatSelect = document.querySelector('#wiki_format');
+    const linkExample = document.querySelector('.js-markup-link-example');
+
+    if (changeFormatSelect) {
+      changeFormatSelect.addEventListener('change', e => {
+        linkExample.innerHTML = MARKDOWN_LINK_TEXT[e.target.value];
+      });
+    }
+
+    const wikiTextarea = document.querySelector('form.wiki-form #wiki_content');
+    const wikiForm = document.querySelector('form.wiki-form');
+
+    if (wikiTextarea) {
+      wikiTextarea.addEventListener('input', () => {
+        window.onbeforeunload = () => '';
+      });
+
+      wikiForm.addEventListener('submit', () => {
+        window.onbeforeunload = null;
+      });
+    }
   }
 
   handleWikiTitleChange(e) {
@@ -40,7 +69,7 @@ export default class Wikis {
     // Replace hyphens with spaces
     if (title) title = title.replace(/-+/g, ' ');
 
-    const newCommitMessage = sprintf(this.commitMessageI18n, { pageTitle: title });
+    const newCommitMessage = sprintf(this.commitMessageI18n, { pageTitle: title }, false);
     this.commitMessageInput.value = newCommitMessage;
   }
 

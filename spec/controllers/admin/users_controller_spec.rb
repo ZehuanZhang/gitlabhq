@@ -47,7 +47,7 @@ describe Admin::UsersController do
     it 'deletes user and ghosts their contributions' do
       delete :destroy, params: { id: user.username }, format: :json
 
-      expect(response).to have_gitlab_http_status(200)
+      expect(response).to have_gitlab_http_status(:ok)
       expect(User.exists?(user.id)).to be_falsy
       expect(issue.reload.author).to be_ghost
     end
@@ -55,7 +55,7 @@ describe Admin::UsersController do
     it 'deletes the user and their contributions when hard delete is specified' do
       delete :destroy, params: { id: user.username, hard_delete: true }, format: :json
 
-      expect(response).to have_gitlab_http_status(200)
+      expect(response).to have_gitlab_http_status(:ok)
       expect(User.exists?(user.id)).to be_falsy
       expect(Issue.exists?(issue.id)).to be_falsy
     end
@@ -257,28 +257,6 @@ describe Admin::UsersController do
   end
 
   describe 'POST update' do
-    context 'updating name' do
-      context 'when the ability to update their name is disabled for users' do
-        before do
-          stub_application_setting(updating_name_disabled_for_users: true)
-        end
-
-        it 'updates the name' do
-          params = {
-            id: user.to_param,
-            user: {
-              name: 'New Name'
-            }
-          }
-
-          put :update, params: params
-
-          expect(response).to redirect_to(admin_user_path(user))
-          expect(user.reload.name).to eq('New Name')
-        end
-      end
-    end
-
     context 'when the password has changed' do
       def update_password(user, password, password_confirmation = nil)
         params = {
@@ -292,7 +270,7 @@ describe Admin::UsersController do
         post :update, params: params
       end
 
-      context 'when the admin changes his own password' do
+      context 'when the admin changes their own password' do
         it 'updates the password' do
           expect { update_password(admin, 'AValidPassword1') }
             .to change { admin.reload.encrypted_password }
@@ -318,7 +296,7 @@ describe Admin::UsersController do
 
         it 'sets the new password to expire immediately' do
           expect { update_password(user, 'AValidPassword1') }
-            .to change { user.reload.password_expires_at }.to be_within(2.seconds).of(Time.now)
+            .to change { user.reload.password_expires_at }.to be_within(2.seconds).of(Time.current)
         end
       end
 
@@ -359,6 +337,17 @@ describe Admin::UsersController do
             .not_to change { user.reload.encrypted_password }
         end
       end
+    end
+  end
+
+  describe "DELETE #remove_email" do
+    it 'deletes the email' do
+      email = create(:email, user: user)
+
+      delete :remove_email, params: { id: user.username, email_id: email.id }
+
+      expect(user.reload.emails).not_to include(email)
+      expect(flash[:notice]).to eq('Successfully removed email.')
     end
   end
 
@@ -421,7 +410,7 @@ describe Admin::UsersController do
       it "shows error page" do
         post :impersonate, params: { id: user.username }
 
-        expect(response).to have_gitlab_http_status(404)
+        expect(response).to have_gitlab_http_status(:not_found)
       end
     end
   end

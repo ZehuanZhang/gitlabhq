@@ -2,7 +2,7 @@
 type: reference
 ---
 
-# .gitignore API
+# `.gitignore` API
 
 In GitLab, there is an API endpoint available for `.gitignore`. For more
 information on `gitignore`, see the
@@ -18,7 +18,7 @@ GET /templates/gitignores
 
 Example request:
 
-```bash
+```shell
 curl https://gitlab.example.com/api/v4/templates/gitignores
 ```
 
@@ -123,7 +123,7 @@ GET /templates/gitignores/:key
 
 Example request:
 
-```bash
+```shell
 curl https://gitlab.example.com/api/v4/templates/gitignores/Ruby
 ```
 

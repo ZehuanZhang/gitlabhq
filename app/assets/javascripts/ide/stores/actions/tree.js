@@ -1,4 +1,4 @@
-import _ from 'underscore';
+import { defer } from 'lodash';
 import { __ } from '../../../locale';
 import service from '../../services';
 import * as types from '../mutation_types';
@@ -59,7 +59,7 @@ export const getFiles = ({ state, commit, dispatch }, payload = {}) =>
 
       commit(types.CREATE_TREE, { treePath: `${projectId}/${branchId}` });
       service
-        .getFiles(selectedProject.web_url, ref)
+        .getFiles(selectedProject.path_with_namespace, ref)
         .then(({ data }) => {
           const { entries, treeList } = decorateFiles({
             data,
@@ -71,13 +71,13 @@ export const getFiles = ({ state, commit, dispatch }, payload = {}) =>
 
           // Defer setting the directory data because this triggers some intense rendering.
           // The entries is all we need to load the file editor.
-          _.defer(() => dispatch('setDirectoryData', { projectId, branchId, treeList }));
+          defer(() => dispatch('setDirectoryData', { projectId, branchId, treeList }));
 
           resolve();
         })
         .catch(e => {
           dispatch('setErrorMessage', {
-            text: __('An error occurred whilst loading all the files.'),
+            text: __('An error occurred while loading all the files.'),
             action: actionPayload =>
               dispatch('getFiles', actionPayload).then(() => dispatch('setErrorMessage', null)),
             actionText: __('Please try again'),

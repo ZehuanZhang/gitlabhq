@@ -1,21 +1,15 @@
 <script>
-import { GlTooltipDirective } from '@gitlab/ui';
+import DeploymentActions from './deployment_actions.vue';
 import DeploymentInfo from './deployment_info.vue';
-import DeploymentViewButton from './deployment_view_button.vue';
-import DeploymentStopButton from './deployment_stop_button.vue';
-import { MANUAL_DEPLOY, WILL_DEPLOY, CREATED, RUNNING, SUCCESS } from './constants';
+import { MANUAL_DEPLOY, WILL_DEPLOY, CREATED } from './constants';
 
 export default {
   // name: 'Deployment' is a false positive: https://gitlab.com/gitlab-org/frontend/eslint-plugin-i18n/issues/26#possible-false-positives
-  // eslint-disable-next-line @gitlab/i18n/no-non-i18n-strings
+  // eslint-disable-next-line @gitlab/require-i18n-strings
   name: 'Deployment',
   components: {
+    DeploymentActions,
     DeploymentInfo,
-    DeploymentStopButton,
-    DeploymentViewButton,
-  },
-  directives: {
-    GlTooltip: GlTooltipDirective,
   },
   props: {
     deployment: {
@@ -43,33 +37,14 @@ export default {
     },
   },
   computed: {
-    canBeManuallyDeployed() {
-      return this.computedDeploymentStatus === MANUAL_DEPLOY;
-    },
     computedDeploymentStatus() {
       if (this.deployment.status === CREATED) {
         return this.isManual ? MANUAL_DEPLOY : WILL_DEPLOY;
       }
       return this.deployment.status;
     },
-    hasExternalUrls() {
-      return Boolean(this.deployment.external_url && this.deployment.external_url_formatted);
-    },
-    hasPreviousDeployment() {
-      return Boolean(!this.isCurrent && this.deployment.deployed_at);
-    },
-    isCurrent() {
-      return this.computedDeploymentStatus === SUCCESS;
-    },
     isManual() {
-      return Boolean(
-        this.deployment.details &&
-          this.deployment.details.playable_build &&
-          this.deployment.details.playable_build.play_path,
-      );
-    },
-    isDeployInProgress() {
-      return this.deployment.status === RUNNING;
+      return Boolean(this.deployment.details?.playable_build?.play_path);
     },
   },
 };
@@ -85,22 +60,12 @@ export default {
             :deployment="deployment"
             :show-metrics="showMetrics"
           />
-          <div>
-            <!-- show appropriate version of review app button  -->
-            <deployment-view-button
-              v-if="hasExternalUrls"
-              :is-current="isCurrent"
-              :deployment="deployment"
-              :show-visual-review-app="showVisualReviewApp"
-              :visual-review-app-metadata="visualReviewAppMeta"
-            />
-            <!-- if it is stoppable, show stop -->
-            <deployment-stop-button
-              v-if="deployment.stop_url"
-              :is-deploy-in-progress="isDeployInProgress"
-              :stop-url="deployment.stop_url"
-            />
-          </div>
+          <deployment-actions
+            :deployment="deployment"
+            :computed-deployment-status="computedDeploymentStatus"
+            :show-visual-review-app="showVisualReviewApp"
+            :visual-review-app-meta="visualReviewAppMeta"
+          />
         </div>
       </div>
     </div>

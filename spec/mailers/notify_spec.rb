@@ -13,11 +13,11 @@ describe Notify do
 
   let(:current_user_sanitized) { 'www_example_com' }
 
-  set(:user) { create(:user) }
-  set(:current_user) { create(:user, email: "current@email.com", name: 'www.example.com') }
-  set(:assignee) { create(:user, email: 'assignee@example.com', name: 'John Doe') }
+  let_it_be(:user, reload: true) { create(:user) }
+  let_it_be(:current_user, reload: true) { create(:user, email: "current@email.com", name: 'www.example.com') }
+  let_it_be(:assignee, reload: true) { create(:user, email: 'assignee@example.com', name: 'John Doe') }
 
-  set(:merge_request) do
+  let_it_be(:merge_request) do
     create(:merge_request, source_project: project,
                            target_project: project,
                            author: current_user,
@@ -25,7 +25,7 @@ describe Notify do
                            description: 'Awesome description')
   end
 
-  set(:issue) do
+  let_it_be(:issue, reload: true) do
     create(:issue, author: current_user,
                    assignees: [assignee],
                    project: project,
@@ -70,6 +70,7 @@ describe Notify do
         it_behaves_like 'an email starting a new thread with reply-by-email enabled' do
           let(:model) { issue }
         end
+
         it_behaves_like 'it should show Gmail Actions View Issue link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
@@ -116,6 +117,7 @@ describe Notify do
         it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
           let(:model) { issue }
         end
+
         it_behaves_like 'it should show Gmail Actions View Issue link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
@@ -155,6 +157,7 @@ describe Notify do
         it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
           let(:model) { issue }
         end
+
         it_behaves_like 'it should show Gmail Actions View Issue link'
         it_behaves_like 'a user cannot unsubscribe through footer link'
         it_behaves_like 'an email with a labels subscriptions link in its footer'
@@ -200,6 +203,7 @@ describe Notify do
         it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
           let(:model) { issue }
         end
+
         it_behaves_like 'it should show Gmail Actions View Issue link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
@@ -214,6 +218,7 @@ describe Notify do
         it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
           let(:model) { issue }
         end
+
         it_behaves_like 'it should show Gmail Actions View Issue link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
@@ -230,7 +235,7 @@ describe Notify do
             is_expected.to have_referable_subject(issue, reply: true)
             is_expected.to have_body_text(status)
             is_expected.to have_body_text(current_user_sanitized)
-            is_expected.to have_body_text(project_issue_path project, issue)
+            is_expected.to have_body_text(project_issue_path(project, issue))
           end
         end
       end
@@ -248,6 +253,7 @@ describe Notify do
           it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
             let(:model) { issue }
           end
+
           it_behaves_like 'it should show Gmail Actions View Issue link'
           it_behaves_like 'an unsubscribeable thread'
 
@@ -300,6 +306,7 @@ describe Notify do
         it_behaves_like 'an email starting a new thread with reply-by-email enabled' do
           let(:model) { merge_request }
         end
+
         it_behaves_like 'it should show Gmail Actions View Merge request link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
@@ -344,6 +351,7 @@ describe Notify do
         it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
           let(:model) { merge_request }
         end
+
         it_behaves_like 'it should show Gmail Actions View Merge request link'
         it_behaves_like "an unsubscribeable thread"
         it_behaves_like 'appearance header and footer enabled'
@@ -409,6 +417,7 @@ describe Notify do
         it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
           let(:model) { merge_request }
         end
+
         it_behaves_like 'it should show Gmail Actions View Merge request link'
         it_behaves_like 'a user cannot unsubscribe through footer link'
         it_behaves_like 'an email with a labels subscriptions link in its footer'
@@ -436,6 +445,7 @@ describe Notify do
         it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
           let(:model) { merge_request }
         end
+
         it_behaves_like 'it should show Gmail Actions View Merge request link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
@@ -466,6 +476,7 @@ describe Notify do
         it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
           let(:model) { merge_request }
         end
+
         it_behaves_like 'it should show Gmail Actions View Merge request link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
@@ -487,7 +498,7 @@ describe Notify do
       end
 
       describe 'that are unmergeable' do
-        set(:merge_request) do
+        let_it_be(:merge_request) do
           create(:merge_request, :conflict,
                  source_project: project,
                  target_project: project,
@@ -502,6 +513,7 @@ describe Notify do
         it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
           let(:model) { merge_request }
         end
+
         it_behaves_like 'it should show Gmail Actions View Merge request link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
@@ -533,6 +545,7 @@ describe Notify do
         it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
           let(:model) { merge_request }
         end
+
         it_behaves_like 'it should show Gmail Actions View Merge request link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
@@ -568,7 +581,7 @@ describe Notify do
     end
 
     describe '#mail_thread' do
-      set(:mail_thread_note) { create(:note) }
+      let_it_be(:mail_thread_note) { create(:note) }
 
       let(:headers) do
         {
@@ -638,9 +651,9 @@ describe Notify do
       let(:host) { Gitlab.config.gitlab.host }
 
       context 'in discussion' do
-        set(:first_note) { create(:discussion_note_on_issue, project: project) }
-        set(:second_note) { create(:discussion_note_on_issue, in_reply_to: first_note, project: project) }
-        set(:third_note) { create(:discussion_note_on_issue, in_reply_to: second_note, project: project) }
+        let_it_be(:first_note) { create(:discussion_note_on_issue, project: project) }
+        let_it_be(:second_note) { create(:discussion_note_on_issue, in_reply_to: first_note, project: project) }
+        let_it_be(:third_note) { create(:discussion_note_on_issue, in_reply_to: second_note, project: project) }
 
         subject { described_class.note_issue_email(recipient.id, third_note.id) }
 
@@ -664,7 +677,7 @@ describe Notify do
       end
 
       context 'individual issue comments' do
-        set(:note) { create(:note_on_issue, project: project) }
+        let_it_be(:note) { create(:note_on_issue, project: project) }
 
         subject { described_class.note_issue_email(recipient.id, note.id) }
 
@@ -686,7 +699,7 @@ describe Notify do
       let(:project_snippet) { create(:project_snippet, project: project) }
       let(:project_snippet_note) { create(:note_on_project_snippet, project: project, noteable: project_snippet) }
 
-      subject { described_class.note_project_snippet_email(project_snippet_note.author_id, project_snippet_note.id) }
+      subject { described_class.note_snippet_email(project_snippet_note.author_id, project_snippet_note.id) }
 
       it_behaves_like 'appearance header and footer enabled'
       it_behaves_like 'appearance header and footer not enabled'
@@ -694,12 +707,46 @@ describe Notify do
       it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
         let(:model) { project_snippet }
       end
+
       it_behaves_like 'a user cannot unsubscribe through footer link'
 
-      it 'has the correct subject and body' do
+      it 'has the correct subject' do
         is_expected.to have_referable_subject(project_snippet, reply: true)
+      end
+
+      it 'has the correct body' do
         is_expected.to have_body_text project_snippet_note.note
       end
+
+      it 'links to the project snippet' do
+        target_url = project_snippet_url(project,
+                                         project_snippet_note.noteable,
+                                         { anchor: "note_#{project_snippet_note.id}" })
+        is_expected.to have_body_text target_url
+      end
+    end
+
+    describe 'for design notes' do
+      let_it_be(:design) { create(:design, :with_file) }
+      let_it_be(:recipient) { create(:user) }
+      let_it_be(:note) do
+        create(:diff_note_on_design,
+           noteable: design,
+           note: "Hello #{recipient.to_reference}")
+      end
+
+      let(:header_name) { 'X-Gitlab-DesignManagement-Design-ID' }
+      let(:refer_to_design) do
+        have_attributes(subject: a_string_including(design.filename))
+      end
+
+      subject { described_class.note_design_email(recipient.id, note.id) }
+
+      it { is_expected.to have_header(header_name, design.id.to_s) }
+
+      it { is_expected.to have_body_text(design.filename) }
+
+      it { is_expected.to refer_to_design }
     end
 
     describe 'project was moved' do
@@ -903,6 +950,7 @@ describe Notify do
         it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
           let(:model) { commit }
         end
+
         it_behaves_like 'it should show Gmail Actions View Commit link'
         it_behaves_like 'a user cannot unsubscribe through footer link'
         it_behaves_like 'appearance header and footer enabled'
@@ -929,6 +977,7 @@ describe Notify do
         it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
           let(:model) { merge_request }
         end
+
         it_behaves_like 'it should show Gmail Actions View Merge request link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
@@ -955,6 +1004,7 @@ describe Notify do
         it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
           let(:model) { issue }
         end
+
         it_behaves_like 'it should show Gmail Actions View Issue link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
@@ -1027,6 +1077,7 @@ describe Notify do
         it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
           let(:model) { commit }
         end
+
         it_behaves_like 'it should show Gmail Actions View Commit link'
         it_behaves_like 'a user cannot unsubscribe through footer link'
         it_behaves_like 'appearance header and footer enabled'
@@ -1059,6 +1110,7 @@ describe Notify do
         it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
           let(:model) { merge_request }
         end
+
         it_behaves_like 'it should show Gmail Actions View Merge request link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
@@ -1091,6 +1143,7 @@ describe Notify do
         it_behaves_like 'an answer to an existing thread with reply-by-email enabled' do
           let(:model) { issue }
         end
+
         it_behaves_like 'it should show Gmail Actions View Issue link'
         it_behaves_like 'an unsubscribeable thread'
         it_behaves_like 'appearance header and footer enabled'
@@ -1650,15 +1703,23 @@ describe Notify do
     let(:personal_snippet) { create(:personal_snippet) }
     let(:personal_snippet_note) { create(:note_on_personal_snippet, noteable: personal_snippet) }
 
-    subject { described_class.note_personal_snippet_email(personal_snippet_note.author_id, personal_snippet_note.id) }
+    subject { described_class.note_snippet_email(personal_snippet_note.author_id, personal_snippet_note.id) }
 
     it_behaves_like 'a user cannot unsubscribe through footer link'
     it_behaves_like 'appearance header and footer enabled'
     it_behaves_like 'appearance header and footer not enabled'
 
-    it 'has the correct subject and body' do
+    it 'has the correct subject' do
       is_expected.to have_referable_subject(personal_snippet, reply: true)
+    end
+
+    it 'has the correct body' do
       is_expected.to have_body_text personal_snippet_note.note
+    end
+
+    it 'links to the personal snippet' do
+      target_url = gitlab_snippet_url(personal_snippet_note.noteable)
+      is_expected.to have_body_text target_url
     end
   end
 end

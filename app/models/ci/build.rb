@@ -4,14 +4,12 @@ module Ci
   class Build < Ci::Processable
     include Ci::Metadatable
     include Ci::Contextable
-    include Ci::PipelineDelegator
     include TokenAuthenticatable
     include AfterCommitQueue
     include ObjectStorage::BackgroundMove
     include Presentable
     include Importable
-    include Gitlab::Utils::StrongMemoize
-    include HasRef
+    include Ci::HasRef
     include IgnorableColumns
 
     BuildArchivedError = Class.new(StandardError)
@@ -23,15 +21,19 @@ module Ci
     belongs_to :trigger_request
     belongs_to :erased_by, class_name: 'User'
     belongs_to :resource_group, class_name: 'Ci::ResourceGroup', inverse_of: :builds
+    belongs_to :pipeline, class_name: 'Ci::Pipeline', foreign_key: :commit_id
 
     RUNNER_FEATURES = {
       upload_multiple_artifacts: -> (build) { build.publishes_artifacts_reports? },
-      refspecs: -> (build) { build.merge_request_ref? }
+      refspecs: -> (build) { build.merge_request_ref? },
+      artifacts_exclude: -> (build) { build.supports_artifacts_exclude? }
     }.freeze
 
     DEFAULT_RETRIES = {
       scheduler_failure: 2
     }.freeze
+
+    DEGRADATION_THRESHOLD_VARIABLE_NAME = 'DEGRADATION_THRESHOLD'
 
     has_one :deployment, as: :deployable, class_name: 'Deployment'
     has_one :resource, class_name: 'Ci::Resource', inverse_of: :build
@@ -59,15 +61,11 @@ module Ci
     ##
     # Since Gitlab 11.5, deployments records started being created right after
     # `ci_builds` creation. We can look up a relevant `environment` through
-    # `deployment` relation today. This is much more efficient than expanding
-    # environment name with variables.
+    # `deployment` relation today.
     # (See more https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/22380)
     #
-    # However, we have to still expand environment name if it's a stop action,
-    # because `deployment` persists information for start action only.
-    #
-    # We will follow up this by persisting expanded name in build metadata or
-    # persisting stop action in database.
+    # Since Gitlab 12.9, we started persisting the expanded environment name to
+    # avoid repeated variables expansion in `action: stop` builds as well.
     def persisted_environment
       return unless has_environment?
 
@@ -92,8 +90,12 @@ module Ci
 
     scope :unstarted, ->() { where(runner_id: nil) }
     scope :ignore_failures, ->() { where(allow_failure: false) }
-    scope :with_artifacts_archive, ->() do
-      where('EXISTS (?)', Ci::JobArtifact.select(1).where('ci_builds.id = ci_job_artifacts.job_id').archive)
+    scope :with_downloadable_artifacts, ->() do
+      where('EXISTS (?)',
+        Ci::JobArtifact.select(1)
+          .where('ci_builds.id = ci_job_artifacts.job_id')
+          .where(file_type: Ci::JobArtifact::DOWNLOADABLE_TYPES)
+      )
     end
 
     scope :with_existing_job_artifacts, ->(query) do
@@ -114,6 +116,7 @@ module Ci
     end
 
     scope :eager_load_job_artifacts, -> { includes(:job_artifacts) }
+    scope :eager_load_job_artifacts_archive, -> { includes(:job_artifacts_archive) }
 
     scope :eager_load_everything, -> do
       includes(
@@ -134,8 +137,8 @@ module Ci
         .includes(:metadata, :job_artifacts_metadata)
     end
 
-    scope :with_artifacts_not_expired, ->() { with_artifacts_archive.where('artifacts_expire_at IS NULL OR artifacts_expire_at > ?', Time.now) }
-    scope :with_expired_artifacts, ->() { with_artifacts_archive.where('artifacts_expire_at < ?', Time.now) }
+    scope :with_artifacts_not_expired, ->() { with_downloadable_artifacts.where('artifacts_expire_at IS NULL OR artifacts_expire_at > ?', Time.current) }
+    scope :with_expired_artifacts, ->() { with_downloadable_artifacts.where('artifacts_expire_at < ?', Time.current) }
     scope :last_month, ->() { where('created_at > ?', Date.today - 1.month) }
     scope :manual_actions, ->() { where(when: :manual, status: COMPLETED_STATUSES + %i[manual]) }
     scope :scheduled_actions, ->() { where(when: :delayed, status: COMPLETED_STATUSES + %i[scheduled]) }
@@ -171,6 +174,13 @@ module Ci
 
     scope :queued_before, ->(time) { where(arel_table[:queued_at].lt(time)) }
     scope :order_id_desc, -> { order('ci_builds.id DESC') }
+
+    scope :preload_project_and_pipeline_project, -> do
+      preload(Ci::Pipeline::PROJECT_ROUTE_AND_NAMESPACE_ROUTE,
+              pipeline: Ci::Pipeline::PROJECT_ROUTE_AND_NAMESPACE_ROUTE)
+    end
+
+    scope :with_coverage, -> { where.not(coverage: nil) }
 
     acts_as_taggable
 
@@ -249,7 +259,7 @@ module Ci
       end
 
       before_transition any => :waiting_for_resource do |build|
-        build.waiting_for_resource_at = Time.now
+        build.waiting_for_resource_at = Time.current
       end
 
       before_transition on: :enqueue_waiting_for_resource do |build|
@@ -266,7 +276,7 @@ module Ci
       end
 
       before_transition on: :enqueue_preparing do |build|
-        build.any_unmet_prerequisites? # If false is returned, it stops the transition
+        !build.any_unmet_prerequisites? # If false is returned, it stops the transition
       end
 
       after_transition created: :scheduled do |build|
@@ -342,7 +352,7 @@ module Ci
           begin
             Ci::Build.retry(build, build.user)
           rescue Gitlab::Access::AccessDeniedError => ex
-            Rails.logger.error "Unable to auto-retry job #{build.id}: #{ex}" # rubocop:disable Gitlab/RailsLogger
+            Gitlab::AppLogger.error "Unable to auto-retry job #{build.id}: #{ex}"
           end
         end
       end
@@ -447,10 +457,6 @@ module Ci
         options_retry_when.include?('always')
     end
 
-    def latest?
-      !retried?
-    end
-
     def any_unmet_prerequisites?
       prerequisites.present?
     end
@@ -463,7 +469,14 @@ module Ci
       return unless has_environment?
 
       strong_memoize(:expanded_environment_name) do
-        ExpandVariables.expand(environment, -> { simple_variables })
+        # We're using a persisted expanded environment name in order to avoid
+        # variable expansion per request.
+        if Feature.enabled?(:ci_persisted_expanded_environment_name, project, default_enabled: true) &&
+          metadata&.expanded_environment_name.present?
+          metadata.expanded_environment_name
+        else
+          ExpandVariables.expand(environment, -> { simple_variables })
+        end
       end
     end
 
@@ -480,8 +493,7 @@ module Ci
     end
 
     def requires_resource?
-      Feature.enabled?(:ci_resource_group, project, default_enabled: true) &&
-        self.resource_group_id.present?
+      self.resource_group_id.present?
     end
 
     def has_environment?
@@ -504,14 +516,6 @@ module Ci
       success? && !deployment.try(:last?)
     end
 
-    def depends_on_builds
-      # Get builds of the same type
-      latest_builds = self.pipeline.builds.latest
-
-      # Return builds from previous stages
-      latest_builds.where('stage_idx < ?', stage_idx)
-    end
-
     def triggered_by?(current_user)
       user == current_user
     end
@@ -527,9 +531,12 @@ module Ci
       strong_memoize(:variables) do
         Gitlab::Ci::Variables::Collection.new
           .concat(persisted_variables)
+          .concat(job_jwt_variables)
           .concat(scoped_variables)
           .concat(job_variables)
+          .concat(environment_changed_page_variables)
           .concat(persisted_environment_variables)
+          .concat(deploy_freeze_variables)
           .to_runner_variables
       end
     end
@@ -567,6 +574,15 @@ module Ci
       end
     end
 
+    def environment_changed_page_variables
+      Gitlab::Ci::Variables::Collection.new.tap do |variables|
+        break variables unless environment_status && Feature.enabled?(:modifed_path_ci_variables, project)
+
+        variables.append(key: 'CI_MERGE_REQUEST_CHANGED_PAGE_PATHS', value: environment_status.changed_paths.join(','))
+        variables.append(key: 'CI_MERGE_REQUEST_CHANGED_PAGE_URLS', value: environment_status.changed_urls.join(','))
+      end
+    end
+
     def deploy_token_variables
       Gitlab::Ci::Variables::Collection.new.tap do |variables|
         break variables unless gitlab_deploy_token
@@ -576,24 +592,34 @@ module Ci
       end
     end
 
+    def deploy_freeze_variables
+      Gitlab::Ci::Variables::Collection.new.tap do |variables|
+        break variables unless freeze_period?
+
+        variables.append(key: 'CI_DEPLOY_FREEZE', value: 'true')
+      end
+    end
+
+    def freeze_period?
+      Ci::FreezePeriodStatus.new(project: project).execute
+    end
+
+    def dependency_variables
+      return [] if all_dependencies.empty?
+
+      Gitlab::Ci::Variables::Collection.new.concat(
+        Ci::JobVariable.where(job: all_dependencies).dotenv_source
+      )
+    end
+
     def features
       { trace_sections: true }
     end
 
     def merge_request
-      return @merge_request if defined?(@merge_request)
-
-      @merge_request ||=
-        begin
-          merge_requests = MergeRequest.includes(:latest_merge_request_diff)
-            .where(source_branch: ref,
-                   source_project: pipeline.project)
-            .reorder(iid: :desc)
-
-          merge_requests.find do |merge_request|
-            merge_request.commit_shas.include?(pipeline.sha)
-          end
-        end
+      strong_memoize(:merge_request) do
+        pipeline.all_merge_requests.order(iid: :asc).first
+      end
     end
 
     def repo_url
@@ -687,7 +713,7 @@ module Ci
     end
 
     def needs_touch?
-      Time.now - updated_at > 15.minutes.to_i
+      Time.current - updated_at > 15.minutes.to_i
     end
 
     def valid_token?(token)
@@ -750,11 +776,11 @@ module Ci
     end
 
     def artifacts_expired?
-      artifacts_expire_at && artifacts_expire_at < Time.now
+      artifacts_expire_at && artifacts_expire_at < Time.current
     end
 
     def artifacts_expire_in
-      artifacts_expire_at - Time.now if artifacts_expire_at
+      artifacts_expire_at - Time.current if artifacts_expire_at
     end
 
     def artifacts_expire_in=(value)
@@ -764,8 +790,8 @@ module Ci
         end
     end
 
-    def has_expiring_artifacts?
-      artifacts_expire_at.present? && artifacts_expire_at > Time.now
+    def has_expiring_archive_artifacts?
+      has_expiring_artifacts? && job_artifacts_archive.present?
     end
 
     def keep_artifacts!
@@ -810,41 +836,15 @@ module Ci
     end
 
     def all_dependencies
-      (dependencies + cross_dependencies).uniq
-    end
-
-    def dependencies
-      return [] if empty_dependencies?
-
-      depended_jobs = depends_on_builds
-
-      # find all jobs that are needed
-      if Feature.enabled?(:ci_dag_support, project, default_enabled: true) && needs.exists?
-        depended_jobs = depended_jobs.where(name: needs.artifacts.select(:name))
-      end
-
-      # find all jobs that are dependent on
-      if options[:dependencies].present?
-        depended_jobs = depended_jobs.where(name: options[:dependencies])
-      end
-
-      # if both needs and dependencies are used,
-      # the end result will be an intersection between them
-      depended_jobs
-    end
-
-    def cross_dependencies
-      []
-    end
-
-    def empty_dependencies?
-      options[:dependencies]&.empty?
+      dependencies.all
     end
 
     def has_valid_build_dependencies?
-      return true if Feature.enabled?('ci_disable_validates_dependencies')
+      dependencies.valid?
+    end
 
-      dependencies.all?(&:valid_dependency?)
+    def invalid_dependencies
+      dependencies.invalid_local
     end
 
     def valid_dependency?
@@ -852,10 +852,6 @@ module Ci
       return false if erased?
 
       true
-    end
-
-    def invalid_dependencies
-      dependencies.reject(&:valid_dependency?)
     end
 
     def runner_required_feature_names
@@ -896,9 +892,33 @@ module Ci
     def collect_test_reports!(test_reports)
       test_reports.get_suite(group_name).tap do |test_suite|
         each_report(Ci::JobArtifact::TEST_REPORT_FILE_TYPES) do |file_type, blob|
-          Gitlab::Ci::Parsers.fabricate!(file_type).parse!(blob, test_suite)
+          Gitlab::Ci::Parsers.fabricate!(file_type).parse!(blob, test_suite, job: self)
         end
       end
+    end
+
+    def collect_accessibility_reports!(accessibility_report)
+      each_report(Ci::JobArtifact::ACCESSIBILITY_REPORT_FILE_TYPES) do |file_type, blob|
+        Gitlab::Ci::Parsers.fabricate!(file_type).parse!(blob, accessibility_report)
+      end
+
+      accessibility_report
+    end
+
+    def collect_coverage_reports!(coverage_report)
+      each_report(Ci::JobArtifact::COVERAGE_REPORT_FILE_TYPES) do |file_type, blob|
+        Gitlab::Ci::Parsers.fabricate!(file_type).parse!(blob, coverage_report)
+      end
+
+      coverage_report
+    end
+
+    def collect_terraform_reports!(terraform_reports)
+      each_report(::Ci::JobArtifact::TERRAFORM_REPORT_FILE_TYPES) do |file_type, blob, report_artifact|
+        ::Gitlab::Ci::Parsers.fabricate!(file_type).parse!(blob, terraform_reports, artifact: report_artifact)
+      end
+
+      terraform_reports
     end
 
     def report_artifacts
@@ -925,7 +945,23 @@ module Ci
         failure_reason: :data_integrity_failure)
     end
 
+    def supports_artifacts_exclude?
+      options&.dig(:artifacts, :exclude)&.any? &&
+        Gitlab::Ci::Features.artifacts_exclude_enabled?
+    end
+
+    def degradation_threshold
+      var = yaml_variables.find { |v| v[:key] == DEGRADATION_THRESHOLD_VARIABLE_NAME }
+      var[:value]&.to_i if var
+    end
+
     private
+
+    def dependencies
+      strong_memoize(:dependencies) do
+        Ci::BuildDependencies.new(self)
+      end
+    end
 
     def build_data
       @build_data ||= Gitlab::DataBuilder::Build.build(self)
@@ -957,7 +993,7 @@ module Ci
     end
 
     def update_erased!(user = nil)
-      self.update(erased_by: user, erased_at: Time.now, artifacts_expire_at: nil)
+      self.update(erased_by: user, erased_at: Time.current, artifacts_expire_at: nil)
     end
 
     def unscoped_project
@@ -966,6 +1002,14 @@ module Ci
 
     def environment_url
       options&.dig(:environment, :url) || persisted_environment&.external_url
+    end
+
+    def environment_status
+      strong_memoize(:environment_status) do
+        if has_environment? && merge_request
+          EnvironmentStatus.new(project, persisted_environment, merge_request, pipeline.sha)
+        end
+      end
     end
 
     # The format of the retry option changed in GitLab 11.5: Before it was
@@ -978,6 +1022,21 @@ module Ci
         value = options&.dig(:retry)
         value = value.is_a?(Integer) ? { max: value } : value.to_h
         value.with_indifferent_access
+      end
+    end
+
+    def has_expiring_artifacts?
+      artifacts_expire_at.present? && artifacts_expire_at > Time.current
+    end
+
+    def job_jwt_variables
+      Gitlab::Ci::Variables::Collection.new.tap do |variables|
+        break variables unless Feature.enabled?(:ci_job_jwt, project, default_enabled: true)
+
+        jwt = Gitlab::Ci::Jwt.for_build(self)
+        variables.append(key: 'CI_JOB_JWT', value: jwt, public: false, masked: true)
+      rescue OpenSSL::PKey::RSAError => e
+        Gitlab::ErrorTracking.track_exception(e)
       end
     end
   end

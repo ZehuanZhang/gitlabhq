@@ -1,5 +1,4 @@
 import { format } from 'timeago.js';
-import _ from 'underscore';
 import getStateKey from 'ee_else_ce/vue_merge_request_widget/stores/get_state_key';
 import { stateKey } from './state_maps';
 import { formatDate } from '../../lib/utils/datetime_utility';
@@ -102,7 +101,9 @@ export default class MergeRequestStore {
     this.isPipelineActive = data.pipeline ? data.pipeline.active : false;
     this.isPipelineBlocked = pipelineStatus ? pipelineStatus.group === 'manual' : false;
     this.ciStatusFaviconPath = pipelineStatus ? pipelineStatus.favicon : null;
+    this.terraformReportsPath = data.terraform_reports_path;
     this.testResultsPath = data.test_reports_path;
+    this.accessibilityReportPath = data.accessibility_report_path;
     this.exposedArtifactsPath = data.exposed_artifacts_path;
     this.cancelAutoMergePath = data.cancel_auto_merge_path;
     this.canCancelAutomaticMerge = Boolean(data.cancel_auto_merge_path);
@@ -160,6 +161,7 @@ export default class MergeRequestStore {
     // Paths are set on the first load of the page and not auto-refreshed
     this.squashBeforeMergeHelpPath = data.squash_before_merge_help_path;
     this.troubleshootingDocsPath = data.troubleshooting_docs_path;
+    this.pipelineMustSucceedDocsPath = data.pipeline_must_succeed_docs_path;
     this.mergeRequestBasicPath = data.merge_request_basic_path;
     this.mergeRequestWidgetPath = data.merge_request_widget_path;
     this.mergeRequestCachedWidgetPath = data.merge_request_cached_widget_path;
@@ -175,6 +177,10 @@ export default class MergeRequestStore {
     this.securityApprovalsHelpPagePath = data.security_approvals_help_page_path;
     this.eligibleApproversDocsPath = data.eligible_approvers_docs_path;
     this.mergeImmediatelyDocsPath = data.merge_immediately_docs_path;
+    this.mergeRequestAddCiConfigPath = data.merge_request_add_ci_config_path;
+    this.pipelinesEmptySvgPath = data.pipelines_empty_svg_path;
+    this.humanAccess = data.human_access;
+    this.newPipelinePath = data.new_project_pipeline_path;
   }
 
   get isNothingToMergeState() {
@@ -222,11 +228,13 @@ export default class MergeRequestStore {
   }
 
   static getPreferredAutoMergeStrategy(availableAutoMergeStrategies) {
-    if (_.includes(availableAutoMergeStrategies, MTWPS_MERGE_STRATEGY)) {
+    if (availableAutoMergeStrategies === undefined) return undefined;
+
+    if (availableAutoMergeStrategies.includes(MTWPS_MERGE_STRATEGY)) {
       return MTWPS_MERGE_STRATEGY;
-    } else if (_.includes(availableAutoMergeStrategies, MT_MERGE_STRATEGY)) {
+    } else if (availableAutoMergeStrategies.includes(MT_MERGE_STRATEGY)) {
       return MT_MERGE_STRATEGY;
-    } else if (_.includes(availableAutoMergeStrategies, MWPS_MERGE_STRATEGY)) {
+    } else if (availableAutoMergeStrategies.includes(MWPS_MERGE_STRATEGY)) {
       return MWPS_MERGE_STRATEGY;
     }
 

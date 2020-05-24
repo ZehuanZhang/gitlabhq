@@ -1,4 +1,4 @@
-import { isNewJobLogActive } from '../store/utils';
+import { isNewJobLogActive } from './utils';
 
 export default () => ({
   jobEndpoint: null,
@@ -22,6 +22,7 @@ export default () => ({
   isTraceComplete: false,
   traceSize: 0,
   isTraceSizeVisible: false,
+  traceTimeout: 0,
 
   // used as a query parameter to fetch the trace
   traceState: null,

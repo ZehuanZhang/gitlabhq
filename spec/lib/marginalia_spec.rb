@@ -18,23 +18,9 @@ describe 'Marginalia spec' do
     end
   end
 
-  class MarginaliaTestMailer < BaseMailer
+  class MarginaliaTestMailer < ApplicationMailer
     def first_user
       User.first
-    end
-  end
-
-  def add_sidekiq_middleware
-    # Reference: https://github.com/mperham/sidekiq/wiki/Testing#testing-server-middlewaresidekiq
-    # Sidekiq test harness fakes worker without its server middlewares, so include instrumentation to 'Sidekiq::Testing' server middleware.
-    Sidekiq::Testing.server_middleware do |chain|
-      chain.add Marginalia::SidekiqInstrumentation::Middleware
-    end
-  end
-
-  def remove_sidekiq_middleware
-    Sidekiq::Testing.server_middleware do |chain|
-      chain.remove Marginalia::SidekiqInstrumentation::Middleware
     end
   end
 
@@ -59,7 +45,6 @@ describe 'Marginalia spec' do
         "application"       => "test",
         "controller"        => "marginalia_test",
         "action"            => "first_user",
-        "line"              => "/spec/support/helpers/query_recorder.rb",
         "correlation_id"    => correlation_id
       }
     end
@@ -89,20 +74,16 @@ describe 'Marginalia spec' do
   end
 
   describe 'for Sidekiq worker jobs' do
-    before(:all) do
-      add_sidekiq_middleware
-
-      # Because of faking, 'Sidekiq.server?' does not work so implicitly set application name which is done in config/initializers/0_marginalia.rb
-      Marginalia.application_name = "sidekiq"
+    around do |example|
+      with_sidekiq_server_middleware do |chain|
+        chain.add Marginalia::SidekiqInstrumentation::Middleware
+        Marginalia.application_name = "sidekiq"
+        example.run
+      end
     end
 
     after(:all) do
       MarginaliaTestJob.clear
-      remove_sidekiq_middleware
-    end
-
-    around do |example|
-      Sidekiq::Testing.fake! { example.run }
     end
 
     before do
@@ -116,7 +97,6 @@ describe 'Marginalia spec' do
       {
         "application"       => "sidekiq",
         "job_class"         => "MarginaliaTestJob",
-        "line"              => "/spec/support/sidekiq_middleware.rb",
         "correlation_id"    => sidekiq_job['correlation_id'],
         "jid"               => sidekiq_job['jid']
       }
@@ -145,7 +125,6 @@ describe 'Marginalia spec' do
         let(:component_map) do
           {
             "application"  => "sidekiq",
-            "line"         => "/lib/gitlab/i18n.rb",
             "jid"          => delivery_job.job_id,
             "job_class"    => delivery_job.arguments.first
           }

@@ -16,7 +16,7 @@ describe Projects::Settings::CiCdController do
     it 'renders show with 200 status code' do
       get :show, params: { namespace_id: project.namespace, project_id: project }
 
-      expect(response).to have_gitlab_http_status(200)
+      expect(response).to have_gitlab_http_status(:ok)
       expect(response).to render_template(:show)
     end
 
@@ -106,7 +106,7 @@ describe Projects::Settings::CiCdController do
     it 'redirects to the settings page' do
       subject
 
-      expect(response).to have_gitlab_http_status(302)
+      expect(response).to have_gitlab_http_status(:found)
       expect(flash[:toast]).to eq("Pipelines settings for '#{project.name}' were successfully updated.")
     end
 
@@ -156,6 +156,14 @@ describe Projects::Settings::CiCdController do
             expect(CreatePipelineWorker).to receive(:perform_async).with(project.id, user.id, project.default_branch, :web, any_args)
 
             subject
+          end
+
+          it 'creates a pipeline', :sidekiq_inline do
+            project.repository.create_file(user, 'Gemfile', 'Gemfile contents',
+                                           message: 'Add Gemfile',
+                                           branch_name: 'master')
+
+            expect { subject }.to change { Ci::Pipeline.count }.by(1)
           end
         end
       end
@@ -237,11 +245,22 @@ describe Projects::Settings::CiCdController do
         context 'and user is an admin' do
           let(:user) { create(:admin)  }
 
-          it 'sets max_artifacts_size' do
-            subject
+          context 'with admin mode disabled' do
+            it 'does not set max_artifacts_size' do
+              subject
 
-            project.reload
-            expect(project.max_artifacts_size).to eq(10)
+              project.reload
+              expect(project.max_artifacts_size).to be_nil
+            end
+          end
+
+          context 'with admin mode enabled', :enable_admin_mode do
+            it 'sets max_artifacts_size' do
+              subject
+
+              project.reload
+              expect(project.max_artifacts_size).to eq(10)
+            end
           end
         end
       end

@@ -7,6 +7,8 @@ import { APPLICATIONS_MOCK_STATE } from '../services/mock_data';
 import eventHub from '~/clusters/event_hub';
 import KnativeDomainEditor from '~/clusters/components/knative_domain_editor.vue';
 import CrossplaneProviderStack from '~/clusters/components/crossplane_provider_stack.vue';
+import IngressModsecuritySettings from '~/clusters/components/ingress_modsecurity_settings.vue';
+import FluentdOutputSettings from '~/clusters/components/fluentd_output_settings.vue';
 
 describe('Applications', () => {
   let vm;
@@ -16,8 +18,7 @@ describe('Applications', () => {
     Applications = Vue.extend(applications);
 
     gon.features = gon.features || {};
-    gon.features.enableClusterApplicationElasticStack = true;
-    gon.features.enableClusterApplicationCrossplane = true;
+    gon.features.managedAppsLocalTiller = false;
   });
 
   afterEach(() => {
@@ -67,6 +68,10 @@ describe('Applications', () => {
     it('renders a row for Elastic Stack', () => {
       expect(vm.$el.querySelector('.js-cluster-application-row-elastic_stack')).not.toBeNull();
     });
+
+    it('renders a row for Fluentd', () => {
+      expect(vm.$el.querySelector('.js-cluster-application-row-fluentd')).not.toBeNull();
+    });
   });
 
   describe('Group cluster applications', () => {
@@ -111,6 +116,10 @@ describe('Applications', () => {
 
     it('renders a row for Elastic Stack', () => {
       expect(vm.$el.querySelector('.js-cluster-application-row-elastic_stack')).not.toBeNull();
+    });
+
+    it('renders a row for Fluentd', () => {
+      expect(vm.$el.querySelector('.js-cluster-application-row-fluentd')).not.toBeNull();
     });
   });
 
@@ -157,9 +166,53 @@ describe('Applications', () => {
     it('renders a row for Elastic Stack', () => {
       expect(vm.$el.querySelector('.js-cluster-application-row-elastic_stack')).not.toBeNull();
     });
+
+    it('renders a row for Fluentd', () => {
+      expect(vm.$el.querySelector('.js-cluster-application-row-fluentd')).not.toBeNull();
+    });
+  });
+
+  describe('Helm application', () => {
+    describe('when managedAppsLocalTiller enabled', () => {
+      beforeEach(() => {
+        gon.features.managedAppsLocalTiller = true;
+      });
+
+      it('does not render a row for Helm Tiller', () => {
+        vm = mountComponent(Applications, {
+          applications: APPLICATIONS_MOCK_STATE,
+        });
+
+        expect(vm.$el.querySelector('.js-cluster-application-row-helm')).toBeNull();
+      });
+    });
   });
 
   describe('Ingress application', () => {
+    describe('with nested component', () => {
+      const propsData = {
+        applications: {
+          ...APPLICATIONS_MOCK_STATE,
+          ingress: {
+            title: 'Ingress',
+            status: 'installed',
+          },
+        },
+      };
+
+      let wrapper;
+      beforeEach(() => {
+        wrapper = shallowMount(Applications, { propsData });
+      });
+      afterEach(() => {
+        wrapper.destroy();
+      });
+      it('renders IngressModsecuritySettings', () => {
+        const modsecuritySettings = wrapper.find(IngressModsecuritySettings);
+        expect(modsecuritySettings.exists()).toBe(true);
+      });
+    });
+
     describe('when installed', () => {
       describe('with ip address', () => {
         it('renders ip address with a clipboard button', () => {
@@ -199,7 +252,8 @@ describe('Applications', () => {
               prometheus: { title: 'Prometheus' },
               jupyter: { title: 'JupyterHub', hostname: '' },
               knative: { title: 'Knative', hostname: '' },
-              elastic_stack: { title: 'Elastic Stack', kibana_hostname: '' },
+              elastic_stack: { title: 'Elastic Stack' },
+              fluentd: { title: 'Fluentd' },
             },
           });
 
@@ -360,6 +414,10 @@ describe('Applications', () => {
   });
 
   describe('Knative application', () => {
+    const availableDomain = {
+      id: 4,
+      domain: 'newhostname.com',
+    };
     const propsData = {
       applications: {
         ...APPLICATIONS_MOCK_STATE,
@@ -369,10 +427,11 @@ describe('Applications', () => {
           status: 'installed',
           externalIp: '1.1.1.1',
           installed: true,
+          availableDomains: [availableDomain],
+          pagesDomain: null,
         },
       },
     };
-    const newHostname = 'newhostname.com';
     let wrapper;
     let knativeDomainEditor;
 
@@ -388,20 +447,44 @@ describe('Applications', () => {
     });
 
     it('emits saveKnativeDomain event when knative domain editor emits save event', () => {
-      knativeDomainEditor.vm.$emit('save', newHostname);
+      propsData.applications.knative.hostname = availableDomain.domain;
+      propsData.applications.knative.pagesDomain = availableDomain;
+      knativeDomainEditor.vm.$emit('save');
 
       expect(eventHub.$emit).toHaveBeenCalledWith('saveKnativeDomain', {
         id: 'knative',
-        params: { hostname: newHostname },
+        params: {
+          hostname: availableDomain.domain,
+          pages_domain_id: availableDomain.id,
+        },
+      });
+    });
+
+    it('emits saveKnativeDomain event when knative domain editor emits save event with custom domain', () => {
+      const newHostName = 'someothernewhostname.com';
+      propsData.applications.knative.hostname = newHostName;
+      propsData.applications.knative.pagesDomain = null;
+      knativeDomainEditor.vm.$emit('save');
+
+      expect(eventHub.$emit).toHaveBeenCalledWith('saveKnativeDomain', {
+        id: 'knative',
+        params: {
+          hostname: newHostName,
+          pages_domain_id: undefined,
+        },
       });
     });
 
     it('emits setKnativeHostname event when knative domain editor emits change event', () => {
-      wrapper.find(KnativeDomainEditor).vm.$emit('set', newHostname);
+      wrapper.find(KnativeDomainEditor).vm.$emit('set', {
+        domain: availableDomain.domain,
+        domainId: availableDomain.id,
+      });
 
-      expect(eventHub.$emit).toHaveBeenCalledWith('setKnativeHostname', {
+      expect(eventHub.$emit).toHaveBeenCalledWith('setKnativeDomain', {
         id: 'knative',
-        hostname: newHostname,
+        domain: availableDomain.domain,
+        domainId: availableDomain.id,
       });
     });
   });
@@ -433,79 +516,14 @@ describe('Applications', () => {
   });
 
   describe('Elastic Stack application', () => {
-    describe('with ingress installed with ip & elastic stack installable', () => {
+    describe('with elastic stack installable', () => {
       it('renders hostname active input', () => {
         vm = mountComponent(Applications, {
           applications: {
             ...APPLICATIONS_MOCK_STATE,
-            ingress: {
-              title: 'Ingress',
-              status: 'installed',
-              externalIp: '1.1.1.1',
-            },
           },
         });
 
-        expect(
-          vm.$el
-            .querySelector('.js-cluster-application-row-elastic_stack .js-hostname')
-            .getAttribute('readonly'),
-        ).toEqual(null);
-      });
-    });
-
-    describe('with ingress installed without external ip', () => {
-      it('does not render hostname input', () => {
-        vm = mountComponent(Applications, {
-          applications: {
-            ...APPLICATIONS_MOCK_STATE,
-            ingress: { title: 'Ingress', status: 'installed' },
-          },
-        });
-
-        expect(vm.$el.querySelector('.js-cluster-application-row-elastic_stack .js-hostname')).toBe(
-          null,
-        );
-      });
-    });
-
-    describe('with ingress & elastic stack installed', () => {
-      it('renders readonly input', () => {
-        vm = mountComponent(Applications, {
-          applications: {
-            ...APPLICATIONS_MOCK_STATE,
-            ingress: {
-              title: 'Ingress',
-              status: 'installed',
-              externalIp: '1.1.1.1',
-              modsecurity_enabled: false,
-            },
-            elastic_stack: { title: 'Elastic Stack', status: 'installed', kibana_hostname: '' },
-          },
-        });
-
-        expect(
-          vm.$el
-            .querySelector('.js-cluster-application-row-elastic_stack .js-hostname')
-            .getAttribute('readonly'),
-        ).toEqual('readonly');
-      });
-    });
-
-    describe('without ingress installed', () => {
-      beforeEach(() => {
-        vm = mountComponent(Applications, {
-          applications: APPLICATIONS_MOCK_STATE,
-        });
-      });
-
-      it('does not render input', () => {
-        expect(vm.$el.querySelector('.js-cluster-application-row-elastic_stack .js-hostname')).toBe(
-          null,
-        );
-      });
-
-      it('renders disabled install button', () => {
         expect(
           vm.$el
             .querySelector(
@@ -514,6 +532,44 @@ describe('Applications', () => {
             .getAttribute('disabled'),
         ).toEqual('disabled');
       });
+    });
+
+    describe('elastic stack installed', () => {
+      it('renders uninstall button', () => {
+        vm = mountComponent(Applications, {
+          applications: {
+            ...APPLICATIONS_MOCK_STATE,
+            elastic_stack: { title: 'Elastic Stack', status: 'installed' },
+          },
+        });
+
+        expect(
+          vm.$el
+            .querySelector(
+              '.js-cluster-application-row-elastic_stack .js-cluster-application-install-button',
+            )
+            .getAttribute('disabled'),
+        ).toEqual('disabled');
+      });
+    });
+  });
+
+  describe('Fluentd application', () => {
+    const propsData = {
+      applications: {
+        ...APPLICATIONS_MOCK_STATE,
+      },
+    };
+
+    let wrapper;
+    beforeEach(() => {
+      wrapper = shallowMount(Applications, { propsData });
+    });
+    afterEach(() => {
+      wrapper.destroy();
+    });
+    it('renders the correct Component', () => {
+      expect(wrapper.contains(FluentdOutputSettings)).toBe(true);
     });
   });
 });

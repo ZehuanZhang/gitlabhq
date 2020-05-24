@@ -11,6 +11,8 @@ module Ci
 
       needs = Set.new
 
+      pipeline.ensure_scheduling_type!
+
       pipeline.retryable_builds.preload_needs.find_each do |build|
         next unless can?(current_user, :update_build, build)
 
@@ -36,7 +38,7 @@ module Ci
 
       Ci::ProcessPipelineService
         .new(pipeline)
-        .execute(completed_build_ids)
+        .execute(completed_build_ids, initial_process: true)
     end
   end
 end

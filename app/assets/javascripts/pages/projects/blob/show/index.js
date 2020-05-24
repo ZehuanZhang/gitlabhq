@@ -4,6 +4,7 @@ import BlobViewer from '~/blob/viewer/index';
 import initBlob from '~/pages/projects/init_blob';
 import GpgBadges from '~/gpg_badges';
 import '~/sourcegraph/load';
+import PipelineTourSuccessModal from '~/blob/pipeline_tour_success_modal.vue';
 
 document.addEventListener('DOMContentLoaded', () => {
   new BlobViewer(); // eslint-disable-line no-new
@@ -30,4 +31,40 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   GpgBadges.fetch();
+
+  const codeNavEl = document.getElementById('js-code-navigation');
+
+  if (gon.features?.codeNavigation && codeNavEl) {
+    const { codeNavigationPath, blobPath, definitionPathPrefix } = codeNavEl.dataset;
+
+    // eslint-disable-next-line promise/catch-or-return
+    import('~/code_navigation').then(m =>
+      m.default({
+        blobs: [{ path: blobPath, codeNavigationPath }],
+        definitionPathPrefix,
+      }),
+    );
+  }
+
+  if (gon.features?.suggestPipeline) {
+    const successPipelineEl = document.querySelector('.js-success-pipeline-modal');
+
+    if (successPipelineEl) {
+      // eslint-disable-next-line no-new
+      new Vue({
+        el: successPipelineEl,
+        render(createElement) {
+          const { commitCookie, goToPipelinesPath, humanAccess } = this.$el.dataset;
+
+          return createElement(PipelineTourSuccessModal, {
+            props: {
+              goToPipelinesPath,
+              commitCookie,
+              humanAccess,
+            },
+          });
+        },
+      });
+    }
+  }
 });

@@ -2,13 +2,13 @@
 
 require 'spec_helper'
 
-describe Gitlab::BackgroundMigration::BackfillProjectFullpathInRepoConfig, :migration, schema: 20181010133639 do
+describe Gitlab::BackgroundMigration::BackfillProjectFullpathInRepoConfig, schema: 20181010133639 do
   let(:namespaces) { table(:namespaces) }
   let(:projects) { table(:projects) }
   let(:group) { namespaces.create!(name: 'foo', path: 'foo') }
   let(:subgroup) { namespaces.create!(name: 'bar', path: 'bar', parent_id: group.id) }
 
-  describe described_class::Storage::HashedProject do
+  describe described_class::Storage::Hashed do
     let(:project) { double(id: 555) }
 
     subject(:project_storage) { described_class.new(project) }
@@ -39,7 +39,7 @@ describe Gitlab::BackgroundMigration::BackfillProjectFullpathInRepoConfig, :migr
       end
 
       it 'raises OrphanedNamespaceError when any parent namespace does not exist' do
-        subgroup.update_attribute(:parent_id, namespaces.maximum(:id).succ)
+        subgroup.update_attribute(:parent_id, non_existing_record_id)
 
         expect { project.full_path }.to raise_error(Gitlab::BackgroundMigration::BackfillProjectFullpathInRepoConfig::OrphanedNamespaceError)
       end

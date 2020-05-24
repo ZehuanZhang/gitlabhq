@@ -28,11 +28,38 @@ describe Gitlab::Diff::Position do
       new_path: "files/ruby/popen.rb",
       old_line: nil,
       new_line: 14,
+      line_range: nil,
       base_sha: nil,
       head_sha: nil,
       start_sha: nil,
       position_type: "text"
     }
+  end
+
+  describe 'factory' do
+    it 'produces a complete text position' do
+      position = build(:text_diff_position)
+
+      expect(position).to be_complete
+      expect(position).to have_attributes(position_type: 'text')
+    end
+
+    it 'produces a complete image position' do
+      position = build(:image_diff_position)
+
+      expect(position).to be_complete
+      expect(position).to have_attributes(position_type: 'image')
+    end
+
+    it 'allows the diff_refs to be passed as a single object' do
+      head_sha  = Digest::SHA1.hexdigest(SecureRandom.hex)
+      base_sha  = Digest::SHA1.hexdigest(SecureRandom.hex)
+      start_sha = Digest::SHA1.hexdigest(SecureRandom.hex)
+
+      refs = ::Gitlab::Diff::DiffRefs.new(base_sha: base_sha, start_sha: start_sha, head_sha: head_sha)
+
+      expect(build(:diff_position, diff_refs: refs).diff_refs).to eq(refs)
+    end
   end
 
   describe "position for an added text file" do
@@ -612,11 +639,11 @@ describe Gitlab::Diff::Position do
       let(:diff_position) { described_class.new(args) }
 
       it "returns the position as JSON" do
-        expect(JSON.parse(diff_position.to_json)).to eq(args.stringify_keys)
+        expect(Gitlab::Json.parse(diff_position.to_json)).to eq(args.stringify_keys)
       end
 
       it "works when nested under another hash" do
-        expect(JSON.parse(JSON.generate(pos: diff_position))).to eq('pos' => args.stringify_keys)
+        expect(Gitlab::Json.parse(Gitlab::Json.generate(pos: diff_position))).to eq('pos' => args.stringify_keys)
       end
     end
 

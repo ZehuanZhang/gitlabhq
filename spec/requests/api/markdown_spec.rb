@@ -3,8 +3,6 @@
 require "spec_helper"
 
 describe API::Markdown do
-  RSpec::Matchers.define_negated_matcher :exclude, :include
-
   describe "POST /markdown" do
     let(:user) {} # No-op. It gets overwritten in the contexts below.
 
@@ -16,7 +14,7 @@ describe API::Markdown do
 
     shared_examples "rendered markdown text without GFM" do
       it "renders markdown text" do
-        expect(response).to have_http_status(201)
+        expect(response).to have_gitlab_http_status(:created)
         expect(response.headers["Content-Type"]).to eq("application/json")
         expect(json_response).to be_a(Hash)
         expect(json_response["html"]).to eq("<p>#{text}</p>")
@@ -25,7 +23,7 @@ describe API::Markdown do
 
     shared_examples "404 Project Not Found" do
       it "responses with 404 Not Found" do
-        expect(response).to have_http_status(404)
+        expect(response).to have_gitlab_http_status(:not_found)
         expect(response.headers["Content-Type"]).to eq("application/json")
         expect(json_response).to be_a(Hash)
         expect(json_response["message"]).to eq("404 Project Not Found")
@@ -37,7 +35,7 @@ describe API::Markdown do
         let(:params) { {} }
 
         it "responses with 400 Bad Request" do
-          expect(response).to have_http_status(400)
+          expect(response).to have_gitlab_http_status(:bad_request)
           expect(response.headers["Content-Type"]).to eq("application/json")
           expect(json_response).to be_a(Hash)
           expect(json_response["error"]).to eq("text is missing")
@@ -52,8 +50,8 @@ describe API::Markdown do
     end
 
     context "when arguments are valid" do
-      set(:project) { create(:project) }
-      set(:issue) { create(:issue, project: project) }
+      let_it_be(:project) { create(:project) }
+      let_it_be(:issue) { create(:issue, project: project) }
       let(:text) { ":tada: Hello world! :100: #{issue.to_reference}" }
 
       context "when not using gfm" do
@@ -83,7 +81,7 @@ describe API::Markdown do
           let(:params) { { text: text, gfm: true } }
 
           it "renders markdown text" do
-            expect(response).to have_http_status(201)
+            expect(response).to have_gitlab_http_status(:created)
             expect(response.headers["Content-Type"]).to eq("application/json")
             expect(json_response).to be_a(Hash)
             expect(json_response["html"]).to include("Hello world!")
@@ -100,7 +98,7 @@ describe API::Markdown do
           let(:user) { project.owner }
 
           it "renders markdown text" do
-            expect(response).to have_http_status(201)
+            expect(response).to have_gitlab_http_status(:created)
             expect(response.headers["Content-Type"]).to eq("application/json")
             expect(json_response).to be_a(Hash)
             expect(json_response["html"]).to include("Hello world!")
@@ -120,7 +118,7 @@ describe API::Markdown do
 
           shared_examples 'user without proper access' do
             it 'does not render the title or link' do
-              expect(response).to have_http_status(201)
+              expect(response).to have_gitlab_http_status(:created)
               expect(json_response["html"]).not_to include('Confidential title')
               expect(json_response["html"]).not_to include('<a href=')
               expect(json_response["html"]).to include('Hello world!')
@@ -146,7 +144,7 @@ describe API::Markdown do
             let(:user) { confidential_issue.author }
 
             it 'renders the title or link' do
-              expect(response).to have_http_status(201)
+              expect(response).to have_gitlab_http_status(:created)
               expect(json_response["html"]).to include('Confidential title')
               expect(json_response["html"]).to include('Hello world!')
                                           .and include('data-name="tada"')

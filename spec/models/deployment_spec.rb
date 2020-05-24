@@ -10,6 +10,7 @@ describe Deployment do
   it { is_expected.to belong_to(:cluster).class_name('Clusters::Cluster') }
   it { is_expected.to belong_to(:user) }
   it { is_expected.to belong_to(:deployable) }
+  it { is_expected.to have_one(:deployment_cluster) }
   it { is_expected.to have_many(:deployment_merge_requests) }
   it { is_expected.to have_many(:merge_requests).through(:deployment_merge_requests) }
 
@@ -17,6 +18,7 @@ describe Deployment do
   it { is_expected.to delegate_method(:commit).to(:project) }
   it { is_expected.to delegate_method(:commit_title).to(:commit).as(:try) }
   it { is_expected.to delegate_method(:manual_actions).to(:deployable).as(:try) }
+  it { is_expected.to delegate_method(:kubernetes_namespace).to(:deployment_cluster).as(:kubernetes_namespace) }
 
   it { is_expected.to validate_presence_of(:ref) }
   it { is_expected.to validate_presence_of(:sha) }
@@ -47,6 +49,22 @@ describe Deployment do
       let(:scope) { :project }
       let(:scope_attrs) { { project: instance.project } }
       let(:usage) { :deployments }
+    end
+  end
+
+  describe '.stoppable' do
+    subject { described_class.stoppable }
+
+    context 'when deployment is stoppable' do
+      let!(:deployment) { create(:deployment, :success, on_stop: 'stop-review') }
+
+      it { is_expected.to eq([deployment]) }
+    end
+
+    context 'when deployment is not stoppable' do
+      let!(:deployment) { create(:deployment, :failed) }
+
+      it { is_expected.to be_empty }
     end
   end
 
@@ -96,7 +114,7 @@ describe Deployment do
           deployment.succeed!
 
           expect(deployment).to be_success
-          expect(deployment.finished_at).to be_like_time(Time.now)
+          expect(deployment.finished_at).to be_like_time(Time.current)
         end
       end
 
@@ -123,7 +141,7 @@ describe Deployment do
           deployment.drop!
 
           expect(deployment).to be_failed
-          expect(deployment.finished_at).to be_like_time(Time.now)
+          expect(deployment.finished_at).to be_like_time(Time.current)
         end
       end
 
@@ -143,7 +161,7 @@ describe Deployment do
           deployment.cancel!
 
           expect(deployment).to be_canceled
-          expect(deployment.finished_at).to be_like_time(Time.now)
+          expect(deployment.finished_at).to be_like_time(Time.current)
         end
       end
 
@@ -261,6 +279,45 @@ describe Deployment do
 
         expect(last_deployments.size).to eq(2)
         expect(last_deployments).to match_array(deployments.last(2))
+      end
+    end
+
+    describe 'active' do
+      subject { described_class.active }
+
+      it 'retrieves the active deployments' do
+        deployment1 = create(:deployment, status: :created )
+        deployment2 = create(:deployment, status: :running )
+        create(:deployment, status: :failed )
+        create(:deployment, status: :canceled )
+
+        is_expected.to contain_exactly(deployment1, deployment2)
+      end
+    end
+
+    describe 'older_than' do
+      let(:deployment) { create(:deployment) }
+
+      subject { described_class.older_than(deployment) }
+
+      it 'retrives the correct older deployments' do
+        older_deployment1 = create(:deployment)
+        older_deployment2 = create(:deployment)
+        deployment
+        create(:deployment)
+
+        is_expected.to contain_exactly(older_deployment1, older_deployment2)
+      end
+    end
+
+    describe 'with_deployable' do
+      subject { described_class.with_deployable }
+
+      it 'retrieves deployments with deployable builds' do
+        with_deployable = create(:deployment)
+        create(:deployment, deployable: nil)
+
+        is_expected.to contain_exactly(with_deployable)
       end
     end
   end
@@ -463,6 +520,21 @@ describe Deployment do
     end
   end
 
+  describe '#create_ref' do
+    let(:deployment) { build(:deployment) }
+
+    subject { deployment.create_ref }
+
+    it 'creates a ref using the sha' do
+      expect(deployment.project.repository).to receive(:create_ref).with(
+        deployment.sha,
+        "refs/environments/#{deployment.environment.name}/deployments/#{deployment.iid}"
+      )
+
+      subject
+    end
+  end
+
   describe '#playable_build' do
     subject { deployment.playable_build }
 
@@ -495,7 +567,7 @@ describe Deployment do
     end
   end
 
-  context '#update_status' do
+  describe '#update_status' do
     let(:deploy) { create(:deployment, status: :running) }
 
     it 'changes the status' do
@@ -515,7 +587,7 @@ describe Deployment do
       Timecop.freeze do
         deploy.update_status('success')
 
-        expect(deploy.read_attribute(:finished_at)).to eq(Time.now)
+        expect(deploy.read_attribute(:finished_at)).to eq(Time.current)
       end
     end
   end
@@ -549,6 +621,28 @@ describe Deployment do
 
       expect(deploy).not_to be_valid
       expect(deploy.errors[:ref]).not_to be_empty
+    end
+  end
+
+  describe '.fast_destroy_all' do
+    it 'cleans path_refs for destroyed environments' do
+      project = create(:project, :repository)
+      environment = create(:environment, project: project)
+
+      destroyed_deployments = create_list(:deployment, 2, :success, environment: environment, project: project)
+      other_deployments = create_list(:deployment, 2, :success, environment: environment, project: project)
+
+      (destroyed_deployments + other_deployments).each(&:create_ref)
+
+      described_class.where(id: destroyed_deployments.map(&:id)).fast_destroy_all
+
+      destroyed_deployments.each do |deployment|
+        expect(project.commit(deployment.ref_path)).to be_nil
+      end
+
+      other_deployments.each do |deployment|
+        expect(project.commit(deployment.ref_path)).not_to be_nil
+      end
     end
   end
 end

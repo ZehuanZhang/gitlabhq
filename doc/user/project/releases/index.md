@@ -1,10 +1,13 @@
 ---
 type: reference, howto
+stage: Release
+group: Release Management
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://about.gitlab.com/handbook/engineering/ux/technical-writing/#designated-technical-writers
 ---
 
 # Releases
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/issues/41766) in GitLab 11.7.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/41766) in GitLab 11.7.
 
 It is typical to create a [Git tag](../../../university/training/topics/tags.md) at
 the moment of release to introduce a checkpoint in your source code
@@ -13,20 +16,25 @@ assets output by your CI system to use them, not just the raw source
 code.
 
 GitLab's **Releases** are a way to track deliverables in your project. Consider them
-a snapshot in time of the source, build output, and other metadata or artifacts
+a snapshot in time of the source, build output, artifacts, and other metadata
 associated with a released version of your code.
-
-There are several ways to create a Release:
-
-- In the interface, when you create a new Git tag.
-- In the interface, by adding a release note to an existing Git tag.
-- Using the [Releases API](../../../api/releases/index.md): we recommend doing this as one of the last
-  steps in your CI/CD release pipeline.
 
 ## Getting started with Releases
 
 Start by giving a [description](#release-description) to the Release and
 including its [assets](#release-assets), as follows.
+
+## Release versioning
+
+Release versions are manually assigned by the user in the Release title. GitLab uses [Semantic Versioning](https://semver.org/) for our releases, and we recommend you do too. Use `(Major).(Minor).(Patch)`, as detailed in the [GitLab Policy for Versioning](../../../policy/maintenance.md#versioning).
+
+For example, for GitLab version `10.5.7`:
+
+- `10` represents the major version. The major release was `10.0.0`, but often referred to as `10.0`.
+- `5` represents the minor version. The minor release was `10.5.0`, but often referred to as `10.5`.
+- `7` represents the patch number.
+
+Any part of the version number can be multiple digits, for example, `13.10.11`.
 
 ### Release description
 
@@ -59,22 +67,59 @@ A link is any URL which can point to whatever you like; documentation, built
 binaries, or other related materials. These can be both internal or external
 links from your GitLab instance.
 
-NOTE: **NOTE**
-You can manipulate links of each release entry with [Release Links API](../../../api/releases/links.md)
+#### Permanent links to Release assets
 
-#### Releases associated with milestones
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/27300) in GitLab 12.9.
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab/issues/29020) in GitLab 12.5.
+The assets associated with a Release are accessible through a permanent URL.
+GitLab will always redirect this URL to the actual asset
+location, so even if the assets move to a different location, you can continue
+to use the same URL. This is defined during [link creation](../../../api/releases/links.md#create-a-link) or [updating](../../../api/releases/links.md#update-a-link).
+
+Each asset has a name, a URL of the *actual* asset location, and optionally, a
+`filepath` parameter, which, if you specify it, will create a URL pointing
+to the asset for the Release. The format of the URL is:
+
+```html
+https://host/namespace/project/releases/:release/downloads/:filepath
+```
+
+If you have an asset for the `v11.9.0-rc2` release in the `gitlab-org`
+namespace and `gitlab-runner` project on `gitlab.com`, for example:
+
+```json
+{
+  "name": "linux amd64",
+  "filepath": "/binaries/gitlab-runner-linux-amd64",
+  "url": "https://gitlab-runner-downloads.s3.amazonaws.com/v11.9.0-rc2/binaries/gitlab-runner-linux-amd64"
+}
+```
+
+This asset has a direct link of:
+
+```html
+https://gitlab.com/gitlab-org/gitlab-runner/releases/v11.9.0-rc2/downloads/binaries/gitlab-runner-linux-amd64
+```
+
+The physical location of the asset can change at any time and the direct link will remain unchanged.
+
+### Releases associated with milestones
+
+> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/29020) in GitLab 12.5.
+> - [Updated](https://gitlab.com/gitlab-org/gitlab/-/issues/39467) to edit milestones in the UI in GitLab 13.0.
 
 Releases can optionally be associated with one or more
 [project milestones](../milestones/index.md#project-milestones-and-group-milestones)
 by including a `milestones` array in your requests to the
-[Releases API](../../../api/releases/index.md#create-a-release).
+[Releases API](../../../api/releases/index.md#create-a-release) or by using the dropdown in the [Edit Release](#editing-a-release) page.
 
-Releases display this association with the **Milestone** indicator near
-the top of the Release block on the **Project overview > Releases** page.
+![Release edit page with milestones dropdown expanded](img/release_milestone_dropdown_v13_0.png)
 
-![A Release with one associated milestone](img/release_with_milestone_v12_5.png)
+Releases display this association with the **Milestone** indicator in the top
+section of the Release block on the **Project overview > Releases** page, along
+with some statistics about the issues in the milestone(s).
+
+![A Release with one associated milestone](img/release_with_milestone_v12_9.png)
 
 Below is an example of milestones with no Releases, one Release, and two
 Releases, respectively.
@@ -92,11 +137,56 @@ associated with a large number of Releases.
 Navigate to **Project > Releases** in order to see the list of releases for a given
 project.
 
-![Releases list](img/releases.png)
+![Releases list](img/releases_v12_9.png)
+
+### Number of Releases
+
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/36667) in GitLab 12.8.
+
+The incremental number of Releases is displayed on the project's details page. When clicked,
+it takes you to the list of Releases.
+
+![Number of Releases](img/releases_count_v12_8.png "Incremental counter of Releases")
+
+For private projects, the number of Releases is displayed to users with Reporter
+[permissions](../../permissions.md#project-members-permissions) or higher. For public projects,
+it is displayed to every user regardless of their permission level.
+
+### Upcoming Releases
+
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/38105) in GitLab 12.1.
+
+A Release may be created ahead of time by specifying a future `released_at` date. Until
+the `released_at` date and time is reached, an **Upcoming Release** badge will appear next to the
+Release tag. Once the `released_at` date and time has passed, the badge is automatically removed.
+
+![An upcoming release](img/upcoming_release_v12_7.png)
+
+## Creating a Release
+
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/32812) in GitLab 12.9, Releases can be created directly through the GitLab Releases UI.
+
+NOTE: **Note:**
+Only users with Developer permissions or higher can create Releases.
+Read more about [Release permissions](../../../user/permissions.md#project-members-permissions).
+
+To create a new Release through the GitLab UI:
+
+1. Navigate to **Project overview > Releases** and click the **New release** button.
+1. On the **New Tag** page, fill out the tag details.
+1. Optionally, in the **Release notes** field, enter the Release's description.
+   If you leave this field empty, only a tag will be created.
+   If you populate it, both a tag and a Release will be created.
+1. Click **Create tag**.
+
+If you created a release, you can view it at **Project overview > Releases**.
+
+You can also create a Release using the [Releases API](../../../api/releases/index.md#create-a-release):
+we recommend doing this as one of the last steps in your CI/CD release pipeline.
 
 ## Editing a release
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab/issues/26016) in GitLab 12.6.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/26016) in GitLab 12.6. Asset link editing was [introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/9427) in GitLab 12.10.
 
 To edit the details of a release, navigate to **Project overview > Releases** and click
 the edit button (pencil icon) in the top-right corner of the release you want to modify.
@@ -106,18 +196,16 @@ the edit button (pencil icon) in the top-right corner of the release you want to
 This will bring you to the **Edit Release** page, from which you can
 change some of the release's details.
 
-![Edit release page](img/edit_release_page_v12_6.png)
+![Edit release page](img/edit_release_page_v13_0.png)
 
-Currently, it is only possible to edit the release title and notes.
-To change other release information, such as its tag, associated
-milestones, or release date, use the
-[Releases API](../../../api/releases/index.md#update-a-release). Editing this
-information through the **Edit Release** page is planned for a future version
-of GitLab.
+Currently, it is only possible to edit the release title, notes, associated milestones, and asset
+links. To change other release information, such as its tag, or release date, use the [Releases
+API](../../../api/releases/index.md#update-a-release). Editing this information
+through the **Edit Release** page is planned for a future version of GitLab.
 
 ## Notification for Releases
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab/issues/26001) in GitLab 12.4.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/26001) in GitLab 12.4.
 
 You can be notified by email when a new Release is created for your project.
 
@@ -153,20 +241,27 @@ You can also edit an existing tag to add release notes:
 
 ![tags](img/tags_12_5.png "Addition of note to an existing tag")
 
-## Release evidence
+## Release Evidence
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab/issues/26019) in GitLab 12.6.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/26019) in GitLab 12.6.
 
-Each time a new release is created, specific related data is collected in
-parallel. This dataset will be a snapshot this new release (including linked
-milestones and issues) at moment of creation. Such collection of data will
-provide a chain of custody and facilitate processes like external audits, for example.
+Each time a release is created, GitLab takes a snapshot of data that's related to it.
+This data is called Release Evidence. It includes linked milestones and issues, and
+it is taken at moment the release is created. It provides a chain of custody and can
+facilitate processes like external audits, for example.
 
-The gathered evidence data is stored in the database upon creation of a new
-release as a JSON object. In GitLab 12.6, a link to
-the evidence data is provided for [each Release](#releases-list).
+You can also [use the API](../../../api/releases/index.md#collect-release-evidence-premium-only) to
+generate Release Evidence for an existing release. Because of this, [each release](#releases-list)
+can have multiple Release Evidence snapshots. You can view the Release Evidence and
+its details on the Release page.
 
-Here is what this object can look like:
+NOTE: **Note:**
+When the issue tracker is disabled, release evidence [is not collected](https://gitlab.com/gitlab-org/gitlab/-/issues/208397).
+
+Release Evidence is stored as a JSON object, so you can compare evidence by using
+commonly-available tools.
+
+Here is an example of a Release Evidence object:
 
 ```json
 {
@@ -214,6 +309,88 @@ Here is what this object can look like:
     ]
   }
 }
+```
+
+### Enabling Release Evidence display **(CORE ONLY)**
+
+This feature comes with the `:release_evidence_collection` feature flag
+enabled by default in GitLab self-managed instances. To turn it off,
+ask a GitLab administrator with Rails console access to run the following
+command:
+
+```ruby
+Feature.disable(:release_evidence_collection)
+```
+
+NOTE: **Note:**
+Please note that Release Evidence's data is collected regardless of this
+feature flag, which only enables or disables the display of the data on the
+Releases page.
+
+### Collect release evidence **(PREMIUM ONLY)**
+
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/199065) in [GitLab Premium](https://about.gitlab.com/pricing/) 12.10.
+
+Evidence collection can be initiated by using an [API call](../../../api/releases/index.md#collect-release-evidence-premium-only) at any time. Evidence snapshots are visible on
+the Release page, along with the timestamp the Evidence was collected.
+
+### Schedule release evidence collection
+
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/23697) in GitLab 12.8.
+
+When the `released_at` date and time is not provided, the date and time of Release
+creation is used. The Evidence collection background job is immediately executed.
+
+If a future `released_at` is specified, the Release becomes an **Upcoming Release**. In this
+case, the Evidence is scheduled to be collected at the `released_at` date and time, via a
+background job.
+
+If a past `released_at` is used, no Evidence is collected for the Release.
+
+## GitLab Releaser
+
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-releaser/-/merge_requests/6) in GitLab 12.10.
+
+GitLab Releaser is a CLI tool for managing GitLab Releases from the command line or from
+GitLab CI/CD's configuration file, `.gitlab-ci.yml`.
+
+With it, you can create, update, modify, and delete Releases right through the
+terminal.
+
+Read the [GitLab Releaser documentation](https://gitlab.com/gitlab-org/gitlab-releaser/-/tree/master/docs/index.md)
+for details.
+
+## Set a deploy freeze
+
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/29382) in GitLab 13.0.
+
+With a deploy freeze, you can prevent an unintended production release during a
+period of time you specify, whether a company event or public holiday. You can
+now rely on the enforcement of policies that are typically outside the scope of
+GitLab to reduce uncertainty and risk when automating deployments.
+
+Deploy freeze periods are set at the Project level, and may be created and
+managed using the [Freeze Periods API](../../../api/freeze_periods.md).
+Each Freeze Period has a `freeze_start` and a `freeze_end`, which are defined
+as [crontab](https://crontab.guru/) entries. If a project contains multiple
+freeze periods, all will apply, and should they overlap, the freeze covers the
+complete overlapped period.
+
+During pipeline processing, GitLab CI creates an environment variable named
+`$CI_DEPLOY_FREEZE` if the currently executing job is within a
+Freeze Period.
+
+To take advantage of this variable, create a `rules` entry in your
+`gitlab-ci.yaml` to prevent the deployment job from executing.
+
+For example:
+
+```yaml
+deploy_to_production:
+  stage: deploy
+  script: deploy_to_prod.sh
+  rules:
+    - if: $CI_DEPLOY_FREEZE == null
 ```
 
 <!-- ## Troubleshooting

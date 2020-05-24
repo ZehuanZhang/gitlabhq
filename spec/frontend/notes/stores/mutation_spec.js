@@ -1,6 +1,6 @@
 import Vue from 'vue';
 import mutations from '~/notes/stores/mutations';
-import { DISCUSSION_NOTE } from '~/notes/constants';
+import { DISCUSSION_NOTE, ASC, DESC } from '~/notes/constants';
 import {
   note,
   discussionMock,
@@ -8,6 +8,7 @@ import {
   userDataMock,
   noteableDataMock,
   individualNote,
+  notesWithDescriptionChanges,
 } from '../mock_data';
 
 const RESOLVED_NOTE = { resolvable: true, resolved: true };
@@ -21,7 +22,10 @@ describe('Notes Store mutations', () => {
     let noteData;
 
     beforeEach(() => {
-      state = { discussions: [] };
+      state = {
+        discussions: [],
+        discussionSortOrder: ASC,
+      };
       noteData = {
         expanded: true,
         id: note.discussion_id,
@@ -33,9 +37,7 @@ describe('Notes Store mutations', () => {
     });
 
     it('should add a new note to an array of notes', () => {
-      expect(state).toEqual({
-        discussions: [noteData],
-      });
+      expect(state).toEqual(expect.objectContaining({ discussions: [noteData] }));
 
       expect(state.discussions.length).toBe(1);
     });
@@ -48,7 +50,7 @@ describe('Notes Store mutations', () => {
   });
 
   describe('ADD_NEW_REPLY_TO_DISCUSSION', () => {
-    const newReply = Object.assign({}, note, { discussion_id: discussionMock.id });
+    const newReply = { ...note, discussion_id: discussionMock.id };
 
     let state;
 
@@ -84,7 +86,7 @@ describe('Notes Store mutations', () => {
 
   describe('EXPAND_DISCUSSION', () => {
     it('should expand a collapsed discussion', () => {
-      const discussion = Object.assign({}, discussionMock, { expanded: false });
+      const discussion = { ...discussionMock, expanded: false };
 
       const state = {
         discussions: [discussion],
@@ -98,7 +100,7 @@ describe('Notes Store mutations', () => {
 
   describe('COLLAPSE_DISCUSSION', () => {
     it('should collapse an expanded discussion', () => {
-      const discussion = Object.assign({}, discussionMock, { expanded: true });
+      const discussion = { ...discussionMock, expanded: true };
 
       const state = {
         discussions: [discussion],
@@ -112,7 +114,7 @@ describe('Notes Store mutations', () => {
 
   describe('REMOVE_PLACEHOLDER_NOTES', () => {
     it('should remove all placeholder notes in indivudal notes and discussion', () => {
-      const placeholderNote = Object.assign({}, individualNote, { isPlaceholderNote: true });
+      const placeholderNote = { ...individualNote, isPlaceholderNote: true };
       const state = { discussions: [placeholderNote] };
       mutations.REMOVE_PLACEHOLDER_NOTES(state);
 
@@ -296,7 +298,7 @@ describe('Notes Store mutations', () => {
 
   describe('TOGGLE_DISCUSSION', () => {
     it('should open a closed discussion', () => {
-      const discussion = Object.assign({}, discussionMock, { expanded: false });
+      const discussion = { ...discussionMock, expanded: false };
 
       const state = {
         discussions: [discussion],
@@ -328,13 +330,59 @@ describe('Notes Store mutations', () => {
     });
   });
 
+  describe('SET_EXPAND_DISCUSSIONS', () => {
+    it('should succeed when discussions are null', () => {
+      const state = {};
+
+      mutations.SET_EXPAND_DISCUSSIONS(state, { discussionIds: null, expanded: true });
+
+      expect(state).toEqual({});
+    });
+
+    it('should succeed when discussions are empty', () => {
+      const state = {};
+
+      mutations.SET_EXPAND_DISCUSSIONS(state, { discussionIds: [], expanded: true });
+
+      expect(state).toEqual({});
+    });
+
+    it('should open all closed discussions', () => {
+      const discussion1 = { ...discussionMock, id: 0, expanded: false };
+      const discussion2 = { ...discussionMock, id: 1, expanded: true };
+      const discussionIds = [discussion1.id, discussion2.id];
+
+      const state = { discussions: [discussion1, discussion2] };
+
+      mutations.SET_EXPAND_DISCUSSIONS(state, { discussionIds, expanded: true });
+
+      state.discussions.forEach(discussion => {
+        expect(discussion.expanded).toEqual(true);
+      });
+    });
+
+    it('should close all opened discussions', () => {
+      const discussion1 = { ...discussionMock, id: 0, expanded: false };
+      const discussion2 = { ...discussionMock, id: 1, expanded: true };
+      const discussionIds = [discussion1.id, discussion2.id];
+
+      const state = { discussions: [discussion1, discussion2] };
+
+      mutations.SET_EXPAND_DISCUSSIONS(state, { discussionIds, expanded: false });
+
+      state.discussions.forEach(discussion => {
+        expect(discussion.expanded).toEqual(false);
+      });
+    });
+  });
+
   describe('UPDATE_NOTE', () => {
     it('should update a note', () => {
       const state = {
         discussions: [individualNote],
       };
 
-      const updated = Object.assign({}, individualNote.notes[0], { note: 'Foo' });
+      const updated = { ...individualNote.notes[0], note: 'Foo' };
 
       mutations.UPDATE_NOTE(state, updated);
 
@@ -501,7 +549,6 @@ describe('Notes Store mutations', () => {
         expect.objectContaining({
           resolvableDiscussionsCount: 1,
           unresolvedDiscussionsCount: 1,
-          hasUnresolvedDiscussions: false,
         }),
       );
     });
@@ -538,7 +585,6 @@ describe('Notes Store mutations', () => {
         expect.objectContaining({
           resolvableDiscussionsCount: 4,
           unresolvedDiscussionsCount: 2,
-          hasUnresolvedDiscussions: true,
         }),
       );
     });
@@ -579,6 +625,79 @@ describe('Notes Store mutations', () => {
       mutations.REMOVE_CONVERTED_DISCUSSION(state, discussion.id);
 
       expect(state.convertedDisscussionIds).not.toContain(discussion.id);
+    });
+  });
+
+  describe('RECEIVE_DESCRIPTION_VERSION', () => {
+    const descriptionVersion = notesWithDescriptionChanges[0].notes[0].note;
+    const versionId = notesWithDescriptionChanges[0].notes[0].id;
+    const state = {};
+
+    it('adds a descriptionVersion', () => {
+      mutations.RECEIVE_DESCRIPTION_VERSION(state, { descriptionVersion, versionId });
+      expect(state.descriptionVersions[versionId]).toBe(descriptionVersion);
+    });
+  });
+
+  describe('RECEIVE_DELETE_DESCRIPTION_VERSION', () => {
+    const descriptionVersion = notesWithDescriptionChanges[0].notes[0].note;
+    const versionId = notesWithDescriptionChanges[0].notes[0].id;
+    const state = { descriptionVersions: { [versionId]: descriptionVersion } };
+    const deleted = 'Deleted';
+
+    it('updates descriptionVersion to "Deleted"', () => {
+      mutations.RECEIVE_DELETE_DESCRIPTION_VERSION(state, { [versionId]: deleted });
+      expect(state.descriptionVersions[versionId]).toBe(deleted);
+    });
+  });
+
+  describe('SET_DISCUSSIONS_SORT', () => {
+    let state;
+
+    beforeEach(() => {
+      state = { discussionSortOrder: ASC };
+    });
+
+    it('sets sort order', () => {
+      mutations.SET_DISCUSSIONS_SORT(state, DESC);
+
+      expect(state.discussionSortOrder).toBe(DESC);
+    });
+  });
+
+  describe('TOGGLE_BLOCKED_ISSUE_WARNING', () => {
+    it('should set isToggleBlockedIssueWarning as true', () => {
+      const state = {
+        discussions: [],
+        targetNoteHash: null,
+        lastFetchedAt: null,
+        isToggleStateButtonLoading: false,
+        isToggleBlockedIssueWarning: false,
+        notesData: {},
+        userData: {},
+        noteableData: {},
+      };
+
+      mutations.TOGGLE_BLOCKED_ISSUE_WARNING(state, true);
+
+      expect(state.isToggleBlockedIssueWarning).toEqual(true);
+    });
+
+    it('should set isToggleBlockedIssueWarning as false', () => {
+      const state = {
+        discussions: [],
+        targetNoteHash: null,
+        lastFetchedAt: null,
+        isToggleStateButtonLoading: false,
+        isToggleBlockedIssueWarning: true,
+        notesData: {},
+        userData: {},
+        noteableData: {},
+      };
+
+      mutations.TOGGLE_BLOCKED_ISSUE_WARNING(state, false);
+
+      expect(state.isToggleBlockedIssueWarning).toEqual(false);
     });
   });
 });

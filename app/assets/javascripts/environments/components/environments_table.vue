@@ -3,10 +3,8 @@
  * Render environments table.
  */
 import { GlLoadingIcon } from '@gitlab/ui';
-import _ from 'underscore';
-import environmentTableMixin from 'ee_else_ce/environments/mixins/environments_table_mixin';
+import { flow, reverse, sortBy } from 'lodash/fp';
 import { s__ } from '~/locale';
-import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
 import EnvironmentItem from './environment_item.vue';
 
 export default {
@@ -17,7 +15,6 @@ export default {
     CanaryDeploymentCallout: () =>
       import('ee_component/environments/components/canary_deployment_callout.vue'),
   },
-  mixins: [environmentTableMixin, glFeatureFlagsMixin()],
   props: {
     environments: {
       type: Array,
@@ -34,6 +31,31 @@ export default {
       required: false,
       default: false,
     },
+    canaryDeploymentFeatureId: {
+      type: String,
+      required: false,
+      default: '',
+    },
+    helpCanaryDeploymentsPath: {
+      type: String,
+      required: false,
+      default: '',
+    },
+    lockPromotionSvgPath: {
+      type: String,
+      required: false,
+      default: '',
+    },
+    showCanaryDeploymentCallout: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    userCalloutsPath: {
+      type: String,
+      required: false,
+      default: '',
+    },
   },
   computed: {
     sortedEnvironments() {
@@ -42,9 +64,6 @@ export default {
           ? { ...env, children: this.sortEnvironments(env.children) }
           : env,
       );
-    },
-    shouldShowAutoStopDate() {
-      return this.glFeatures.autoStopEnvironments;
     },
     tableData() {
       return {
@@ -74,7 +93,7 @@ export default {
           spacing: 'section-5',
         },
         actions: {
-          spacing: this.shouldShowAutoStopDate ? 'section-25' : 'section-30',
+          spacing: 'section-25',
         },
       };
     },
@@ -83,8 +102,14 @@ export default {
     folderUrl(model) {
       return `${window.location.pathname}/folders/${model.folderName}`;
     },
+    shouldRenderDeployBoard(model) {
+      return model.hasDeployBoard && model.isDeployBoardVisible;
+    },
     shouldRenderFolderContent(env) {
       return env.isFolder && env.isOpen && env.children && env.children.length > 0;
+    },
+    shouldShowCanaryCallout(env) {
+      return env.showCanaryCallout && this.showCanaryDeploymentCallout;
     },
     sortEnvironments(environments) {
       /*
@@ -102,13 +127,13 @@ export default {
        * 4. Reverse (last deployment descending, name ascending),
        * 5. Put folders first.
        */
-      return _.chain(environments)
-        .sortBy(env => (env.isFolder ? env.folderName : env.name))
-        .reverse()
-        .sortBy(env => (env.last_deployment ? env.last_deployment.created_at : '0000'))
-        .reverse()
-        .sortBy(env => (env.isFolder ? -1 : 1))
-        .value();
+      return flow(
+        sortBy(env => (env.isFolder ? env.folderName : env.name)),
+        reverse,
+        sortBy(env => (env.last_deployment ? env.last_deployment.created_at : '0000')),
+        reverse,
+        sortBy(env => (env.isFolder ? -1 : 1)),
+      )(environments);
     },
   },
 };
@@ -131,12 +156,7 @@ export default {
       <div class="table-section" :class="tableData.date.spacing" role="columnheader">
         {{ tableData.date.title }}
       </div>
-      <div
-        v-if="shouldShowAutoStopDate"
-        class="table-section"
-        :class="tableData.autoStop.spacing"
-        role="columnheader"
-      >
+      <div class="table-section" :class="tableData.autoStop.spacing" role="columnheader">
         {{ tableData.autoStop.title }}
       </div>
     </div>
@@ -146,7 +166,6 @@ export default {
         :key="`environment-item-${i}`"
         :model="model"
         :can-read-environment="canReadEnvironment"
-        :should-show-auto-stop-date="shouldShowAutoStopDate"
         :table-data="tableData"
       />
 
@@ -162,15 +181,14 @@ export default {
             :is-loading="model.isLoadingDeployBoard"
             :is-empty="model.isEmptyDeployBoard"
             :has-legacy-app-label="model.hasLegacyAppLabel"
-            :project-path="model.project_path"
-            :environment-name="model.name"
+            :logs-path="model.logs_path"
           />
         </div>
       </div>
 
       <template v-if="shouldRenderFolderContent(model)">
         <div v-if="model.isLoadingFolderContent" :key="`loading-item-${i}`">
-          <gl-loading-icon :size="2" class="prepend-top-16" />
+          <gl-loading-icon size="md" class="prepend-top-16" />
         </div>
 
         <template v-else>

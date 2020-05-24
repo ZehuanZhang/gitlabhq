@@ -81,12 +81,16 @@ describe('Clusters Store', () => {
             externalIp: null,
             externalHostname: null,
             installed: false,
+            isEditingModSecurityEnabled: false,
+            isEditingModSecurityMode: false,
             installFailed: true,
             uninstallable: false,
+            updateFailed: false,
             uninstallSuccessful: false,
             uninstallFailed: false,
             validationError: null,
             modsecurity_enabled: false,
+            modsecurity_mode: undefined,
           },
           runner: {
             title: 'GitLab Runner',
@@ -117,6 +121,24 @@ describe('Clusters Store', () => {
             uninstallFailed: false,
             validationError: null,
           },
+          fluentd: {
+            title: 'Fluentd',
+            status: null,
+            statusReason: null,
+            requestReason: null,
+            port: null,
+            ciliumLogEnabled: null,
+            host: null,
+            protocol: null,
+            installed: false,
+            isEditingSettings: false,
+            installFailed: false,
+            uninstallable: false,
+            uninstallSuccessful: false,
+            uninstallFailed: false,
+            validationError: null,
+            wafLogEnabled: null,
+          },
           jupyter: {
             title: 'JupyterHub',
             status: mockResponseData.applications[4].status,
@@ -136,7 +158,7 @@ describe('Clusters Store', () => {
             statusReason: mockResponseData.applications[5].status_reason,
             requestReason: null,
             hostname: null,
-            isEditingHostName: false,
+            isEditingDomain: false,
             externalIp: null,
             externalHostname: null,
             installed: false,
@@ -167,7 +189,6 @@ describe('Clusters Store', () => {
             installFailed: true,
             statusReason: mockResponseData.applications[7].status_reason,
             requestReason: null,
-            kibana_hostname: '',
             installed: false,
             uninstallable: false,
             uninstallSuccessful: false,
@@ -214,17 +235,6 @@ describe('Clusters Store', () => {
 
       expect(store.state.applications.jupyter.hostname).toEqual(
         `jupyter.${store.state.applications.ingress.externalIp}.nip.io`,
-      );
-    });
-
-    it('sets default hostname for elastic stack when ingress has a ip address', () => {
-      const mockResponseData =
-        CLUSTERS_MOCK_DATA.GET['/gitlab-org/gitlab-shell/clusters/2/status.json'].data;
-
-      store.updateStateFromServer(mockResponseData);
-
-      expect(store.state.applications.elastic_stack.kibana_hostname).toEqual(
-        `kibana.${store.state.applications.ingress.externalIp}.nip.io`,
       );
     });
   });

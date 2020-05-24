@@ -7,6 +7,10 @@ require:
   - ./rubocop/rubocop
   - rubocop-rspec
 
+inherit_mode:
+  merge:
+    - Include
+
 AllCops:
   TargetRubyVersion: 2.6
   TargetRailsVersion: 5.0
@@ -21,7 +25,20 @@ AllCops:
     - 'generator_templates/**/*'
     - 'builds/**/*'
     - 'plugins/**/*'
+    - 'file_hooks/**/*'
   CacheRootDirectory: tmp
+
+Cop/AvoidKeywordArgumentsInSidekiqWorkers:
+  Enabled: true
+  Include:
+    - 'app/workers/**/*'
+    - 'ee/app/workers/**/*'
+
+Cop/StaticTranslationDefinition:
+  Enabled: true
+  Exclude:
+    - 'spec/**/*'
+    - 'ee/spec/**/*'
 
 # This cop checks whether some constant value isn't a
 # mutable literal (e.g. array or hash).
@@ -155,12 +172,19 @@ Rails/ApplicationRecord:
     # as they need to be as decoupled from application code as possible
     - db/**/*.rb
     - lib/gitlab/background_migration/**/*.rb
+    - ee/lib/ee/gitlab/background_migration/**/*.rb
     - lib/gitlab/database/**/*.rb
     - spec/**/*.rb
     - ee/db/**/*.rb
-    - ee/lib/gitlab/background_migration/**/*.rb
-    - ee/lib/ee/gitlab/background_migration/**/*.rb
     - ee/spec/**/*.rb
+
+Rails/FindBy:
+  Enabled: true
+  Include:
+    - 'ee/app/**/*.rb'
+    - 'ee/lib/**/*.rb'
+    - 'spec/**/*.rb'
+    - 'ee/spec/**/*.rb'
 
 # GitLab ###################################################################
 
@@ -182,11 +206,26 @@ Gitlab/ConstGetInheritFalse:
   Exclude:
     - 'qa/bin/*'
 
+Gitlab/ChangeTimezone:
+  Enabled: true
+  Exclude:
+    - config/initializers/time_zone.rb
+
 Gitlab/HTTParty:
   Enabled: true
   Exclude:
     - 'spec/**/*'
     - 'ee/spec/**/*'
+
+Gitlab/Json:
+  Enabled: true
+  Exclude:
+    - 'db/**/*'
+    - 'qa/**/*'
+    - 'scripts/**/*'
+    - 'lib/rspec_flaky/**/*'
+    - 'lib/quality/**/*'
+    - 'lib/gitlab/danger/**/*'
 
 GitlabSecurity/PublicSend:
   Enabled: true
@@ -200,6 +239,12 @@ GitlabSecurity/PublicSend:
     - 'ee/db/**/*'
     - 'ee/lib/**/*.rake'
     - 'ee/spec/**/*'
+
+Gitlab/DuplicateSpecLocation:
+  Exclude:
+    - ee/spec/lib/gitlab/gl_repository_spec.rb
+    - ee/spec/services/merge_requests/refresh_service_spec.rb
+    - ee/spec/services/ee/merge_requests/refresh_service_spec.rb
 
 Cop/InjectEnterpriseEditionModule:
   Enabled: true
@@ -233,13 +278,8 @@ RSpec/FactoriesInMigrationSpecs:
     - 'spec/migrations/**/*.rb'
     - 'ee/spec/migrations/**/*.rb'
     - 'spec/lib/gitlab/background_migration/**/*.rb'
-    - 'ee/spec/lib/gitlab/background_migration/**/*.rb'
-
-Cop/IncludeActionViewContext:
-  Enabled: true
-  Exclude:
-    - 'spec/**/*'
-    - 'ee/spec/**/*'
+    - 'spec/lib/ee/gitlab/background_migration/**/*.rb'
+    - 'ee/spec/lib/ee/gitlab/background_migration/**/*.rb'
 
 Cop/IncludeSidekiqWorker:
   Enabled: true
@@ -301,35 +341,27 @@ RSpec/AnyInstanceOf:
   Enabled: false
 
 # Cops for upgrade to gitlab-styles 3.1.0
-Rails/SafeNavigationWithBlank:
-  Enabled: false
-
-Rails/ApplicationController:
-  Enabled: false
-
-Rails/ApplicationMailer:
-  Enabled: false
-
-Rails/RakeEnvironment:
-  Enabled: false
-
-Rails/HelperInstanceVariable:
-  Enabled: false
-
-Rails/EnumHash:
-  Enabled: false
-
-RSpec/ReceiveCounts:
-  Enabled: false
-
-RSpec/ContextMethod:
-  Enabled: false
-
 RSpec/ImplicitSubject:
   Enabled: false
 
+# WIP See https://gitlab.com/gitlab-org/gitlab/-/issues/211580
 RSpec/LeakyConstantDeclaration:
-  Enabled: false
+  Enabled: true
+  Exclude:
+    - 'spec/db/schema_spec.rb'
+    - 'spec/lib/feature_spec.rb'
+    - 'spec/lib/gitlab/config/entry/simplifiable_spec.rb'
+    - 'spec/lib/gitlab/import_export/import_test_coverage_spec.rb'
+    - 'spec/lib/gitlab/quick_actions/dsl_spec.rb'
+    - 'spec/lib/marginalia_spec.rb'
+    - 'spec/mailers/notify_spec.rb'
+    - 'spec/models/concerns/batch_destroy_dependent_associations_spec.rb'
+    - 'spec/models/concerns/bulk_insert_safe_spec.rb'
+    - 'spec/models/concerns/bulk_insertable_associations_spec.rb'
+    - 'spec/models/concerns/triggerable_hooks_spec.rb'
+    - 'spec/models/repository_spec.rb'
+    - 'spec/services/clusters/applications/check_installation_progress_service_spec.rb'
+    - 'spec/support/shared_examples/quick_actions/issuable/issuable_quick_actions_shared_examples.rb'
 
 RSpec/EmptyLineAfterHook:
   Enabled: false
@@ -361,8 +393,46 @@ RSpec/MissingExampleGroupArgument:
 RSpec/UnspecifiedException:
   Enabled: false
 
+RSpec/HaveGitlabHttpStatus:
+  Enabled: true
+  Exclude:
+    - 'spec/support/matchers/have_gitlab_http_status.rb'
+  Include:
+    - 'spec/**/*'
+    - 'ee/spec/**/*'
+
 Style/MultilineWhenThen:
   Enabled: false
 
 Style/FloatDivision:
   Enabled: false
+
+Cop/BanCatchThrow:
+  Enabled: true
+
+Performance/ReadlinesEach:
+  Enabled: true
+
+Performance/ChainArrayAllocation:
+  Enabled: true
+  Include:
+    - 'lib/gitlab/import_export/**/*'
+    - 'ee/lib/gitlab/import_export/**/*'
+    - 'ee/lib/ee/gitlab/import_export/**/*'
+
+Rails/TimeZone:
+  Enabled: true
+  EnforcedStyle: 'flexible'
+  Include:
+    - 'app/controllers/**/*'
+    - 'app/services/**/*'
+    - 'spec/controllers/**/*'
+    - 'spec/services/**/*'
+    - 'ee/app/controllers/**/*'
+    - 'ee/app/services/**/*'
+    - 'ee/spec/controllers/**/*'
+    - 'ee/spec/services/**/*'
+    - 'app/models/**/*'
+    - 'spec/models/**/*'
+    - 'ee/app/models/**/*'
+    - 'ee/spec/models/**/*'

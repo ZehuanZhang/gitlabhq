@@ -157,7 +157,18 @@ describe ::SystemNotes::IssuablesService do
   describe '#change_status' do
     subject { service.change_status(status, source) }
 
+    context 'when resource state event tracking is enabled' do
+      let(:status) { 'reopened' }
+      let(:source) { nil }
+
+      it { is_expected.to be_nil }
+    end
+
     context 'with status reopened' do
+      before do
+        stub_feature_flags(track_resource_state_change_events: false)
+      end
+
       let(:status) { 'reopened' }
       let(:source) { nil }
 
@@ -169,6 +180,10 @@ describe ::SystemNotes::IssuablesService do
     end
 
     context 'with a source' do
+      before do
+        stub_feature_flags(track_resource_state_change_events: false)
+      end
+
       let(:status) { 'opened' }
       let(:source) { double('commit', gfm_reference: 'commit 123456') }
 
@@ -265,7 +280,9 @@ describe ::SystemNotes::IssuablesService do
 
     context 'when cross-reference disallowed' do
       before do
-        expect_any_instance_of(described_class).to receive(:cross_reference_disallowed?).and_return(true)
+        expect_next_instance_of(described_class) do |instance|
+          expect(instance).to receive(:cross_reference_disallowed?).and_return(true)
+        end
       end
 
       it 'returns nil' do
@@ -279,7 +296,9 @@ describe ::SystemNotes::IssuablesService do
 
     context 'when cross-reference allowed' do
       before do
-        expect_any_instance_of(described_class).to receive(:cross_reference_disallowed?).and_return(false)
+        expect_next_instance_of(described_class) do |instance|
+          expect(instance).to receive(:cross_reference_disallowed?).and_return(false)
+        end
       end
 
       it_behaves_like 'a system note' do
@@ -594,8 +613,8 @@ describe ::SystemNotes::IssuablesService do
     context 'when mentioner is not a MergeRequest' do
       it 'is falsey' do
         mentioner = noteable.dup
-        expect(service.cross_reference_disallowed?(mentioner))
-          .to be_falsey
+
+        expect(service.cross_reference_disallowed?(mentioner)).to be_falsey
       end
     end
 
@@ -605,25 +624,61 @@ describe ::SystemNotes::IssuablesService do
 
       it 'is truthy when noteable is in commits' do
         expect(mentioner).to receive(:commits).and_return([noteable])
-        expect(service.cross_reference_disallowed?(mentioner))
-          .to be_truthy
+
+        expect(service.cross_reference_disallowed?(mentioner)).to be_truthy
       end
 
       it 'is falsey when noteable is not in commits' do
         expect(mentioner).to receive(:commits).and_return([])
-        expect(service.cross_reference_disallowed?(mentioner))
-          .to be_falsey
+
+        expect(service.cross_reference_disallowed?(mentioner)).to be_falsey
       end
     end
 
     context 'when notable is an ExternalIssue' do
+      let(:project) { create(:project) }
       let(:noteable) { ExternalIssue.new('EXT-1234', project) }
 
-      it 'is truthy' do
-        mentioner = noteable.dup
-        expect(service.cross_reference_disallowed?(mentioner))
-          .to be_truthy
+      it 'is false with issue tracker supporting referencing' do
+        create(:jira_service, project: project)
+
+        expect(service.cross_reference_disallowed?(noteable)).to be_falsey
       end
+
+      it 'is true with issue tracker not supporting referencing' do
+        create(:bugzilla_service, project: project)
+
+        expect(service.cross_reference_disallowed?(noteable)).to be_truthy
+      end
+
+      it 'is true without issue tracker' do
+        expect(service.cross_reference_disallowed?(noteable)).to be_truthy
+      end
+    end
+  end
+
+  describe '#close_after_error_tracking_resolve' do
+    subject { service.close_after_error_tracking_resolve }
+
+    it_behaves_like 'a system note' do
+      let(:action) { 'closed' }
+    end
+
+    it 'creates the expected system note' do
+      expect(subject.note)
+          .to eq('resolved the corresponding error and closed the issue.')
+    end
+  end
+
+  describe '#auto_resolve_prometheus_alert' do
+    subject { service.auto_resolve_prometheus_alert }
+
+    it_behaves_like 'a system note' do
+      let(:action) { 'closed' }
+    end
+
+    it 'creates the expected system note' do
+      expect(subject.note).to eq('automatically closed this issue because the alert resolved.')
     end
   end
 end

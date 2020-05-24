@@ -1,3 +1,6 @@
+-# Please have a look at app/assets/javascripts/boards/components/board_column.vue
+  This haml file is deprecated and will be deleted soon, please change the Vue app
+  https://gitlab.com/gitlab-org/gitlab/-/issues/212300
 .board.h-100.px-2.align-top.ws-normal{ ":class" => '{ "is-draggable": !list.preset, "is-expandable": list.isExpandable, "is-collapsed": !list.isExpanded, "board-type-assignee": list.type === "assignee" }',
   ":data-id" => "list.id", data: { qa_selector: "board_list" } }
   .board-inner.d-flex.flex-column.position-relative.h-100.rounded
@@ -22,18 +25,20 @@
           %span.board-title-main-text.block-truncated{ "v-if": "list.type !== \"label\"",
             ":title" => '((list.label && list.label.description) || list.title || "")',
             data: { container: "body" },
-            ":class": "{ 'has-tooltip': !['backlog', 'closed'].includes(list.type) }" }
+            ":class": "{ 'has-tooltip': !['backlog', 'closed'].includes(list.type), 'd-block': list.type === 'milestone' }" }
             {{ list.title }}
 
           %span.board-title-sub-text.prepend-left-5.has-tooltip{ "v-if": "list.type === \"assignee\"",
             ":title" => '(list.assignee && list.assignee.username || "")' }
             @{{ list.assignee.username }}
 
-          %span.has-tooltip.badge.color-label.title{ "v-if": "list.type === \"label\"",
-            ":title" => '(list.label ? list.label.description : "")',
-            data: { container: "body", placement: "bottom" },
-            ":style" => "{ backgroundColor: (list.label && list.label.color ? list.label.color : null), color: (list.label && list.label.textColor ? list.label.textColor : \"#2e2e2e\") }" }
-            {{ list.title }}
+          %gl-label{ "v-if" => " list.type === \"label\"",
+            ":background-color" => "list.label.color",
+            ":title" => "list.label.title",
+            ":description" => "list.label.description",
+            "tooltipPlacement" => "bottom",
+            ":size" => '(!list.isExpanded ? "sm" : "")',
+            ":scoped" => "showScopedLabels(list.label)" }
 
         - if can?(current_user, :admin_list, current_board_parent)
           %board-delete{ "inline-template" => true,
@@ -42,16 +47,17 @@
             %button.board-delete.no-drag.p-0.border-0.has-tooltip.float-right{ type: "button", title: _("Delete list"), ":class": "{ 'd-none': !list.isExpanded }", "aria-label" => _("Delete list"), data: { placement: "bottom" }, "@click.stop" => "deleteBoard" }
               = icon("trash")
 
-        .issue-count-badge.pr-0.no-drag.text-secondary{ "v-if" => "showBoardListAndBoardInfo", ":title": "counterTooltip", "v-tooltip": true, data: { placement: "top" } }
+        .issue-count-badge.pr-0.no-drag.text-secondary{ "v-if" => "showBoardListAndBoardInfo" }
           %span.d-inline-flex
-            %span.issue-count-badge-count
+            %gl-tooltip{ ":target" => "() => $refs.issueCount", ":title" => "issuesTooltip" }
+            %span.issue-count-badge-count{ "ref" => "issueCount" }
               %icon.mr-1{ name: "issues" }
               %issue-count{ ":maxIssueCount" => "list.maxIssueCount",
                 ":issuesSize" => "list.issuesSize" }
             = render_if_exists "shared/boards/components/list_weight"
 
         %gl-button-group.board-list-button-group.pl-2{ "v-if" => "isNewIssueShown || isSettingsShown" }
-          %gl-button.issue-count-badge-add-button.no-drag{ type: "button",
+          %gl-deprecated-button.issue-count-badge-add-button.no-drag{ type: "button",
             "@click" => "showNewIssueForm",
             "v-if" => "isNewIssueShown",
             ":class": "{ 'd-none': !list.isExpanded, 'rounded-right': isNewIssueShown && !isSettingsShown }",

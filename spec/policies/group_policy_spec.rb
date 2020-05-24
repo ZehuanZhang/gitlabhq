@@ -438,7 +438,7 @@ describe GroupPolicy do
     end
   end
 
-  context "create_projects" do
+  context 'create_projects' do
     context 'when group has no project creation level set' do
       before_all do
         group.update(project_creation_level: nil)
@@ -560,7 +560,7 @@ describe GroupPolicy do
     end
   end
 
-  context "create_subgroup" do
+  context 'create_subgroup' do
     context 'when group has subgroup creation level set to owner' do
       before_all do
         group.update(subgroup_creation_level: ::Gitlab::Access::OWNER_SUBGROUP_ACCESS)
@@ -644,7 +644,13 @@ describe GroupPolicy do
     context 'admin' do
       let(:current_user) { admin }
 
-      it { expect_allowed(:update_max_artifacts_size) }
+      context 'when admin mode is enabled', :enable_admin_mode do
+        it { expect_allowed(:update_max_artifacts_size) }
+      end
+
+      context 'when admin mode is enabled' do
+        it { expect_disallowed(:update_max_artifacts_size) }
+      end
     end
 
     %w(guest reporter developer maintainer owner).each do |role|

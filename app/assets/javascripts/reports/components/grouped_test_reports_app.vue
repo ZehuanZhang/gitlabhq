@@ -1,6 +1,6 @@
 <script>
 import { mapActions, mapGetters, mapState } from 'vuex';
-import { s__ } from '~/locale';
+import { sprintf, s__ } from '~/locale';
 import { componentNames } from './issue_body';
 import ReportSection from './report_section.vue';
 import SummaryRow from './summary_row.vue';
@@ -52,8 +52,17 @@ export default {
   methods: {
     ...mapActions(['setEndpoint', 'fetchReports']),
     reportText(report) {
-      const summary = report.summary || {};
-      return reportTextBuilder(report.name, summary);
+      const { name, summary } = report || {};
+
+      if (report.status === 'error') {
+        return sprintf(s__('Reports|An error occurred while loading %{name} results'), { name });
+      }
+
+      if (!report.name) {
+        return s__('Reports|An error occured while loading report');
+      }
+
+      return reportTextBuilder(name, summary);
     },
     getReportIcon(report) {
       return statusIcon(report.status);
@@ -62,8 +71,20 @@ export default {
       return (
         report.existing_failures.length > 0 ||
         report.new_failures.length > 0 ||
-        report.resolved_failures.length > 0
+        report.resolved_failures.length > 0 ||
+        report.existing_errors.length > 0 ||
+        report.new_errors.length > 0 ||
+        report.resolved_errors.length > 0
       );
+    },
+    unresolvedIssues(report) {
+      return report.existing_failures.concat(report.existing_errors);
+    },
+    newIssues(report) {
+      return report.new_failures.concat(report.new_errors);
+    },
+    resolvedIssues(report) {
+      return report.resolved_failures.concat(report.resolved_errors);
     },
   },
 };
@@ -87,9 +108,9 @@ export default {
         <issues-list
           v-if="shouldRenderIssuesList(report)"
           :key="`issues-list-${i}`"
-          :unresolved-issues="report.existing_failures"
-          :new-issues="report.new_failures"
-          :resolved-issues="report.resolved_failures"
+          :unresolved-issues="unresolvedIssues(report)"
+          :new-issues="newIssues(report)"
+          :resolved-issues="resolvedIssues(report)"
           :component="$options.componentNames.TestIssueBody"
           class="report-block-group-list"
         />

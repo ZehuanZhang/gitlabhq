@@ -4,6 +4,9 @@ type: concepts, reference, howto
 
 # Webhooks and insecure internal web services
 
+NOTE: **Note:**
+On GitLab.com the [maximum number of webhooks](../user/gitlab_com/index.md#maximum-number-of-webhooks) per project is limited.
+
 If you have non-GitLab web services running on your GitLab server or within its
 local network, these may be vulnerable to exploitation via Webhooks.
 
@@ -51,7 +54,7 @@ set up by administrators. However, you can turn this off by disabling the
 
 ## Whitelist for local requests
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/issues/44496) in GitLab 12.2
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/44496) in GitLab 12.2
 
 You can allow certain domains and IP addresses to be accessible to both *system hooks*
 and *webhooks* even when local requests are not allowed by adding them to the
@@ -68,16 +71,24 @@ use IDNA encoding.
 The whitelist can hold a maximum of 1000 entries. Each entry can be a maximum of
 255 characters.
 
+You can whitelist a particular port by specifying it in the whitelist entry.
+For example `127.0.0.1:8080` will only allow connections to port 8080 on `127.0.0.1`.
+If no port is mentioned, all ports on that IP/domain are whitelisted. An IP range
+will whitelist all ports on all IPs in that range.
+
 Example:
 
-```text
+```plaintext
 example.com;gitlab.example.com
 127.0.0.1,1:0:0:0:0:0:0:1
 127.0.0.0/8 1:0:0:0:0:0:0:0/124
+[1:0:0:0:0:0:0:1]:8080
+127.0.0.1:8080
+example.com:8080
 ```
 
 NOTE: **Note:**
-Wildcards (`*.example.com`) and ports (`127.0.0.1:3000`) are not currently supported.
+Wildcards (`*.example.com`) are not currently supported.
 
 <!-- ## Troubleshooting
 

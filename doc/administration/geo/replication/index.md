@@ -2,7 +2,7 @@
 
 > - Introduced in GitLab Enterprise Edition 8.9.
 > - Using Geo in combination with
->   [High Availability](../../high_availability/README.md)
+>   [multi-server architectures](../../reference_architectures/index.md)
 >   is considered **Generally Available** (GA) in
 >   [GitLab Premium](https://about.gitlab.com/pricing/) 10.4.
 
@@ -12,7 +12,8 @@ Replication with Geo is the solution for widely distributed development teams.
 
 Fetching large repositories can take a long time for teams located far from a single GitLab instance.
 
-Geo provides local, read-only instances of your GitLab instances, reducing the time it takes to clone and fetch large repositories and speeding up development.
+Geo provides local, read-only instances of your GitLab instances. This can reduce the time it takes
+to clone and fetch large repositories, speeding up development.
 
 NOTE: **Note:**
 Check the [requirements](#requirements-for-running-geo) carefully before setting up Geo.
@@ -30,7 +31,7 @@ Implementing Geo provides the following benefits:
 
 - Reduce from minutes to seconds the time taken for your distributed developers to clone and fetch large repositories and projects.
 - Enable all of your developers to contribute ideas and work in parallel, no matter where they are.
-- Balance the load between your **primary** and **secondary** nodes, or offload your automated tests to a **secondary** node.
+- Balance the read-only load between your **primary** and **secondary** nodes.
 
 In addition, it:
 
@@ -63,7 +64,7 @@ Keep in mind that:
   - Get user data for logins (API).
   - Replicate repositories, LFS Objects, and Attachments (HTTPS + JWT).
 - Since GitLab Premium 10.0, the **primary** node no longer talks to **secondary** nodes to notify for changes (API).
-- Pushing directly to a **secondary** node (for both HTTP and SSH, including Git LFS) was [introduced](https://about.gitlab.com/blog/2018/09/22/gitlab-11-3-released/) in [GitLab Premium](https://about.gitlab.com/pricing/#self-managed) 11.3.
+- Pushing directly to a **secondary** node (for both HTTP and SSH, including Git LFS) was [introduced](https://about.gitlab.com/releases/2018/09/22/gitlab-11-3-released/) in [GitLab Premium](https://about.gitlab.com/pricing/#self-managed) 11.3.
 - There are [limitations](#current-limitations) in the current implementation.
 
 ### Architecture
@@ -109,7 +110,7 @@ The following are required to run Geo:
   The following operating systems are known to ship with a current version of OpenSSH:
   - [CentOS](https://www.centos.org) 7.4+
   - [Ubuntu](https://ubuntu.com) 16.04+
-- PostgreSQL 9.6+ with [FDW](https://www.postgresql.org/docs/9.6/postgres-fdw.html) support and [Streaming Replication](https://wiki.postgresql.org/wiki/Streaming_Replication)
+- PostgreSQL 11+ with [FDW](https://www.postgresql.org/docs/11/postgres-fdw.html) support and [Streaming Replication](https://wiki.postgresql.org/wiki/Streaming_Replication)
 - Git 2.9+
 - All nodes must run the same GitLab version.
 
@@ -133,7 +134,7 @@ The following table lists basic ports that must be open between the **primary** 
 See the full list of ports used by GitLab in [Package defaults](https://docs.gitlab.com/omnibus/package-information/defaults.html)
 
 NOTE: **Note:**
-[Web terminal](../../../ci/environments.md#web-terminals) support requires your load balancer to correctly handle WebSocket connections.
+[Web terminal](../../../ci/environments/index.md#web-terminals) support requires your load balancer to correctly handle WebSocket connections.
 When using HTTP or HTTPS proxying, your load balancer must be configured to pass through the `Connection` and `Upgrade` hop-by-hop headers. See the [web terminal](../../integration/terminal.md) integration guide for more details.
 
 NOTE: **Note:**
@@ -205,9 +206,9 @@ For information on configuring Geo, see [Geo configuration](configuration.md).
 
 For information on how to update your Geo nodes to the latest GitLab version, see [Updating the Geo nodes](updating_the_geo_nodes.md).
 
-### Configuring Geo high availability
+### Configuring Geo for multiple servers
 
-For information on configuring Geo for high availability, see [Geo High Availability](high_availability.md).
+For information on configuring Geo for multiple servers, see [Geo for multiple servers](multiple_servers.md).
 
 ### Configuring Geo with Object Storage
 
@@ -242,13 +243,15 @@ For more information on removing a Geo node, see [Removing **secondary** Geo nod
 CAUTION: **Caution:**
 This list of limitations only reflects the latest version of GitLab. If you are using an older version, extra limitations may be in place.
 
-- Pushing directly to a **secondary** node redirects (for HTTP) or proxies (for SSH) the request to the **primary** node instead of [handling it directly](https://gitlab.com/gitlab-org/gitlab/issues/1381), except when using Git over HTTP with credentials embedded within the URI. For example, `https://user:password@secondary.tld`.
-- The **primary** node has to be online for OAuth login to happen. Existing sessions and Git are not affected.
-- The installation takes multiple manual steps that together can take about an hour depending on circumstances. We are working on improving this experience. See [Omnibus GitLab issue #2978](https://gitlab.com/gitlab-org/omnibus-gitlab/issues/2978) for details.
+- Pushing directly to a **secondary** node redirects (for HTTP) or proxies (for SSH) the request to the **primary** node instead of [handling it directly](https://gitlab.com/gitlab-org/gitlab/-/issues/1381), except when using Git over HTTP with credentials embedded within the URI. For example, `https://user:password@secondary.tld`.
+- Cloning, pulling, or pushing repositories that exist on the **primary** node but not on the **secondary** nodes where [selective synchronization](configuration.md#selective-synchronization) does not include the project is not supported over SSH [but support is planned](https://gitlab.com/groups/gitlab-org/-/epics/2562). HTTP(S) is supported.
+- The **primary** node has to be online for OAuth login to happen. Existing sessions and Git are not affected. Support for the **secondary** node to use an OAuth provider independent from the primary is [being planned](https://gitlab.com/gitlab-org/gitlab/-/issues/208465).
+- The installation takes multiple manual steps that together can take about an hour depending on circumstances. We are working on improving this experience. See [Omnibus GitLab issue #2978](https://gitlab.com/gitlab-org/omnibus-gitlab/-/issues/2978) for details.
 - Real-time updates of issues/merge requests (for example, via long polling) doesn't work on the **secondary** node.
 - [Selective synchronization](configuration.md#selective-synchronization) applies only to files and repositories. Other datasets are replicated to the **secondary** node in full, making it inappropriate for use as an access control mechanism.
 - Object pools for forked project deduplication work only on the **primary** node, and are duplicated on the **secondary** node.
 - [External merge request diffs](../../merge_request_diffs.md) will not be replicated if they are on-disk, and viewing merge requests will fail. However, external MR diffs in object storage **are** supported. The default configuration (in-database) does work.
+- GitLab Runners cannot register with a **secondary** node. Support for this is [planned for the future](https://gitlab.com/gitlab-org/gitlab/-/issues/3294).
 
 ### Limitations on replication/verification
 
@@ -268,7 +271,7 @@ For answers to common questions, see the [Geo FAQ](faq.md).
 
 Since GitLab 9.5, Geo stores structured log messages in a `geo.log` file. For Omnibus installations, this file is at `/var/log/gitlab/gitlab-rails/geo.log`.
 
-This file contains information about when Geo attempts to sync repositories and files. Each line in the file contains a separate JSON entry that can be ingested into Elasticsearch, Splunk, etc.
+This file contains information about when Geo attempts to sync repositories and files. Each line in the file contains a separate JSON entry that can be ingested into. For example, Elasticsearch or Splunk.
 
 For example:
 

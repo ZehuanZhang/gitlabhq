@@ -13,8 +13,8 @@ class Projects::PipelineSchedulesController < Projects::ApplicationController
   # rubocop: disable CodeReuse/ActiveRecord
   def index
     @scope = params[:scope]
-    @all_schedules = PipelineSchedulesFinder.new(@project).execute
-    @schedules = PipelineSchedulesFinder.new(@project).execute(scope: params[:scope])
+    @all_schedules = Ci::PipelineSchedulesFinder.new(@project).execute
+    @schedules = Ci::PipelineSchedulesFinder.new(@project).execute(scope: params[:scope])
       .includes(:last_pipeline)
   end
   # rubocop: enable CodeReuse/ActiveRecord
@@ -47,7 +47,7 @@ class Projects::PipelineSchedulesController < Projects::ApplicationController
   end
 
   def play
-    job_id = RunPipelineScheduleWorker.perform_async(schedule.id, current_user.id)
+    job_id = RunPipelineScheduleWorker.perform_async(schedule.id, current_user.id) # rubocop:disable CodeReuse/Worker
 
     if job_id
       pipelines_link_start = "<a href=\"#{project_pipelines_path(@project)}\">"

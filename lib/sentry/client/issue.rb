@@ -4,6 +4,7 @@ module Sentry
   class Client
     module Issue
       BadRequestError = Class.new(StandardError)
+      ResponseInvalidSizeError = Class.new(StandardError)
 
       SENTRY_API_SORT_VALUE_MAP = {
         # <accepted_by_client> => <accepted_by_sentry_api>
@@ -35,14 +36,14 @@ module Sentry
       end
 
       def update_issue(issue_id:, params:)
-        http_put(issue_api_url(issue_id), params)[:body]
+        http_put(api_urls.issue_url(issue_id), params)[:body]
       end
 
       private
 
       def get_issues(**keyword_args)
         response = http_get(
-          issues_api_url,
+          api_urls.issues_url,
           query: list_issue_sentry_query(keyword_args)
         )
 
@@ -72,24 +73,24 @@ module Sentry
       end
 
       def get_issue(issue_id:)
-        http_get(issue_api_url(issue_id))[:body]
+        http_get(api_urls.issue_url(issue_id))[:body]
       end
 
-      def issues_api_url
-        issues_url = URI("#{url}/issues/")
-        issues_url.path.squeeze!('/')
-
-        issues_url
+      def parse_gitlab_issue(issue)
+        parse_issue_annotations(issue) || parse_plugin_issue(issue)
       end
 
-      def issue_api_url(issue_id)
-        issue_url = URI(url)
-        issue_url.path = "/api/0/issues/#{CGI.escape(issue_id.to_s)}/"
-
-        issue_url
+      def parse_issue_annotations(issue)
+        issue
+          .fetch('annotations', [])
+          .reject(&:blank?)
+          .map { |annotation| Nokogiri.make(annotation) }
+          .find { |html| html['href']&.starts_with?(Gitlab.config.gitlab.url) }
+          .try(:[], 'href')
       end
 
-      def parse_gitlab_issue(plugin_issues)
+      def parse_plugin_issue(issue)
+        plugin_issues = issue.fetch('pluginIssues', nil)
         return unless plugin_issues
 
         gitlab_plugin = plugin_issues.detect { |item| item['id'] == 'gitlab' }
@@ -159,7 +160,7 @@ module Sentry
           short_id: issue.fetch('shortId', nil),
           status: issue.fetch('status', nil),
           frequency: issue.dig('stats', '24h'),
-          gitlab_issue: parse_gitlab_issue(issue.fetch('pluginIssues', nil)),
+          gitlab_issue: parse_gitlab_issue(issue),
           project_id: issue.dig('project', 'id'),
           project_name: issue.dig('project', 'name'),
           project_slug: issue.dig('project', 'slug'),

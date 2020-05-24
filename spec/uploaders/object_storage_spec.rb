@@ -272,7 +272,7 @@ describe ObjectStorage do
             end
 
             it "to raise an error" do
-              expect { subject }.to raise_error(/Object Storage is not enabled/)
+              expect { subject }.to raise_error(/Object Storage is not enabled for JobArtifactUploader/)
             end
           end
 
@@ -597,22 +597,6 @@ describe ObjectStorage do
     end
 
     context 'when local file is used' do
-      context 'when valid file is used' do
-        let(:uploaded_file) do
-          fixture_file_upload('spec/fixtures/rails_sample.jpg', 'image/jpg')
-        end
-
-        it "properly caches the file" do
-          subject
-
-          expect(uploader).to be_exists
-          expect(uploader.path).to start_with(uploader_class.root)
-          expect(uploader.filename).to eq('rails_sample.jpg')
-        end
-      end
-    end
-
-    context 'when local file is used' do
       let(:temp_file) { Tempfile.new("test") }
 
       before do
@@ -626,6 +610,14 @@ describe ObjectStorage do
       context 'when valid file is used' do
         context 'when valid file is specified' do
           let(:uploaded_file) { temp_file }
+
+          it 'properly caches the file' do
+            subject
+
+            expect(uploader).to be_exists
+            expect(uploader.path).to start_with(uploader_class.root)
+            expect(uploader.filename).to eq(File.basename(uploaded_file.path))
+          end
 
           context 'when object storage and direct upload is specified' do
             before do
@@ -711,6 +703,19 @@ describe ObjectStorage do
 
           it 'raises an error' do
             expect { subject }.to raise_error(uploader_class::RemoteStoreError, /Missing file/)
+          end
+        end
+
+        context 'when empty remote_id is specified' do
+          let(:uploaded_file) do
+            UploadedFile.new(temp_file.path, remote_id: '')
+          end
+
+          it 'uses local storage' do
+            subject
+
+            expect(uploader).to be_file_storage
+            expect(uploader.object_store).to eq(described_class::Store::LOCAL)
           end
         end
 

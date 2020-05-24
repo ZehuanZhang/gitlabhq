@@ -7,13 +7,20 @@ describe Resolvers::IssuesResolver do
 
   let(:current_user) { create(:user) }
 
-  context "with a project" do
-    set(:project) { create(:project) }
-    set(:issue1) { create(:issue, project: project, state: :opened, created_at: 3.hours.ago, updated_at: 3.hours.ago) }
-    set(:issue2) { create(:issue, project: project, state: :closed, title: 'foo', created_at: 1.hour.ago, updated_at: 1.hour.ago, closed_at: 1.hour.ago) }
-    set(:label1) { create(:label, project: project) }
-    set(:label2) { create(:label, project: project) }
+  let_it_be(:group)         { create(:group) }
+  let_it_be(:project)       { create(:project, group: group) }
+  let_it_be(:other_project) { create(:project, group: group) }
 
+  let_it_be(:milestone) { create(:milestone, project: project) }
+  let_it_be(:assignee)  { create(:user) }
+  let_it_be(:issue1)    { create(:issue, project: project, state: :opened, created_at: 3.hours.ago, updated_at: 3.hours.ago, milestone: milestone) }
+  let_it_be(:issue2)    { create(:issue, project: project, state: :closed, title: 'foo', created_at: 1.hour.ago, updated_at: 1.hour.ago, closed_at: 1.hour.ago, assignees: [assignee]) }
+  let_it_be(:issue3)    { create(:issue, project: other_project, state: :closed, title: 'foo', created_at: 1.hour.ago, updated_at: 1.hour.ago, closed_at: 1.hour.ago, assignees: [assignee]) }
+  let_it_be(:issue4)    { create(:issue) }
+  let_it_be(:label1)    { create(:label, project: project) }
+  let_it_be(:label2)    { create(:label, project: project) }
+
+  context "with a project" do
     before do
       project.add_developer(current_user)
       create(:label_link, label: label1, target: issue1)
@@ -29,6 +36,26 @@ describe Resolvers::IssuesResolver do
       it 'filters by state' do
         expect(resolve_issues(state: 'opened')).to contain_exactly(issue1)
         expect(resolve_issues(state: 'closed')).to contain_exactly(issue2)
+      end
+
+      it 'filters by milestone' do
+        expect(resolve_issues(milestone_title: milestone.title)).to contain_exactly(issue1)
+      end
+
+      it 'filters by assignee_username' do
+        expect(resolve_issues(assignee_username: assignee.username)).to contain_exactly(issue2)
+      end
+
+      it 'filters by assignee_id' do
+        expect(resolve_issues(assignee_id: assignee.id)).to contain_exactly(issue2)
+      end
+
+      it 'filters by any assignee' do
+        expect(resolve_issues(assignee_id: IssuableFinder::Params::FILTER_ANY)).to contain_exactly(issue2)
+      end
+
+      it 'filters by no assignee' do
+        expect(resolve_issues(assignee_id: IssuableFinder::Params::FILTER_NONE)).to contain_exactly(issue1)
       end
 
       it 'filters by labels' do
@@ -98,12 +125,11 @@ describe Resolvers::IssuesResolver do
         end
 
         context 'when sorting by due date' do
-          let(:project) { create(:project) }
-
-          let!(:due_issue1) { create(:issue, project: project, due_date: 3.days.from_now) }
-          let!(:due_issue2) { create(:issue, project: project, due_date: nil) }
-          let!(:due_issue3) { create(:issue, project: project, due_date: 2.days.ago) }
-          let!(:due_issue4) { create(:issue, project: project, due_date: nil) }
+          let_it_be(:project) { create(:project) }
+          let_it_be(:due_issue1) { create(:issue, project: project, due_date: 3.days.from_now) }
+          let_it_be(:due_issue2) { create(:issue, project: project, due_date: nil) }
+          let_it_be(:due_issue3) { create(:issue, project: project, due_date: 2.days.ago) }
+          let_it_be(:due_issue4) { create(:issue, project: project, due_date: nil) }
 
           it 'sorts issues ascending' do
             expect(resolve_issues(sort: :due_date_asc)).to eq [due_issue3, due_issue1, due_issue4, due_issue2]
@@ -115,15 +141,70 @@ describe Resolvers::IssuesResolver do
         end
 
         context 'when sorting by relative position' do
-          let(:project) { create(:project) }
-
-          let!(:relative_issue1) { create(:issue, project: project, relative_position: 2000) }
-          let!(:relative_issue2) { create(:issue, project: project, relative_position: nil) }
-          let!(:relative_issue3) { create(:issue, project: project, relative_position: 1000) }
-          let!(:relative_issue4) { create(:issue, project: project, relative_position: nil) }
+          let_it_be(:project) { create(:project) }
+          let_it_be(:relative_issue1) { create(:issue, project: project, relative_position: 2000) }
+          let_it_be(:relative_issue2) { create(:issue, project: project, relative_position: nil) }
+          let_it_be(:relative_issue3) { create(:issue, project: project, relative_position: 1000) }
+          let_it_be(:relative_issue4) { create(:issue, project: project, relative_position: nil) }
 
           it 'sorts issues ascending' do
             expect(resolve_issues(sort: :relative_position_asc)).to eq [relative_issue3, relative_issue1, relative_issue4, relative_issue2]
+          end
+        end
+
+        context 'when sorting by priority' do
+          let_it_be(:project) { create(:project) }
+          let_it_be(:early_milestone) { create(:milestone, project: project, due_date: 10.days.from_now) }
+          let_it_be(:late_milestone) { create(:milestone, project: project, due_date: 30.days.from_now) }
+          let_it_be(:priority_label1) { create(:label, project: project, priority: 1) }
+          let_it_be(:priority_label2) { create(:label, project: project, priority: 5) }
+          let_it_be(:priority_issue1) { create(:issue, project: project, labels: [priority_label1], milestone: late_milestone) }
+          let_it_be(:priority_issue2) { create(:issue, project: project, labels: [priority_label2]) }
+          let_it_be(:priority_issue3) { create(:issue, project: project, milestone: early_milestone) }
+          let_it_be(:priority_issue4) { create(:issue, project: project) }
+
+          it 'sorts issues ascending' do
+            expect(resolve_issues(sort: :priority_asc).items).to eq([priority_issue3, priority_issue1, priority_issue2, priority_issue4])
+          end
+
+          it 'sorts issues descending' do
+            expect(resolve_issues(sort: :priority_desc).items).to eq([priority_issue1, priority_issue3, priority_issue2, priority_issue4])
+          end
+        end
+
+        context 'when sorting by label priority' do
+          let_it_be(:project) { create(:project) }
+          let_it_be(:label1) { create(:label, project: project, priority: 1) }
+          let_it_be(:label2) { create(:label, project: project, priority: 5) }
+          let_it_be(:label3) { create(:label, project: project, priority: 10) }
+          let_it_be(:label_issue1) { create(:issue, project: project, labels: [label1]) }
+          let_it_be(:label_issue2) { create(:issue, project: project, labels: [label2]) }
+          let_it_be(:label_issue3) { create(:issue, project: project, labels: [label1, label3]) }
+          let_it_be(:label_issue4) { create(:issue, project: project) }
+
+          it 'sorts issues ascending' do
+            expect(resolve_issues(sort: :label_priority_asc).items).to eq([label_issue3, label_issue1, label_issue2, label_issue4])
+          end
+
+          it 'sorts issues descending' do
+            expect(resolve_issues(sort: :label_priority_desc).items).to eq([label_issue2, label_issue3, label_issue1, label_issue4])
+          end
+        end
+
+        context 'when sorting by milestone due date' do
+          let_it_be(:project) { create(:project) }
+          let_it_be(:early_milestone) { create(:milestone, project: project, due_date: 10.days.from_now) }
+          let_it_be(:late_milestone) { create(:milestone, project: project, due_date: 30.days.from_now) }
+          let_it_be(:milestone_issue1) { create(:issue, project: project) }
+          let_it_be(:milestone_issue2) { create(:issue, project: project, milestone: early_milestone) }
+          let_it_be(:milestone_issue3) { create(:issue, project: project, milestone: late_milestone) }
+
+          it 'sorts issues ascending' do
+            expect(resolve_issues(sort: :milestone_due_asc).items).to eq([milestone_issue2, milestone_issue3, milestone_issue1])
+          end
+
+          it 'sorts issues descending' do
+            expect(resolve_issues(sort: :milestone_due_desc).items).to eq([milestone_issue3, milestone_issue2, milestone_issue1])
           end
         end
       end
@@ -158,6 +239,20 @@ describe Resolvers::IssuesResolver do
         end
 
         expect(resolve_issues(iids: iids)).to contain_exactly(issue1, issue2)
+      end
+    end
+  end
+
+  context "with a group" do
+    before do
+      group.add_developer(current_user)
+    end
+
+    describe '#resolve' do
+      it 'finds all group issues' do
+        result = resolve(described_class, obj: group, ctx: { current_user: current_user })
+
+        expect(result).to contain_exactly(issue1, issue2, issue3)
       end
     end
   end

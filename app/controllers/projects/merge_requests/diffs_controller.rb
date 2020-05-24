@@ -9,6 +9,8 @@ class Projects::MergeRequests::DiffsController < Projects::MergeRequests::Applic
   before_action :define_diff_vars
   before_action :define_diff_comment_vars, except: [:diffs_batch, :diffs_metadata]
 
+  around_action :allow_gitaly_ref_name_caching
+
   def show
     render_diffs
   end
@@ -18,7 +20,7 @@ class Projects::MergeRequests::DiffsController < Projects::MergeRequests::Applic
   end
 
   def diffs_batch
-    return render_404 unless Feature.enabled?(:diffs_batch_load, @merge_request.project)
+    return render_404 unless Feature.enabled?(:diffs_batch_load, @merge_request.project, default_enabled: true)
 
     diffs = @compare.diffs_in_batch(params[:page], params[:per_page], diff_options: diff_options)
     positions = @merge_request.note_positions_for_paths(diffs.diff_file_paths, current_user)
@@ -64,6 +66,10 @@ class Projects::MergeRequests::DiffsController < Projects::MergeRequests::Applic
 
     options = additional_attributes.merge(diff_view: diff_view)
 
+    if @merge_request.project.context_commits_enabled?
+      options[:context_commits] = @merge_request.recent_context_commits
+    end
+
     render json: DiffsSerializer.new(request).represent(diffs, options)
   end
 
@@ -88,13 +94,13 @@ class Projects::MergeRequests::DiffsController < Projects::MergeRequests::Applic
   # Deprecated: https://gitlab.com/gitlab-org/gitlab/issues/37735
   def find_merge_request_diff_compare
     @merge_request_diff =
-      if diff_id = params[:diff_id].presence
-        @merge_request.merge_request_diffs.viewable.find_by(id: diff_id)
+      if params[:diff_id].present?
+        @merge_request.merge_request_diffs.viewable.find_by(id: params[:diff_id])
       else
         @merge_request.merge_request_diff
       end
 
-    return unless @merge_request_diff
+    return unless @merge_request_diff&.id
 
     @comparable_diffs = @merge_request_diffs.select { |diff| diff.id < @merge_request_diff.id }
 
@@ -105,6 +111,11 @@ class Projects::MergeRequests::DiffsController < Projects::MergeRequests::Applic
         @start_sha = @merge_request_diff.head_commit_sha
         @start_version = @merge_request_diff
       end
+    end
+
+    if Gitlab::Utils.to_boolean(params[:diff_head]) && @merge_request.diffable_merge_ref?
+      return CompareService.new(@project, @merge_request.merge_ref_head.sha)
+        .execute(@project, @merge_request.target_branch)
     end
 
     if @start_sha

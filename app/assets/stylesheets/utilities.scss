@@ -1,3 +1,10 @@
+/**
+  Please note: These are deprecated in favor of the Gitlab UI utility classes.
+  Check https://unpkg.com/browse/@gitlab/ui/src/scss/utilities.scss
+  to see the available utility classes. If you cannot find the class you need,
+  consider adding it to Gitlab UI before adding it here.
+**/
+
 @each $variant, $range in $color-ranges {
   @each $suffix, $color in $range {
     #{'.bg-#{$variant}-#{$suffix}'} {
@@ -6,6 +13,12 @@
 
     #{'.text-#{$variant}-#{$suffix}'} {
       color: $color;
+    }
+
+    #{'.hover-text-#{$variant}-#{$suffix}'} {
+      &:hover {
+        color: $color;
+      }
     }
   }
 }
@@ -28,32 +41,67 @@
   }
 }
 
+@for $i from 1 through 12 {
+  #{'.tab-width-#{$i}'} {
+    -moz-tab-size: $i;
+    tab-size: $i;
+  }
+}
+
 .border-width-1px { border-width: 1px; }
+.border-bottom-width-1px { border-bottom-width: 1px; }
 .border-style-dashed { border-style: dashed; }
 .border-style-solid { border-style: solid; }
+.border-bottom-style-solid { border-bottom-style: solid; }
 .border-color-blue-300 { border-color: $blue-300; }
 .border-color-default { border-color: $border-color; }
+.border-bottom-color-default { border-bottom-color: $border-color; }
+.border-radius-default { border-radius: $border-radius-default; }
+.border-radius-small { border-radius: $border-radius-small; }
 .box-shadow-default { box-shadow: 0 2px 4px 0 $black-transparent; }
+
+.gl-children-ml-sm-3 > * {
+  @include media-breakpoint-up(sm) {
+    @include gl-ml-3;
+  }
+}
 
 .mh-50vh { max-height: 50vh; }
 
+.min-width-0 {
+  // By default flex items don't shrink below their minimum content size. To change this, set the item's min-width
+  min-width: 0;
+}
+
+.font-size-inherit { font-size: inherit; }
+.gl-w-8 { width: px-to-rem($grid-size); }
+.gl-w-16 { width: px-to-rem($grid-size * 2); }
 .gl-w-64 { width: px-to-rem($grid-size * 8); }
+.gl-h-8 { height: px-to-rem($grid-size); }
+.gl-h-32 { height: px-to-rem($grid-size * 4); }
 .gl-h-64 { height: px-to-rem($grid-size * 8); }
 
+.d-sm-table-column {
+  @include media-breakpoint-up(sm) {
+    display: table-column !important;
+  }
+}
+
+.gl-shim-h-2 {
+  height: px-to-rem(4px);
+}
+
+.gl-shim-w-5 {
+  width: px-to-rem(16px);
+}
+
+.gl-shim-pb-3 {
+  padding-bottom: 8px;
+}
+
+.gl-shim-pt-5 {
+  padding-top: 16px;
+}
+
 .gl-text-purple { color: $purple; }
-.gl-text-gray-800 { color: $gray-800; }
 .gl-bg-purple-light { background-color: $purple-light; }
-
-// Classes using mixins coming from @gitlab-ui
-// can be removed once https://gitlab.com/gitlab-org/gitlab/merge_requests/19021 has been merged
-.gl-bg-red-100 { @include gl-bg-red-100; }
-.gl-bg-orange-100 { @include gl-bg-orange-100; }
-.gl-bg-gray-100 { @include gl-bg-gray-100; }
-.gl-bg-green-100 { @include gl-bg-green-100;}
-
-.gl-text-blue-500 { @include gl-text-blue-500; }
-.gl-text-gray-900 { @include gl-text-gray-900; }
-.gl-text-red-700 { @include gl-text-red-700; }
-.gl-text-orange-700 { @include gl-text-orange-700; }
-.gl-text-green-700 { @include gl-text-green-700; }
-

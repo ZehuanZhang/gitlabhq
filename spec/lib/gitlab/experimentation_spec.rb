@@ -6,19 +6,16 @@ describe Gitlab::Experimentation do
   before do
     stub_const('Gitlab::Experimentation::EXPERIMENTS', {
       test_experiment: {
-        feature_toggle: feature_toggle,
         environment: environment,
-        enabled_ratio: enabled_ratio,
         tracking_category: 'Team'
       }
     })
 
-    stub_feature_flags(feature_toggle => true)
+    allow(Feature).to receive(:get).with(:test_experiment_experiment_percentage).and_return double(percentage_of_time_value: enabled_percentage)
   end
 
-  let(:feature_toggle) { :test_experiment_toggle }
   let(:environment) { Rails.env.test? }
-  let(:enabled_ratio) { 0.1 }
+  let(:enabled_percentage) { 10 }
 
   describe Gitlab::Experimentation::ControllerConcern, type: :controller do
     controller(ApplicationController) do
@@ -30,7 +27,12 @@ describe Gitlab::Experimentation do
     end
 
     describe '#set_experimentation_subject_id_cookie' do
+      let(:do_not_track) { nil }
+      let(:cookie) { cookies.permanent.signed[:experimentation_subject_id] }
+
       before do
+        request.headers['DNT'] = do_not_track if do_not_track.present?
+
         get :index
       end
 
@@ -46,12 +48,30 @@ describe Gitlab::Experimentation do
 
       context 'cookie is not present' do
         it 'sets a permanent signed cookie' do
-          expect(cookies.permanent.signed[:experimentation_subject_id]).to be_present
+          expect(cookie).to be_present
+        end
+
+        context 'DNT: 0' do
+          let(:do_not_Track) { '0' }
+
+          it 'sets a permanent signed cookie' do
+            expect(cookie).to be_present
+          end
+        end
+
+        context 'DNT: 1' do
+          let(:do_not_track) { '1' }
+
+          it 'does nothing' do
+            expect(cookie).not_to be_present
+          end
         end
       end
     end
 
     describe '#experiment_enabled?' do
+      subject { controller.experiment_enabled?(:test_experiment) }
+
       context 'cookie is not present' do
         it 'calls Gitlab::Experimentation.enabled_for_user? with the name of the experiment and an experimentation_subject_index of nil' do
           expect(Gitlab::Experimentation).to receive(:enabled_for_user?).with(:test_experiment, nil)
@@ -72,11 +92,25 @@ describe Gitlab::Experimentation do
         end
       end
 
+      it 'returns true when DNT: 0 is set in the request' do
+        allow(Gitlab::Experimentation).to receive(:enabled_for_user?) { true }
+        controller.request.headers['DNT'] = '0'
+
+        is_expected.to be_truthy
+      end
+
+      it 'returns false when DNT: 1 is set in the request' do
+        allow(Gitlab::Experimentation).to receive(:enabled_for_user?) { true }
+        controller.request.headers['DNT'] = '1'
+
+        is_expected.to be_falsy
+      end
+
       describe 'URL parameter to force enable experiment' do
-        it 'returns true' do
+        it 'returns true unconditionally' do
           get :index, params: { force_experiment: :test_experiment }
 
-          expect(controller.experiment_enabled?(:test_experiment)).to be_truthy
+          is_expected.to be_truthy
         end
       end
     end
@@ -96,10 +130,10 @@ describe Gitlab::Experimentation do
             expect(Gitlab::Tracking).to receive(:event).with(
               'Team',
               'start',
-              label: nil,
-              property: 'experimental_group'
+              property: 'experimental_group',
+              value: 'team_id'
             )
-            controller.track_experiment_event(:test_experiment, 'start')
+            controller.track_experiment_event(:test_experiment, 'start', 'team_id')
           end
         end
 
@@ -112,10 +146,10 @@ describe Gitlab::Experimentation do
             expect(Gitlab::Tracking).to receive(:event).with(
               'Team',
               'start',
-              label: nil,
-              property: 'control_group'
+              property: 'control_group',
+              value: 'team_id'
             )
-            controller.track_experiment_event(:test_experiment, 'start')
+            controller.track_experiment_event(:test_experiment, 'start', 'team_id')
           end
         end
       end
@@ -144,13 +178,13 @@ describe Gitlab::Experimentation do
           end
 
           it 'pushes the right parameters to gon' do
-            controller.frontend_experimentation_tracking_data(:test_experiment, 'start')
+            controller.frontend_experimentation_tracking_data(:test_experiment, 'start', 'team_id')
             expect(Gon.tracking_data).to eq(
               {
                 category: 'Team',
                 action: 'start',
-                label: nil,
-                property: 'experimental_group'
+                property: 'experimental_group',
+                value: 'team_id'
               }
             )
           end
@@ -164,12 +198,23 @@ describe Gitlab::Experimentation do
           end
 
           it 'pushes the right parameters to gon' do
+            controller.frontend_experimentation_tracking_data(:test_experiment, 'start', 'team_id')
+            expect(Gon.tracking_data).to eq(
+              {
+                category: 'Team',
+                action: 'start',
+                property: 'control_group',
+                value: 'team_id'
+              }
+            )
+          end
+
+          it 'does not send nil value to gon' do
             controller.frontend_experimentation_tracking_data(:test_experiment, 'start')
             expect(Gon.tracking_data).to eq(
               {
                 category: 'Team',
                 action: 'start',
-                label: nil,
                 property: 'control_group'
               }
             )
@@ -203,44 +248,16 @@ describe Gitlab::Experimentation do
       end
     end
 
-    describe 'feature toggle' do
-      context 'feature toggle is not set' do
-        let(:feature_toggle) { nil }
+    describe 'experiment is disabled' do
+      let(:enabled_percentage) { 0 }
 
-        it { is_expected.to be_truthy }
-      end
-
-      context 'feature toggle is not set, but a feature with the experiment key as name does exist' do
-        before do
-          stub_feature_flags(test_experiment: false)
-        end
-
-        let(:feature_toggle) { nil }
-
-        it { is_expected.to be_falsey }
-      end
-
-      context 'feature toggle is disabled' do
-        before do
-          stub_feature_flags(feature_toggle => false)
-        end
-
-        it { is_expected.to be_falsey }
-      end
+      it { is_expected.to be_falsey }
     end
 
-    describe 'environment' do
-      context 'environment is not set' do
-        let(:environment) { nil }
+    describe 'we are on the wrong environment' do
+      let(:environment) { ::Gitlab.com? }
 
-        it { is_expected.to be_truthy }
-      end
-
-      context 'we are on the wrong environment' do
-        let(:environment) { ::Gitlab.com? }
-
-        it { is_expected.to be_falsey }
-      end
+      it { is_expected.to be_falsey }
     end
   end
 
@@ -263,12 +280,6 @@ describe Gitlab::Experimentation do
       end
 
       it { is_expected.to be_truthy }
-
-      context 'enabled ratio is not set' do
-        let(:enabled_ratio) { nil }
-
-        it { is_expected.to be_falsey }
-      end
 
       describe 'experimentation_subject_index' do
         context 'experimentation_subject_index is not set' do

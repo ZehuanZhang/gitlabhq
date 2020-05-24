@@ -5,7 +5,7 @@ type: concepts
 # GitLab Release and Maintenance Policy
 
 GitLab has strict policies governing version naming, as well as release pace for major, minor,
-patch and security releases. New releases are usually announced on the [GitLab blog](https://about.gitlab.com/blog/categories/releases/).
+patch and security releases. New releases are usually announced on the [GitLab blog](https://about.gitlab.com/releases/categories/releases/).
 
 Our current policy is:
 
@@ -90,7 +90,7 @@ based on *all* of the following:
 1. Potentially affecting one or more strategic accounts due to a proven inability by the user to upgrade to the current stable version.
 
 If *all* of the above are satisfied, the backport releases can be created for
-the current stable stable release, and two previous monthly releases.
+the current stable release, and two previous monthly releases.
 For instance, if we release `11.2.1` with a fix for a severe bug introduced in
 `11.0.0`, we could backport the fix to a new `11.0.x`, and `11.1.x` patch release.
 
@@ -103,13 +103,13 @@ Security releases are a special kind of patch release that only include security
 fixes and patches (see below) for the previous two monthly releases in addition to the current stable release.
 
 For very serious security issues, there is
-[precedent](https://about.gitlab.com/blog/2016/05/02/cve-2016-4340-patches/)
+[precedent](https://about.gitlab.com/releases/2016/05/02/cve-2016-4340-patches/)
 to backport security fixes to even more monthly releases of GitLab.
 This decision is made on a case-by-case basis.
 
 ## Upgrade recommendations
 
-We encourage everyone to run the [latest stable release](https://about.gitlab.com/blog/categories/releases/) to ensure that you can
+We encourage everyone to run the [latest stable release](https://about.gitlab.com/releases/categories/releases/) to ensure that you can
 easily upgrade to the most secure and feature-rich GitLab experience. In order
 to make sure you can easily run the most recent stable release, we are working
 hard to keep the update process simple and reliable.
@@ -127,7 +127,7 @@ one major version. For example, it is safe to:
   - `9.5.5` -> `9.5.9`
   - `10.6.3` -> `10.6.6`
   - `11.11.1` -> `11.11.8`
-  - `12.0.4` -> `12.0.9`
+  - `12.0.4` -> `12.0.12`
 - Upgrade the minor version:
   - `8.9.4` -> `8.12.3`
   - `9.2.3` -> `9.5.5`
@@ -144,9 +144,29 @@ It's also important to ensure that any background migrations have been fully com
 before upgrading to a new major version. To see the current size of the `background_migration` queue,
 [Check for background migrations before upgrading](../update/README.md#checking-for-background-migrations-before-upgrading).
 
-To ensure background migrations are successful, increment by one minor version during the version jump before installing newer releases.
+### Version 12 onwards: Extra step for major upgrades
 
-For example: `11.11.x` -> `12.0.x`
+From version 12 onwards, an additional step is required. More significant migrations
+may occur during major release upgrades.
+
+To ensure these are successful:
+
+1. Increment to the first minor version (`x.0.x`) during the major version jump.
+1. Proceed with upgrading to a newer release.
+
+For example: `11.11.x` -> `12.0.x` -> `12.8.x`
+
+### Upgrades from old versions
+
+- `8.11.x` and earlier: you might have to upgrade to `8.12.0` specifically before you can
+  upgrade to `8.17.7`. This was [reported in an issue](https://gitlab.com/gitlab-org/gitlab/-/issues/207259).
+- [CI changes prior to version 8.0](https://docs.gitlab.com/omnibus/update/README.html#updating-gitlab-ci-from-prior-540-to-version-714-via-omnibus-gitlab)
+  when it was merged into GitLab.
+- Version specific changes in
+  [the Omnibus documentation](https://docs.gitlab.com/omnibus/update/README.html#version-specific-changes).
+
+### Example upgrade paths
+
 Please see the table below for some examples:
 
 | Latest stable version | Your version | Recommended upgrade path | Note |
@@ -154,7 +174,28 @@ Please see the table below for some examples:
 | 9.4.5                 | 8.13.4       | `8.13.4` -> `8.17.7` -> `9.4.5`                          | `8.17.7` is the last version in version `8` |
 | 10.1.4                | 8.13.4       | `8.13.4 -> 8.17.7 -> 9.5.10 -> 10.1.4`                   | `8.17.7` is the last version in version `8`, `9.5.10` is the last version in version `9` |
 | 11.3.4                | 8.13.4       | `8.13.4` -> `8.17.7` -> `9.5.10` -> `10.8.7` -> `11.3.4` | `8.17.7` is the last version in version `8`, `9.5.10` is the last version in version `9`, `10.8.7` is the last version in version `10` |
-| 12.5.8                | 11.3.4       | `11.3.4` -> `11.11.8` -> `12.0.9` -> `12.5.8`            | `11.11.8` is the last version in version `11` |
+| 12.5.10               | 11.3.4       | `11.3.4` -> `11.11.8` -> `12.0.12` -> `12.5.10`            | `11.11.8` is the last version in version `11`. `12.0.x` [is a required step](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/23211#note_272842444). |
+| 12.8.5                | 9.2.6       | `9.2.6` -> `9.5.10` -> `10.8.7` -> `11.11.8` -> `12.0.12` -> `12.8.5` | Four intermediate versions are required: the final 9.5, 10.8, 11.11 releases, plus 12.0. |
+
+NOTE: **Note:**
+Instructions for installing a specific version of GitLab or downloading the package locally for installation can be found at [GitLab Repositories](https://packages.gitlab.com/gitlab).
+
+## More information
+
+Check [our release posts](https://about.gitlab.com/releases/categories/releases/).
+
+Each month, we publish either a major or minor release of GitLab. At the end
+of those release posts there are three sections to look for: deprecations, important notes,
+and upgrade barometer. These will draw your attention to:
+
+- Steps you need to perform as part of an upgrade.
+  For example [8.12](https://about.gitlab.com/releases/2016/09/22/gitlab-8-12-released/#upgrade-barometer)
+  required the Elasticsearch index to be recreated. Any older version of GitLab upgrading to 8.12 or higher
+  would require this.
+- Changes to the versions of software we support such as
+  [ceasing support for IE11 in GitLab 13](https://about.gitlab.com/releases/2020/03/22/gitlab-12-9-released/#ending-support-for-internet-explorer-11).
+
+You should check all the major and minor versions you're passing over.
 
 More information about the release procedures can be found in our
 [release documentation](https://gitlab.com/gitlab-org/release/docs). You may also want to read our

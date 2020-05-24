@@ -17,6 +17,11 @@ module Clusters
 
       default_value_for :version, VERSION
 
+      attr_encrypted :alert_manager_token,
+        mode: :per_attribute_iv,
+        key: Settings.attr_encrypted_db_key_base_truncated,
+        algorithm: 'aes-256-gcm'
+
       after_destroy do
         run_after_commit do
           disable_prometheus_integration
@@ -30,6 +35,16 @@ module Clusters
               .perform_async(application.cluster_id, ::PrometheusService.to_param) # rubocop:disable CodeReuse/ServiceClass
           end
         end
+
+        after_transition any => :updating do |application|
+          application.update(last_update_started_at: Time.current)
+        end
+      end
+
+      def updated_since?(timestamp)
+        last_update_started_at &&
+          last_update_started_at > timestamp &&
+          !update_errored?
       end
 
       def chart
@@ -99,9 +114,21 @@ module Clusters
 
       def configured?
         kube_client.present? && available?
+      rescue Gitlab::UrlBlocker::BlockedUrlError
+        false
+      end
+
+      def generate_alert_manager_token!
+        unless alert_manager_token.present?
+          update!(alert_manager_token: generate_token)
+        end
       end
 
       private
+
+      def generate_token
+        SecureRandom.hex
+      end
 
       def disable_prometheus_integration
         ::Clusters::Applications::DeactivateServiceWorker
@@ -131,5 +158,3 @@ module Clusters
     end
   end
 end
-
-Clusters::Applications::Prometheus.prepend_if_ee('EE::Clusters::Applications::Prometheus')

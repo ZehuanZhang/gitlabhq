@@ -4,7 +4,8 @@ type: reference
 
 # Directed Acyclic Graph
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/issues/47063) in GitLab 12.2 (enabled by `ci_dag_support` feature flag).
+> - [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/47063) in GitLab 12.2.
+> - [Feature flag removed](https://gitlab.com/gitlab-org/gitlab/-/issues/206902) in GitLab 12.10.
 
 A [directed acyclic graph](https://www.techopedia.com/definition/5739/directed-acyclic-graph-dag) can be
 used in the context of a CI/CD pipeline to build relationships between jobs such that
@@ -23,7 +24,7 @@ requiring a single keyword to enable the feature for any job.
 
 Consider a monorepo as follows:
 
-```
+```plaintext
 ./service_a
 ./service_b
 ./service_c

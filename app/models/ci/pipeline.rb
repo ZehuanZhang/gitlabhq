@@ -11,10 +11,16 @@ module Ci
     include Gitlab::Utils::StrongMemoize
     include AtomicInternalId
     include EnumWithNil
-    include HasRef
+    include Ci::HasRef
     include ShaAttribute
     include FromUnion
     include UpdatedAtFilterable
+
+    PROJECT_ROUTE_AND_NAMESPACE_ROUTE = {
+      project: [:project_feature, :route, { namespace: :route }]
+    }.freeze
+
+    BridgeStatusError = Class.new(StandardError)
 
     sha_attribute :source_sha
     sha_attribute :target_sha
@@ -26,7 +32,7 @@ module Ci
     belongs_to :merge_request, class_name: 'MergeRequest'
     belongs_to :external_pull_request
 
-    has_internal_id :iid, scope: :project, presence: false, ensure_if: -> { !importing? }, init: ->(s) do
+    has_internal_id :iid, scope: :project, presence: false, track_if: -> { !importing? }, ensure_if: -> { !importing? }, init: ->(s) do
       s&.project&.all_pipelines&.maximum(:iid) || s&.project&.all_pipelines&.count
     end
 
@@ -57,13 +63,26 @@ module Ci
     has_many :sourced_pipelines, class_name: 'Ci::Sources::Pipeline', foreign_key: :source_pipeline_id
 
     has_one :source_pipeline, class_name: 'Ci::Sources::Pipeline', inverse_of: :pipeline
+
+    has_one :ref_status, ->(pipeline) {
+      # We use .read_attribute to save 1 extra unneeded query to load the :project.
+      unscope(:where)
+        .where(project_id: pipeline.read_attribute(:project_id), ref: pipeline.ref, tag: pipeline.tag)
+      # Sadly :inverse_of is not supported (yet) by Rails for composite PKs.
+    }, class_name: 'Ci::Ref', inverse_of: :pipelines
+
     has_one :chat_data, class_name: 'Ci::PipelineChatData'
 
     has_many :triggered_pipelines, through: :sourced_pipelines, source: :pipeline
+    has_many :child_pipelines, -> { merge(Ci::Sources::Pipeline.same_project) }, through: :sourced_pipelines, source: :pipeline
     has_one :triggered_by_pipeline, through: :source_pipeline, source: :source_pipeline
+    has_one :parent_pipeline, -> { merge(Ci::Sources::Pipeline.same_project) }, through: :source_pipeline, source: :source_pipeline
     has_one :source_job, through: :source_pipeline, source: :source_job
+    has_one :source_bridge, through: :source_pipeline, source: :source_bridge
 
     has_one :pipeline_config, class_name: 'Ci::PipelineConfig', inverse_of: :pipeline
+
+    has_many :daily_build_group_report_results, class_name: 'Ci::DailyBuildGroupReportResult', foreign_key: :last_pipeline_id
 
     accepts_nested_attributes_for :variables, reject_if: :persisted?
 
@@ -72,9 +91,7 @@ module Ci
 
     validates :sha, presence: { unless: :importing? }
     validates :ref, presence: { unless: :importing? }
-    validates :merge_request, presence: { if: :merge_request_event? }
-    validates :merge_request, absence: { unless: :merge_request_event? }
-    validates :tag, inclusion: { in: [false], if: :merge_request_event? }
+    validates :tag, inclusion: { in: [false], if: :merge_request? }
 
     validates :external_pull_request, presence: { if: :external_pull_request_event? }
     validates :external_pull_request, absence: { unless: :external_pull_request_event? }
@@ -98,8 +115,11 @@ module Ci
 
     state_machine :status, initial: :created do
       event :enqueue do
-        transition [:created, :waiting_for_resource, :preparing, :skipped, :scheduled] => :pending
+        transition [:created, :manual, :waiting_for_resource, :preparing, :skipped, :scheduled] => :pending
         transition [:success, :failed, :canceled] => :running
+
+        # this is needed to ensure tests to be covered
+        transition [:running] => :running
       end
 
       event :request_resource do
@@ -143,11 +163,11 @@ module Ci
       # Create a separate worker for each new operation
 
       before_transition [:created, :waiting_for_resource, :preparing, :pending] => :running do |pipeline|
-        pipeline.started_at = Time.now
+        pipeline.started_at = Time.current
       end
 
       before_transition any => [:success, :failed, :canceled] do |pipeline|
-        pipeline.finished_at = Time.now
+        pipeline.finished_at = Time.current
         pipeline.update_duration
       end
 
@@ -174,7 +194,10 @@ module Ci
       end
 
       after_transition [:created, :waiting_for_resource, :preparing, :pending, :running] => :success do |pipeline|
-        pipeline.run_after_commit { PipelineSuccessWorker.perform_async(pipeline.id) }
+        # We wait a little bit to ensure that all BuildFinishedWorkers finish first
+        # because this is where some metrics like code coverage is parsed and stored
+        # in CI build records which the daily build metrics worker relies on.
+        pipeline.run_after_commit { Ci::DailyBuildGroupReportResultsWorker.perform_in(10.minutes, pipeline.id) }
       end
 
       after_transition do |pipeline, transition|
@@ -182,7 +205,7 @@ module Ci
 
         pipeline.run_after_commit do
           PipelineHooksWorker.perform_async(pipeline.id)
-          ExpirePipelineCacheWorker.perform_async(pipeline.id)
+          ExpirePipelineCacheWorker.perform_async(pipeline.id) if pipeline.cacheable?
         end
       end
 
@@ -195,12 +218,29 @@ module Ci
 
             AutoMergeProcessWorker.perform_async(merge_request.id)
           end
+
+          if pipeline.auto_devops_source?
+            self.class.auto_devops_pipelines_completed_total.increment(status: pipeline.status)
+          end
+        end
+      end
+
+      after_transition any => ::Ci::Pipeline.completed_statuses do |pipeline|
+        next unless pipeline.bridge_triggered?
+        next unless pipeline.bridge_waiting?
+
+        pipeline.run_after_commit do
+          ::Ci::PipelineBridgeStatusWorker.perform_async(pipeline.id)
         end
       end
 
       after_transition any => [:success, :failed] do |pipeline|
         pipeline.run_after_commit do
-          PipelineNotificationWorker.perform_async(pipeline.id)
+          if Feature.enabled?(:ci_pipeline_fixed_notifications)
+            PipelineUpdateCiRefStatusWorker.perform_async(pipeline.id)
+          else
+            PipelineNotificationWorker.perform_async(pipeline.id)
+          end
         end
       end
 
@@ -212,6 +252,7 @@ module Ci
     end
 
     scope :internal, -> { where(source: internal_sources) }
+    scope :no_child, -> { where.not(source: :parent_pipeline) }
     scope :ci_sources, -> { where(config_source: ::Ci::PipelineEnums.ci_config_sources_values) }
     scope :for_user, -> (user) { where(user: user) }
     scope :for_sha, -> (sha) { where(sha: sha) }
@@ -327,6 +368,10 @@ module Ci
       ::Ci::Pipeline::AVAILABLE_STATUSES - %w[created waiting_for_resource preparing pending]
     end
 
+    def self.auto_devops_pipelines_completed_total
+      @auto_devops_pipelines_completed_total ||= Gitlab::Metrics.counter(:auto_devops_pipelines_completed_total, 'Number of completed auto devops pipelines')
+    end
+
     def stages_count
       statuses.select(:stage).distinct.count
     end
@@ -351,16 +396,18 @@ module Ci
       false
     end
 
-    ##
-    # TODO We do not completely switch to persisted stages because of
-    # race conditions with setting statuses gitlab-foss#23257.
-    #
     def ordered_stages
-      return legacy_stages unless complete?
-
-      if Feature.enabled?('ci_pipeline_persisted_stages', default_enabled: true)
+      if Feature.enabled?(:ci_atomic_processing, project, default_enabled: false)
+        # The `Ci::Stage` contains all up-to date data
+        # as atomic processing updates all data in-bulk
+        stages
+      elsif Feature.enabled?(:ci_pipeline_persisted_stages, default_enabled: true) && complete?
+        # The `Ci::Stage` contains up-to date data only for `completed` pipelines
+        # this is due to asynchronous processing of pipeline, and stages possibly
+        # not updated inline with processing of pipeline
         stages
       else
+        # In other cases, we need to calculate stages dynamically
         legacy_stages
       end
     end
@@ -398,7 +445,7 @@ module Ci
     end
 
     def legacy_stages
-      if Feature.enabled?(:ci_composite_status, default_enabled: false)
+      if Feature.enabled?(:ci_composite_status, project, default_enabled: false)
         legacy_stages_using_composite_status
       else
         legacy_stages_using_sql
@@ -504,11 +551,9 @@ module Ci
     # rubocop: enable CodeReuse/ServiceClass
 
     def mark_as_processable_after_stage(stage_idx)
-      builds.skipped.after_stage(stage_idx).find_each(&:process)
-    end
-
-    def child?
-      false
+      builds.skipped.after_stage(stage_idx).find_each do |build|
+        Gitlab::OptimisticLocking.retry_lock(build, &:process)
+      end
     end
 
     def latest?
@@ -547,6 +592,13 @@ module Ci
       end
     end
 
+    def needs_processing?
+      statuses
+        .where(processed: [false, nil])
+        .latest
+        .exists?
+    end
+
     # TODO: this logic is duplicate with Pipeline::Chain::Config::Content
     # we should persist this is `ci_pipelines.config_path`
     def config_path
@@ -562,7 +614,7 @@ module Ci
     # Manually set the notes for a Ci::Pipeline
     # There is no ActiveRecord relation between Ci::Pipeline and notes
     # as they are related to a commit sha. This method helps importing
-    # them using the +Gitlab::ImportExport::RelationFactory+ class.
+    # them using the +Gitlab::ImportExport::Project::RelationFactory+ class.
     def notes=(notes)
       notes.each do |note|
         note[:id] = nil
@@ -576,9 +628,8 @@ module Ci
       project.notes.for_commit_id(sha)
     end
 
-    def update_status
+    def set_status(new_status)
       retry_optimistic_lock(self) do
-        new_status = latest_builds_status.to_s
         case new_status
         when 'created' then nil
         when 'waiting_for_resource' then request_resource
@@ -596,6 +647,10 @@ module Ci
                 "Unknown status `#{new_status}`"
         end
       end
+    end
+
+    def update_legacy_status
+      set_status(latest_builds_status.to_s)
     end
 
     def protected_ref?
@@ -624,12 +679,14 @@ module Ci
 
         variables.concat(predefined_commit_variables)
 
-        if merge_request_event? && merge_request
+        if merge_request?
           variables.append(key: 'CI_MERGE_REQUEST_EVENT_TYPE', value: merge_request_event_type.to_s)
           variables.append(key: 'CI_MERGE_REQUEST_SOURCE_BRANCH_SHA', value: source_sha.to_s)
           variables.append(key: 'CI_MERGE_REQUEST_TARGET_BRANCH_SHA', value: target_sha.to_s)
           variables.concat(merge_request.predefined_variables)
         end
+
+        variables.append(key: 'CI_KUBERNETES_ACTIVE', value: 'true') if has_kubernetes_active?
 
         if external_pull_request_event? && external_pull_request
           variables.concat(external_pull_request.predefined_variables)
@@ -682,10 +739,11 @@ module Ci
     # All the merge requests for which the current pipeline runs/ran against
     def all_merge_requests
       @all_merge_requests ||=
-        if merge_request_event?
+        if merge_request?
           MergeRequest.where(id: merge_request_id)
         else
           MergeRequest.where(source_project_id: project_id, source_branch: ref)
+            .by_commit_sha(sha)
         end
     end
 
@@ -693,10 +751,44 @@ module Ci
       all_merge_requests.order(id: :desc)
     end
 
+    # If pipeline is a child of another pipeline, include the parent
+    # and the siblings, otherwise return only itself.
+    def same_family_pipeline_ids
+      if (parent = parent_pipeline)
+        [parent.id] + parent.child_pipelines.pluck(:id)
+      else
+        [self.id]
+      end
+    end
+
+    def bridge_triggered?
+      source_bridge.present?
+    end
+
+    def bridge_waiting?
+      source_bridge&.dependent?
+    end
+
+    def child?
+      parent_pipeline.present?
+    end
+
+    def parent?
+      child_pipelines.exists?
+    end
+
+    def created_successfully?
+      persisted? && failure_reason.blank?
+    end
+
     def detailed_status(current_user)
       Gitlab::Ci::Status::Pipeline::Factory
         .new(self, current_user)
         .fabricate!
+    end
+
+    def find_job_with_archive_artifacts(name)
+      builds.latest.with_downloadable_artifacts.find_by_name(name)
     end
 
     def latest_builds_with_artifacts
@@ -712,8 +804,38 @@ module Ci
 
     def test_reports
       Gitlab::Ci::Reports::TestReports.new.tap do |test_reports|
-        builds.latest.with_reports(Ci::JobArtifact.test_reports).each do |build|
+        builds.latest.with_reports(Ci::JobArtifact.test_reports).preload(:project).find_each do |build|
           build.collect_test_reports!(test_reports)
+        end
+      end
+    end
+
+    def test_reports_count
+      Rails.cache.fetch(['project', project.id, 'pipeline', id, 'test_reports_count'], force: false) do
+        test_reports.total_count
+      end
+    end
+
+    def accessibility_reports
+      Gitlab::Ci::Reports::AccessibilityReports.new.tap do |accessibility_reports|
+        builds.latest.with_reports(Ci::JobArtifact.accessibility_reports).each do |build|
+          build.collect_accessibility_reports!(accessibility_reports)
+        end
+      end
+    end
+
+    def coverage_reports
+      Gitlab::Ci::Reports::CoverageReports.new.tap do |coverage_reports|
+        builds.latest.with_reports(Ci::JobArtifact.coverage_reports).each do |build|
+          build.collect_coverage_reports!(coverage_reports)
+        end
+      end
+    end
+
+    def terraform_reports
+      ::Gitlab::Ci::Reports::TerraformReports.new.tap do |terraform_reports|
+        builds.latest.with_reports(::Ci::JobArtifact.terraform_reports).each do |build|
+          build.collect_terraform_reports!(terraform_reports)
         end
       end
     end
@@ -735,7 +857,7 @@ module Ci
     # * nil: Modified path can not be evaluated
     def modified_paths
       strong_memoize(:modified_paths) do
-        if merge_request_event?
+        if merge_request?
           merge_request.modified_paths
         elsif branch_updated?
           push_details.modified_paths
@@ -759,12 +881,12 @@ module Ci
       ref == project.default_branch
     end
 
-    def triggered_by_merge_request?
-      merge_request_event? && merge_request_id.present?
+    def merge_request?
+      merge_request_id.present?
     end
 
     def detached_merge_request_pipeline?
-      triggered_by_merge_request? && target_sha.nil?
+      merge_request? && target_sha.nil?
     end
 
     def legacy_detached_merge_request_pipeline?
@@ -772,7 +894,7 @@ module Ci
     end
 
     def merge_request_pipeline?
-      triggered_by_merge_request? && target_sha.present?
+      merge_request? && target_sha.present?
     end
 
     def merge_request_ref?
@@ -788,7 +910,7 @@ module Ci
     end
 
     def source_ref
-      if triggered_by_merge_request?
+      if merge_request?
         merge_request.source_branch
       else
         ref
@@ -808,7 +930,7 @@ module Ci
     end
 
     def merge_request_event_type
-      return unless merge_request_event?
+      return unless merge_request?
 
       strong_memoize(:merge_request_event_type) do
         if merge_request_pipeline?
@@ -827,6 +949,26 @@ module Ci
       statuses.latest.success.where(name: names).pluck(:id)
     end
 
+    def cacheable?
+      Ci::PipelineEnums.ci_config_sources.key?(config_source.to_sym)
+    end
+
+    def source_ref_path
+      if branch? || merge_request?
+        Gitlab::Git::BRANCH_REF_PREFIX + source_ref.to_s
+      elsif tag?
+        Gitlab::Git::TAG_REF_PREFIX + source_ref.to_s
+      end
+    end
+
+    # Set scheduling type of processables if they were created before scheduling_type
+    # data was deployed (https://gitlab.com/gitlab-org/gitlab/-/merge_requests/22246).
+    def ensure_scheduling_type!
+      return unless ::Gitlab::Ci::Features.ensure_scheduling_type_enabled?
+
+      processables.populate_scheduling_type!
+    end
+
     private
 
     def pipeline_data
@@ -841,7 +983,7 @@ module Ci
 
     def git_ref
       strong_memoize(:git_ref) do
-        if merge_request_event?
+        if merge_request?
           ##
           # In the future, we're going to change this ref to
           # merge request's merged reference, such as "refs/merge-requests/:iid/merge".
@@ -858,7 +1000,7 @@ module Ci
     def latest_builds_status
       return 'failed' unless yaml_errors.blank?
 
-      statuses.latest.slow_composite_status || 'skipped'
+      statuses.latest.slow_composite_status(project: project) || 'skipped'
     end
 
     def keep_around_commits

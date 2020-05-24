@@ -1,18 +1,26 @@
 # frozen_string_literal: true
 
 class PagesDomain < ApplicationRecord
+  include Presentable
+  include FromUnion
+
   VERIFICATION_KEY = 'gitlab-pages-verification-code'
   VERIFICATION_THRESHOLD = 3.days.freeze
   SSL_RENEWAL_THRESHOLD = 30.days.freeze
 
   enum certificate_source: { user_provided: 0, gitlab_provided: 1 }, _prefix: :certificate
-  enum domain_type: { instance: 0, group: 1, project: 2 }, _prefix: :domain_type
+  enum scope: { instance: 0, group: 1, project: 2 }, _prefix: :scope
+  enum usage: { pages: 0, serverless: 1 }, _prefix: :usage
 
   belongs_to :project
   has_many :acme_orders, class_name: "PagesDomainAcmeOrder"
+  has_many :serverless_domain_clusters, class_name: 'Serverless::DomainCluster', inverse_of: :pages_domain
+
+  before_validation :clear_auto_ssl_failure, unless: :auto_ssl_enabled
 
   validates :domain, hostname: { allow_numeric_hostname: true }
   validates :domain, uniqueness: { case_sensitive: false }
+  validates :certificate, :key, presence: true, if: :usage_serverless?
   validates :certificate, presence: { message: 'must be present if HTTPS-only is enabled' },
             if: :certificate_should_be_present?
   validates :certificate, certificate: true, if: ->(domain) { domain.certificate.present? }
@@ -26,8 +34,9 @@ class PagesDomain < ApplicationRecord
   validate :validate_intermediates, if: ->(domain) { domain.certificate.present? && domain.certificate_changed? }
 
   default_value_for(:auto_ssl_enabled, allow_nil: false) { ::Gitlab::LetsEncrypt.enabled? }
-  default_value_for :domain_type, allow_nil: false, value: :project
+  default_value_for :scope, allow_nil: false, value: :project
   default_value_for :wildcard, allow_nil: false, value: false
+  default_value_for :usage, allow_nil: false, value: :pages
 
   attr_encrypted :key,
     mode: :per_attribute_iv_and_salt,
@@ -40,25 +49,35 @@ class PagesDomain < ApplicationRecord
   after_update :update_daemon, if: :saved_change_to_pages_config?
   after_destroy :update_daemon
 
-  scope :enabled, -> { where('enabled_until >= ?', Time.now ) }
+  scope :enabled, -> { where('enabled_until >= ?', Time.current ) }
   scope :needs_verification, -> do
     verified_at = arel_table[:verified_at]
     enabled_until = arel_table[:enabled_until]
-    threshold = Time.now + VERIFICATION_THRESHOLD
+    threshold = Time.current + VERIFICATION_THRESHOLD
 
     where(verified_at.eq(nil).or(enabled_until.eq(nil).or(enabled_until.lt(threshold))))
   end
 
   scope :need_auto_ssl_renewal, -> do
-    expiring = where(certificate_valid_not_after: nil).or(
-      where(arel_table[:certificate_valid_not_after].lt(SSL_RENEWAL_THRESHOLD.from_now)))
+    enabled_and_not_failed = where(auto_ssl_enabled: true, auto_ssl_failed: false)
 
-    user_provided_or_expiring = certificate_user_provided.or(expiring)
+    user_provided = enabled_and_not_failed.certificate_user_provided
+    certificate_not_valid = enabled_and_not_failed.where(certificate_valid_not_after: nil)
+    certificate_expiring = enabled_and_not_failed
+                             .where(arel_table[:certificate_valid_not_after].lt(SSL_RENEWAL_THRESHOLD.from_now))
 
-    where(auto_ssl_enabled: true).merge(user_provided_or_expiring)
+    from_union([user_provided, certificate_not_valid, certificate_expiring])
   end
 
-  scope :for_removal, -> { where("remove_at < ?", Time.now) }
+  scope :for_removal, -> { where("remove_at < ?", Time.current) }
+
+  scope :with_logging_info, -> { includes(project: [:namespace, :route]) }
+
+  scope :instance_serverless, -> { where(wildcard: true, scope: :instance, usage: :serverless) }
+
+  def self.find_by_domain_case_insensitive(domain)
+    find_by("LOWER(domain) = LOWER(?)", domain)
+  end
 
   def verified?
     !!verified_at
@@ -122,7 +141,7 @@ class PagesDomain < ApplicationRecord
   def expired?
     return false unless x509
 
-    current = Time.new
+    current = Time.current
     current < x509.not_before || x509.not_after < current
   end
 
@@ -196,6 +215,10 @@ class PagesDomain < ApplicationRecord
     Pages::VirtualDomain.new([project], domain: self)
   end
 
+  def clear_auto_ssl_failure
+    self.auto_ssl_failed = false
+  end
+
   private
 
   def pages_deployed?
@@ -220,7 +243,7 @@ class PagesDomain < ApplicationRecord
 
   # rubocop: disable CodeReuse/ServiceClass
   def update_daemon
-    return if domain_type_instance?
+    return if usage_serverless?
 
     ::Projects::UpdatePagesConfigurationService.new(project).execute
   end
@@ -283,3 +306,5 @@ class PagesDomain < ApplicationRecord
     !auto_ssl_enabled? && project&.pages_https_only?
   end
 end
+
+PagesDomain.prepend_if_ee('::EE::PagesDomain')

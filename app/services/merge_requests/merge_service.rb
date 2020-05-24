@@ -79,6 +79,8 @@ module MergeRequests
       end
 
       merge_request.update!(merge_commit_sha: commit_id)
+    ensure
+      merge_request.update_column(:in_progress_merge_commit_sha, nil)
     end
 
     def try_merge
@@ -89,8 +91,6 @@ module MergeRequests
     rescue => e
       handle_merge_error(log_message: e.message)
       raise_error('Something went wrong during merge')
-    ensure
-      merge_request.update!(in_progress_merge_commit_sha: nil)
     end
 
     def after_merge
@@ -121,12 +121,12 @@ module MergeRequests
     end
 
     def handle_merge_error(log_message:, save_message_on_model: false)
-      Rails.logger.error("MergeService ERROR: #{merge_request_info} - #{log_message}") # rubocop:disable Gitlab/RailsLogger
+      Gitlab::AppLogger.error("MergeService ERROR: #{merge_request_info} - #{log_message}")
       @merge_request.update(merge_error: log_message) if save_message_on_model
     end
 
     def log_info(message)
-      @logger ||= Rails.logger # rubocop:disable Gitlab/RailsLogger
+      @logger ||= Gitlab::AppLogger
       @logger.info("#{merge_request_info} - #{message}")
     end
 

@@ -1,5 +1,5 @@
 import { commitActionTypes, FILE_VIEW_MODE_EDITOR } from '../constants';
-import { escapeFileUrl } from '~/lib/utils/url_utility';
+import { relativePathToAbsolute, isAbsolute, isRootRelative } from '~/lib/utils/url_utility';
 
 export const dataStructure = () => ({
   id: '',
@@ -163,7 +163,7 @@ export const createCommitPayload = ({
 });
 
 export const createNewMergeRequestUrl = (projectUrl, source, target) =>
-  `${projectUrl}/merge_requests/new?merge_request[source_branch]=${source}&merge_request[target_branch]=${target}&nav_source=webide`;
+  `${projectUrl}/-/merge_requests/new?merge_request[source_branch]=${source}&merge_request[target_branch]=${target}&nav_source=webide`;
 
 const sortTreesByTypeAndName = (a, b) => {
   if (a.type === 'tree' && b.type === 'blob') {
@@ -220,9 +220,7 @@ export const mergeTrees = (fromTree, toTree) => {
 
 export const replaceFileUrl = (url, oldPath, newPath) => {
   // Add `/-/` so that we don't accidentally replace project path
-  const result = url.replace(`/-/${escapeFileUrl(oldPath)}`, `/-/${escapeFileUrl(newPath)}`);
-
-  return result;
+  return url.replace(`/-/${oldPath}`, `/-/${newPath}`);
 };
 
 export const swapInStateArray = (state, arr, key, entryPath) =>
@@ -274,6 +272,44 @@ export const pathsAreEqual = (a, b) => {
   return cleanA === cleanB;
 };
 
-// if the contents of a file dont end with a newline, this function adds a newline
-export const addFinalNewlineIfNeeded = content =>
-  content.charAt(content.length - 1) !== '\n' ? `${content}\n` : content;
+export function extractMarkdownImagesFromEntries(mdFile, entries) {
+  /**
+   * Regex to identify an image tag in markdown, like:
+   *
+   * ![img alt goes here](/img.png)
+   * ![img alt](../img 1/img.png "my image title")
+   * ![img alt](https://gitlab.com/assets/logo.svg "title here")
+   *
+   */
+  const reMdImage = /!\[([^\]]*)\]\((.*?)(?:(?="|\))"([^"]*)")?\)/gi;
+  const prefix = 'gl_md_img_';
+  const images = {};
+
+  let content = mdFile.content || mdFile.raw;
+  let i = 0;
+
+  content = content.replace(reMdImage, (_, alt, path, title) => {
+    const imagePath = (isRootRelative(path) ? path : relativePathToAbsolute(path, mdFile.path))
+      .substr(1)
+      .trim();
+
+    const imageContent = entries[imagePath]?.content || entries[imagePath]?.raw;
+
+    if (!isAbsolute(path) && imageContent) {
+      const ext = path.includes('.')
+        ? path
+            .split('.')
+            .pop()
+            .trim()
+        : 'jpeg';
+      const src = `data:image/${ext};base64,${imageContent}`;
+      i += 1;
+      const key = `{{${prefix}${i}}}`;
+      images[key] = { alt, src, title };
+      return key;
+    }
+    return title ? `![${alt}](${path}"${title}")` : `![${alt}](${path})`;
+  });
+
+  return { content, images };
+}

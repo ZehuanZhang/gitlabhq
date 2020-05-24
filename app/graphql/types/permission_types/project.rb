@@ -16,15 +16,14 @@ module Types
                 :create_deployment, :push_to_delete_protected_branch,
                 :admin_wiki, :admin_project, :update_pages,
                 :admin_remote_mirror, :create_label, :update_wiki, :destroy_wiki,
-                :create_pages, :destroy_pages, :read_pages_content, :admin_operations
+                :create_pages, :destroy_pages, :read_pages_content, :admin_operations,
+                :read_merge_request, :read_design, :create_design, :destroy_design
 
       permission_field :create_snippet
 
       def create_snippet
-        Ability.allowed?(context[:current_user], :create_project_snippet, object)
+        Ability.allowed?(context[:current_user], :create_snippet, object)
       end
     end
   end
 end
-
-Types::PermissionTypes::Project.prepend_if_ee('EE::Types::PermissionTypes::Project')

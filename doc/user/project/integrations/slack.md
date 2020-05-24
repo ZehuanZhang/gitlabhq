@@ -12,11 +12,11 @@ The Slack Notifications Service allows your GitLab project to send events (e.g. 
 
 ## GitLab Configuration
 
-1. Navigate to the [Integrations page](project_services.md#accessing-the-project-services) in your project's settings, i.e. **Project > Settings > Integrations**.
-1. Select the **Slack notifications** project service to configure it.
-1. Check the **Active** checkbox to turn on the service.
+1. Navigate to the [Integrations page](overview.md#accessing-integrations) in your project's settings, i.e. **Project > Settings > Integrations**.
+1. Select the **Slack notifications** integration to configure it.
+1. Ensure that the **Active** toggle is enabled.
 1. Check the checkboxes corresponding to the GitLab events you want to send to Slack as a notification.
-1. For each event, optionally enter the Slack channel where you want to send the event. (Do _not_ include the `#` symbol.) If left empty, the event will be sent to the default channel that you configured in the Slack Configuration step.
+1. For each event, optionally enter the Slack channel names where you want to send the event, separated by a comma. If left empty, the event will be sent to the default channel that you configured in the Slack Configuration step. **Note:** Usernames and private channels are not supported. To send direct messages, use the Member ID found under user's Slack profile.
 1. Paste the **Webhook URL** that you copied from the Slack Configuration step.
 1. Optionally customize the Slack bot username that will be sending the notifications.
 1. Configure the remaining options and click `Save changes`.
@@ -41,7 +41,7 @@ an error message and keep troubleshooting from there.
 
 You may see an entry similar to the following in your Sidekiq log:
 
-```text
+```plaintext
 2019-01-10_13:22:08.42572 2019-01-10T13:22:08.425Z 6877 TID-abcdefg ProjectServiceWorker JID-3bade5fb3dd47a85db6d78c5 ERROR: {:class=>"ProjectServiceWorker", :service_class=>"SlackService", :message=>"SSL_connect returned=1 errno=0 state=error: certificate verify failed"}
 ```
 
@@ -50,12 +50,12 @@ communicating with itself. The former is less likely since Slack's security cert
 should _hopefully_ always be trusted. We can establish which we're dealing with by using
 the below rails console script.
 
-```sh
+```shell
 # start a rails console:
-sudo gitlab-rails console production
+sudo gitlab-rails console -e production
 
 # or for source installs:
-bundle exec rails console production
+bundle exec rails console -e production
 ```
 
 ```ruby

@@ -19,13 +19,25 @@ describe ContainerRepository do
       .with(headers: { 'Accept' => ContainerRegistry::Client::ACCEPTED_TYPES.join(', ') })
       .to_return(
         status: 200,
-        body: JSON.dump(tags: ['test_tag']),
+        body: Gitlab::Json.dump(tags: ['test_tag']),
         headers: { 'Content-Type' => 'application/json' })
   end
 
   describe 'associations' do
     it 'belongs to the project' do
       expect(repository).to belong_to(:project)
+    end
+  end
+
+  describe '.exists_by_path?' do
+    it 'returns true for known container repository paths' do
+      path = ContainerRegistry::Path.new("#{project.full_path}/#{repository.name}")
+      expect(described_class.exists_by_path?(path)).to be_truthy
+    end
+
+    it 'returns false for unknown container repository paths' do
+      path = ContainerRegistry::Path.new('you/dont/know/me')
+      expect(described_class.exists_by_path?(path)).to be_falsey
     end
   end
 
@@ -85,7 +97,7 @@ describe ContainerRepository do
     context 'when action succeeds' do
       it 'returns status that indicates success' do
         expect(repository.client)
-          .to receive(:delete_repository_tag)
+          .to receive(:delete_repository_tag_by_digest)
           .twice
           .and_return(true)
 
@@ -96,11 +108,41 @@ describe ContainerRepository do
     context 'when action fails' do
       it 'returns status that indicates failure' do
         expect(repository.client)
-          .to receive(:delete_repository_tag)
+          .to receive(:delete_repository_tag_by_digest)
           .twice
           .and_return(false)
 
         expect(repository.delete_tags!).to be_falsey
+      end
+    end
+  end
+
+  describe '#delete_tag_by_name' do
+    let(:repository) do
+      create(:container_repository, name: 'my_image',
+                                    tags: { latest: '123', rc1: '234' },
+                                    project: project)
+    end
+
+    context 'when action succeeds' do
+      it 'returns status that indicates success' do
+        expect(repository.client)
+          .to receive(:delete_repository_tag_by_name)
+          .with(repository.path, "latest")
+          .and_return(true)
+
+        expect(repository.delete_tag_by_name('latest')).to be_truthy
+      end
+    end
+
+    context 'when action fails' do
+      it 'returns status that indicates failure' do
+        expect(repository.client)
+          .to receive(:delete_repository_tag_by_name)
+          .with(repository.path, "latest")
+          .and_return(false)
+
+        expect(repository.delete_tag_by_name('latest')).to be_falsey
       end
     end
   end
@@ -266,5 +308,15 @@ describe ContainerRepository do
 
       it { is_expected.to eq([]) }
     end
+  end
+
+  describe '.search_by_name' do
+    let!(:another_repository) do
+      create(:container_repository, name: 'my_foo_bar', project: project)
+    end
+
+    subject { described_class.search_by_name('my_image') }
+
+    it { is_expected.to contain_exactly(repository) }
   end
 end

@@ -53,7 +53,7 @@ class MergeRequestPollWidgetEntity < Grape::Entity
 
   # CI related
   expose :has_ci?, as: :has_ci
-  expose :ci_status do |merge_request|
+  expose :ci_status, if: -> (mr, _) { presenter(mr).can_read_pipeline? } do |merge_request|
     presenter(merge_request).ci_status
   end
 
@@ -68,6 +68,18 @@ class MergeRequestPollWidgetEntity < Grape::Entity
   expose :test_reports_path do |merge_request|
     if merge_request.has_test_reports?
       test_reports_project_merge_request_path(merge_request.project, merge_request, format: :json)
+    end
+  end
+
+  expose :accessibility_report_path do |merge_request|
+    if merge_request.has_accessibility_reports?
+      accessibility_reports_project_merge_request_path(merge_request.project, merge_request, format: :json)
+    end
+  end
+
+  expose :terraform_reports_path do |merge_request|
+    if merge_request.has_terraform_reports?
+      terraform_reports_project_merge_request_path(merge_request.project, merge_request, format: :json)
     end
   end
 

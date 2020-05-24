@@ -1,7 +1,7 @@
 <script>
-import _ from 'underscore';
+import { isEmpty } from 'lodash';
 import { mapActions, mapState } from 'vuex';
-import { GlLink, GlButton } from '@gitlab/ui';
+import { GlLink, GlDeprecatedButton } from '@gitlab/ui';
 import { __, sprintf } from '~/locale';
 import timeagoMixin from '~/vue_shared/mixins/timeago';
 import { timeIntervalInWords } from '~/lib/utils/datetime_utility';
@@ -24,7 +24,7 @@ export default {
     StagesDropdown,
     JobsContainer,
     GlLink,
-    GlButton,
+    GlDeprecatedButton,
   },
   mixins: [timeagoMixin],
   props: {
@@ -84,10 +84,10 @@ export default {
       );
     },
     hasArtifact() {
-      return !_.isEmpty(this.job.artifact);
+      return !isEmpty(this.job.artifact);
     },
     hasTriggers() {
-      return !_.isEmpty(this.job.trigger);
+      return !isEmpty(this.job.trigger);
     },
     hasStages() {
       return (
@@ -119,6 +119,7 @@ export default {
               :class="retryButtonClass"
               :href="job.retry_path"
               data-method="post"
+              data-qa-selector="retry_button"
               rel="nofollow"
               >{{ __('Retry') }}</gl-link
             >
@@ -132,14 +133,14 @@ export default {
             >
           </div>
 
-          <gl-button
+          <gl-deprecated-button
             :aria-label="__('Toggle Sidebar')"
             type="button"
             class="btn btn-blank gutter-toggle float-right d-block d-md-none js-sidebar-build-toggle"
             @click="toggleSidebar"
           >
             <i aria-hidden="true" data-hidden="true" class="fa fa-angle-double-right"></i>
-          </gl-button>
+          </gl-deprecated-button>
         </div>
 
         <div v-if="job.terminal_path || job.new_issue_path" class="block retry-link">

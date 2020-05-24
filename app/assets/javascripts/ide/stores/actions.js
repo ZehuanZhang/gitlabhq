@@ -1,6 +1,5 @@
-import $ from 'jquery';
 import Vue from 'vue';
-import _ from 'underscore';
+import { escape } from 'lodash';
 import { __, sprintf } from '~/locale';
 import { visitUrl } from '~/lib/utils/url_utility';
 import flash from '~/flash';
@@ -16,21 +15,7 @@ export const redirectToUrl = (self, url) => visitUrl(url);
 export const setInitialData = ({ commit }, data) => commit(types.SET_INITIAL_DATA, data);
 
 export const discardAllChanges = ({ state, commit, dispatch }) => {
-  state.changedFiles.forEach(file => {
-    if (file.tempFile || file.prevPath) dispatch('closeFile', file);
-
-    if (file.tempFile) {
-      dispatch('deleteEntry', file.path);
-    } else if (file.prevPath) {
-      dispatch('renameEntry', {
-        path: file.path,
-        name: file.prevName,
-        parentPath: file.prevParentPath,
-      });
-    } else {
-      commit(types.DISCARD_FILE_CHANGES, file.path);
-    }
-  });
+  state.changedFiles.forEach(file => dispatch('restoreOriginalFile', file.path));
 
   commit(types.REMOVE_ALL_CHANGES_FILES);
 };
@@ -39,88 +24,62 @@ export const closeAllFiles = ({ state, dispatch }) => {
   state.openFiles.forEach(file => dispatch('closeFile', file));
 };
 
-export const setPanelCollapsedStatus = ({ commit }, { side, collapsed }) => {
-  if (side === 'left') {
-    commit(types.SET_LEFT_PANEL_COLLAPSED, collapsed);
-  } else {
-    commit(types.SET_RIGHT_PANEL_COLLAPSED, collapsed);
-  }
-};
-
-export const toggleRightPanelCollapsed = ({ dispatch, state }, e = undefined) => {
-  if (e) {
-    $(e.currentTarget)
-      .tooltip('hide')
-      .blur();
-  }
-
-  dispatch('setPanelCollapsedStatus', {
-    side: 'right',
-    collapsed: !state.rightPanelCollapsed,
-  });
-};
-
 export const setResizingStatus = ({ commit }, resizing) => {
   commit(types.SET_RESIZING_STATUS, resizing);
 };
 
 export const createTempEntry = (
-  { state, commit, dispatch },
+  { state, commit, dispatch, getters },
   { name, type, content = '', base64 = false, binary = false, rawPath = '' },
-) =>
-  new Promise(resolve => {
-    const fullName = name.slice(-1) !== '/' && type === 'tree' ? `${name}/` : name;
+) => {
+  const fullName = name.slice(-1) !== '/' && type === 'tree' ? `${name}/` : name;
 
-    if (state.entries[name] && !state.entries[name].deleted) {
-      flash(
-        `The name "${name.split('/').pop()}" is already taken in this directory.`,
-        'alert',
-        document,
-        null,
-        false,
-        true,
-      );
+  if (state.entries[name] && !state.entries[name].deleted) {
+    flash(
+      sprintf(__('The name "%{name}" is already taken in this directory.'), {
+        name: name.split('/').pop(),
+      }),
+      'alert',
+      document,
+      null,
+      false,
+      true,
+    );
 
-      resolve();
+    return;
+  }
 
-      return null;
-    }
-
-    const data = decorateFiles({
-      data: [fullName],
-      projectId: state.currentProjectId,
-      branchId: state.currentBranchId,
-      type,
-      tempFile: true,
-      content,
-      base64,
-      binary,
-      rawPath,
-    });
-    const { file, parentPath } = data;
-
-    commit(types.CREATE_TMP_ENTRY, {
-      data,
-      projectId: state.currentProjectId,
-      branchId: state.currentBranchId,
-    });
-
-    if (type === 'blob') {
-      commit(types.TOGGLE_FILE_OPEN, file.path);
-      commit(types.ADD_FILE_TO_CHANGED, file.path);
-      dispatch('setFileActive', file.path);
-      dispatch('triggerFilesChange');
-      dispatch('burstUnusedSeal');
-    }
-
-    if (parentPath && !state.entries[parentPath].opened) {
-      commit(types.TOGGLE_TREE_OPEN, parentPath);
-    }
-
-    resolve(file);
-
-    return null;
+  const data = decorateFiles({
+    data: [fullName],
+    projectId: state.currentProjectId,
+    branchId: state.currentBranchId,
+    type,
+    tempFile: true,
+    content,
+    base64,
+    binary,
+    rawPath,
   });
+  const { file, parentPath } = data;
+
+  commit(types.CREATE_TMP_ENTRY, {
+    data,
+    projectId: state.currentProjectId,
+    branchId: state.currentBranchId,
+  });
+
+  if (type === 'blob') {
+    commit(types.TOGGLE_FILE_OPEN, file.path);
+    commit(types.STAGE_CHANGE, { path: file.path, diffInfo: getters.getDiffInfo(file.path) });
+
+    dispatch('setFileActive', file.path);
+    dispatch('triggerFilesChange');
+  }
+
+  if (parentPath && !state.entries[parentPath].opened) {
+    commit(types.TOGGLE_TREE_OPEN, parentPath);
+  }
+};
 
 export const scrollToTab = () => {
   Vue.nextTick(() => {
@@ -203,30 +162,18 @@ export const updateTempFlagForEntry = ({ commit, dispatch, state }, { file, temp
 export const toggleFileFinder = ({ commit }, fileFindVisible) =>
   commit(types.TOGGLE_FILE_FINDER, fileFindVisible);
 
-export const burstUnusedSeal = ({ state, commit }) => {
-  if (state.unusedSeal) {
-    commit(types.BURST_UNUSED_SEAL);
-  }
-};
-
 export const setLinks = ({ commit }, links) => commit(types.SET_LINKS, links);
 
 export const setErrorMessage = ({ commit }, errorMessage) =>
   commit(types.SET_ERROR_MESSAGE, errorMessage);
 
-export const openNewEntryModal = ({ commit }, { type, path = '' }) => {
-  commit(types.OPEN_NEW_ENTRY_MODAL, { type, path });
-
-  // open the modal manually so we don't mess around with dropdown/rows
-  $('#ide-new-entry').modal('show');
-};
-
 export const deleteEntry = ({ commit, dispatch, state }, path) => {
   const entry = state.entries[path];
   const { prevPath, prevName, prevParentPath } = entry;
   const isTree = entry.type === 'tree';
+  const prevEntry = prevPath && state.entries[prevPath];
 
-  if (prevPath) {
+  if (prevPath && (!prevEntry || prevEntry.deleted)) {
     dispatch('renameEntry', {
       path,
       name: prevName,
@@ -235,8 +182,6 @@ export const deleteEntry = ({ commit, dispatch, state }, path) => {
     dispatch('deleteEntry', prevPath);
     return;
   }
-
-  dispatch('burstUnusedSeal');
 
   if (entry.opened) dispatch('closeFile', entry);
 
@@ -256,9 +201,14 @@ export const deleteEntry = ({ commit, dispatch, state }, path) => {
 
 export const resetOpenFiles = ({ commit }) => commit(types.RESET_OPEN_FILES);
 
-export const renameEntry = ({ dispatch, commit, state }, { path, name, parentPath }) => {
+export const renameEntry = ({ dispatch, commit, state, getters }, { path, name, parentPath }) => {
   const entry = state.entries[path];
   const newPath = parentPath ? `${parentPath}/${name}` : name;
+  const existingParent = parentPath && state.entries[parentPath];
+
+  if (parentPath && (!existingParent || existingParent.deleted)) {
+    dispatch('createTempEntry', { name: parentPath, type: 'tree' });
+  }
 
   commit(types.RENAME_ENTRY, { path, name, parentPath });
 
@@ -281,8 +231,7 @@ export const renameEntry = ({ dispatch, commit, state }, { path, name, parentPat
     if (isReset) {
       commit(types.REMOVE_FILE_FROM_STAGED_AND_CHANGED, newEntry);
     } else if (!isInChanges) {
-      commit(types.ADD_FILE_TO_CHANGED, newPath);
-      dispatch('burstUnusedSeal');
+      commit(types.STAGE_CHANGE, { path: newPath, diffInfo: getters.getDiffInfo(newPath) });
     }
 
     if (!newEntry.tempFile) {
@@ -331,7 +280,7 @@ export const getBranchData = ({ commit, state }, { projectId, branchId, force = 
                 sprintf(
                   __('Branch not loaded - %{branchId}'),
                   {
-                    branchId: `<strong>${_.escape(projectId)}/${_.escape(branchId)}</strong>`,
+                    branchId: `<strong>${escape(projectId)}/${escape(branchId)}</strong>`,
                   },
                   false,
                 ),
@@ -348,6 +297,3 @@ export * from './actions/tree';
 export * from './actions/file';
 export * from './actions/project';
 export * from './actions/merge_request';
-
-// prevent babel-plugin-rewire from generating an invalid default during karma tests
-export default () => {};

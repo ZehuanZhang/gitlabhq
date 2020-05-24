@@ -50,6 +50,11 @@ module Deployments
           project.merge_requests.merged.by_merge_commit_sha(slice)
 
         deployment.link_merge_requests(merge_requests)
+
+        picked_merge_requests =
+          project.merge_requests.by_cherry_pick_sha(slice)
+
+        deployment.link_merge_requests(picked_merge_requests)
       end
     end
 

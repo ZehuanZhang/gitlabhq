@@ -24,10 +24,12 @@ module API
                     Gitlab::GrapeLogging::Loggers::ExceptionLogger.new,
                     Gitlab::GrapeLogging::Loggers::QueueDurationLogger.new,
                     Gitlab::GrapeLogging::Loggers::PerfLogger.new,
-                    Gitlab::GrapeLogging::Loggers::CorrelationIdLogger.new
+                    Gitlab::GrapeLogging::Loggers::CorrelationIdLogger.new,
+                    Gitlab::GrapeLogging::Loggers::ContextLogger.new
                   ]
 
     allow_access_with_scope :api
+    allow_access_with_scope :read_api, if: -> (request) { request.get? }
     prefix :api
 
     version 'v3', using: :path do
@@ -45,9 +47,10 @@ module API
 
     before do
       Gitlab::ApplicationContext.push(
-        user: -> { current_user },
+        user: -> { @current_user },
         project: -> { @project },
-        namespace: -> { @group }
+        namespace: -> { @group },
+        caller_id: route.origin
       )
     end
 
@@ -95,6 +98,15 @@ module API
       handle_api_exception(exception)
     end
 
+    # This is a specific exception raised by `rack-timeout` gem when Puma
+    # requests surpass its timeout. Given it inherits from Exception, we
+    # should rescue it separately. For more info, see:
+    # - https://github.com/sharpstone/rack-timeout/blob/master/doc/exceptions.md
+    # - https://github.com/ruby-grape/grape#exception-handling
+    rescue_from Rack::Timeout::RequestTimeoutException do |exception|
+      handle_api_exception(exception)
+    end
+
     format :json
     content_type :txt, "text/plain"
 
@@ -102,93 +114,112 @@ module API
     helpers ::API::Helpers
     helpers ::API::Helpers::CommonHelpers
 
-    # Keep in alphabetical order
-    mount ::API::AccessRequests
-    mount ::API::Appearance
-    mount ::API::Applications
-    mount ::API::Avatar
-    mount ::API::AwardEmoji
-    mount ::API::Badges
-    mount ::API::Boards
-    mount ::API::Branches
-    mount ::API::BroadcastMessages
-    mount ::API::Commits
-    mount ::API::CommitStatuses
-    mount ::API::DeployKeys
-    mount ::API::Deployments
-    mount ::API::Environments
-    mount ::API::Events
-    mount ::API::Features
-    mount ::API::Files
-    mount ::API::GroupBoards
-    mount ::API::GroupClusters
-    mount ::API::GroupExport
-    mount ::API::GroupLabels
-    mount ::API::GroupMilestones
-    mount ::API::Groups
-    mount ::API::GroupContainerRepositories
-    mount ::API::GroupVariables
-    mount ::API::ImportGithub
+    namespace do
+      after do
+        ::Users::ActivityService.new(@current_user).execute
+      end
+
+      # Keep in alphabetical order
+      mount ::API::AccessRequests
+      mount ::API::Admin::Ci::Variables
+      mount ::API::Admin::Sidekiq
+      mount ::API::Appearance
+      mount ::API::Applications
+      mount ::API::Avatar
+      mount ::API::AwardEmoji
+      mount ::API::Badges
+      mount ::API::Boards
+      mount ::API::Branches
+      mount ::API::BroadcastMessages
+      mount ::API::Commits
+      mount ::API::CommitStatuses
+      mount ::API::ContainerRegistryEvent
+      mount ::API::DeployKeys
+      mount ::API::DeployTokens
+      mount ::API::Deployments
+      mount ::API::Environments
+      mount ::API::ErrorTracking
+      mount ::API::Events
+      mount ::API::Features
+      mount ::API::Files
+      mount ::API::FreezePeriods
+      mount ::API::GroupBoards
+      mount ::API::GroupClusters
+      mount ::API::GroupExport
+      mount ::API::GroupImport
+      mount ::API::GroupLabels
+      mount ::API::GroupMilestones
+      mount ::API::Groups
+      mount ::API::GroupContainerRepositories
+      mount ::API::GroupVariables
+      mount ::API::ImportGithub
+      mount ::API::Issues
+      mount ::API::JobArtifacts
+      mount ::API::Jobs
+      mount ::API::Keys
+      mount ::API::Labels
+      mount ::API::Lint
+      mount ::API::LsifData
+      mount ::API::Markdown
+      mount ::API::Members
+      mount ::API::MergeRequestDiffs
+      mount ::API::MergeRequests
+      mount ::API::Metrics::Dashboard::Annotations
+      mount ::API::Metrics::UserStarredDashboards
+      mount ::API::Namespaces
+      mount ::API::Notes
+      mount ::API::Discussions
+      mount ::API::ResourceLabelEvents
+      mount ::API::NotificationSettings
+      mount ::API::Pages
+      mount ::API::PagesDomains
+      mount ::API::Pipelines
+      mount ::API::PipelineSchedules
+      mount ::API::ProjectClusters
+      mount ::API::ProjectContainerRepositories
+      mount ::API::ProjectEvents
+      mount ::API::ProjectExport
+      mount ::API::ProjectImport
+      mount ::API::ProjectHooks
+      mount ::API::ProjectMilestones
+      mount ::API::ProjectRepositoryStorageMoves
+      mount ::API::Projects
+      mount ::API::ProjectSnapshots
+      mount ::API::ProjectSnippets
+      mount ::API::ProjectStatistics
+      mount ::API::ProjectTemplates
+      mount ::API::Terraform::State
+      mount ::API::ProtectedBranches
+      mount ::API::ProtectedTags
+      mount ::API::Releases
+      mount ::API::Release::Links
+      mount ::API::RemoteMirrors
+      mount ::API::Repositories
+      mount ::API::Runner
+      mount ::API::Runners
+      mount ::API::Search
+      mount ::API::Services
+      mount ::API::Settings
+      mount ::API::SidekiqMetrics
+      mount ::API::Snippets
+      mount ::API::Statistics
+      mount ::API::Submodules
+      mount ::API::Subscriptions
+      mount ::API::Suggestions
+      mount ::API::SystemHooks
+      mount ::API::Tags
+      mount ::API::Templates
+      mount ::API::Todos
+      mount ::API::Triggers
+      mount ::API::UserCounts
+      mount ::API::Users
+      mount ::API::Variables
+      mount ::API::Version
+      mount ::API::Wikis
+    end
+
     mount ::API::Internal::Base
     mount ::API::Internal::Pages
-    mount ::API::Issues
-    mount ::API::JobArtifacts
-    mount ::API::Jobs
-    mount ::API::Keys
-    mount ::API::Labels
-    mount ::API::Lint
-    mount ::API::Markdown
-    mount ::API::Members
-    mount ::API::MergeRequestDiffs
-    mount ::API::MergeRequests
-    mount ::API::Namespaces
-    mount ::API::Notes
-    mount ::API::Discussions
-    mount ::API::ResourceLabelEvents
-    mount ::API::NotificationSettings
-    mount ::API::Pages
-    mount ::API::PagesDomains
-    mount ::API::Pipelines
-    mount ::API::PipelineSchedules
-    mount ::API::ProjectClusters
-    mount ::API::ProjectContainerRepositories
-    mount ::API::ProjectEvents
-    mount ::API::ProjectExport
-    mount ::API::ProjectImport
-    mount ::API::ProjectHooks
-    mount ::API::ProjectMilestones
-    mount ::API::Projects
-    mount ::API::ProjectSnapshots
-    mount ::API::ProjectSnippets
-    mount ::API::ProjectStatistics
-    mount ::API::ProjectTemplates
-    mount ::API::ProtectedBranches
-    mount ::API::ProtectedTags
-    mount ::API::Releases
-    mount ::API::Release::Links
-    mount ::API::RemoteMirrors
-    mount ::API::Repositories
-    mount ::API::Runner
-    mount ::API::Runners
-    mount ::API::Search
-    mount ::API::Services
-    mount ::API::Settings
-    mount ::API::SidekiqMetrics
-    mount ::API::Snippets
-    mount ::API::Statistics
-    mount ::API::Submodules
-    mount ::API::Subscriptions
-    mount ::API::Suggestions
-    mount ::API::SystemHooks
-    mount ::API::Tags
-    mount ::API::Templates
-    mount ::API::Todos
-    mount ::API::Triggers
-    mount ::API::UserCounts
-    mount ::API::Users
-    mount ::API::Variables
-    mount ::API::Version
-    mount ::API::Wikis
 
     route :any, '*path' do
       error!('404 Not Found', 404)

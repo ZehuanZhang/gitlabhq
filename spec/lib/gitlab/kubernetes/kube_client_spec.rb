@@ -64,6 +64,45 @@ describe Gitlab::Kubernetes::KubeClient do
     end
   end
 
+  describe '.graceful_request' do
+    context 'successful' do
+      before do
+        allow(client).to receive(:foo).and_return(true)
+      end
+
+      it 'returns connected status and foo response' do
+        result = described_class.graceful_request(1) { client.foo }
+
+        expect(result).to eq({ status: :connected, response: true })
+      end
+    end
+
+    context 'errored' do
+      using RSpec::Parameterized::TableSyntax
+
+      where(:error, :error_status) do
+        SocketError                     | :unreachable
+        OpenSSL::X509::CertificateError | :authentication_failure
+        StandardError                   | :unknown_failure
+        Kubeclient::HttpError.new(408, "timed out", nil) | :unreachable
+        Kubeclient::HttpError.new(408, "timeout", nil) | :unreachable
+        Kubeclient::HttpError.new(408, "", nil) | :authentication_failure
+      end
+
+      with_them do
+        before do
+          allow(client).to receive(:foo).and_raise(error)
+        end
+
+        it 'returns error status' do
+          result = described_class.graceful_request(1) { client.foo }
+
+          expect(result).to eq({ status: error_status })
+        end
+      end
+    end
+  end
+
   describe '#initialize' do
     shared_examples 'local address' do
       it 'blocks local addresses' do
@@ -91,6 +130,16 @@ describe Gitlab::Kubernetes::KubeClient do
       let(:api_url) { 'http://192.168.1.2:3003' }
 
       it_behaves_like 'local address'
+    end
+
+    it 'falls back to default options, but allows overriding' do
+      client = Gitlab::Kubernetes::KubeClient.new(api_url, {})
+      defaults = Gitlab::Kubernetes::KubeClient::DEFAULT_KUBECLIENT_OPTIONS
+      expect(client.kubeclient_options[:timeouts]).to eq(defaults[:timeouts])
+
+      client = Gitlab::Kubernetes::KubeClient.new(api_url, timeouts: { read: 7 })
+      expect(client.kubeclient_options[:timeouts][:read]).to eq(7)
+      expect(client.kubeclient_options[:timeouts][:open]).to eq(defaults[:timeouts][:open])
     end
   end
 
@@ -164,10 +213,39 @@ describe Gitlab::Kubernetes::KubeClient do
     end
   end
 
+  describe '#networking_client' do
+    subject { client.networking_client }
+
+    it_behaves_like 'a Kubeclient'
+
+    it 'has the networking API group endpoint' do
+      expect(subject.api_endpoint.to_s).to match(%r{\/apis\/networking.k8s.io\Z})
+    end
+
+    it 'has the api_version' do
+      expect(subject.instance_variable_get(:@api_version)).to eq('v1')
+    end
+  end
+
+  describe '#metrics_client' do
+    subject { client.metrics_client }
+
+    it_behaves_like 'a Kubeclient'
+
+    it 'has the metrics API group endpoint' do
+      expect(subject.api_endpoint.to_s).to match(%r{\/apis\/metrics.k8s.io\Z})
+    end
+
+    it 'has the api_version' do
+      expect(subject.instance_variable_get(:@api_version)).to eq('v1beta1')
+    end
+  end
+
   describe 'core API' do
     let(:core_client) { client.core_client }
 
     [
+      :get_nodes,
       :get_pods,
       :get_secrets,
       :get_config_map,
@@ -210,8 +288,6 @@ describe Gitlab::Kubernetes::KubeClient do
       :create_role,
       :get_role,
       :update_role,
-      :create_cluster_role_binding,
-      :get_cluster_role_binding,
       :update_cluster_role_binding
     ].each do |method|
       describe "##{method}" do
@@ -229,20 +305,30 @@ describe Gitlab::Kubernetes::KubeClient do
     end
   end
 
-  describe 'extensions API group' do
-    let(:api_groups) { ['apis/extensions'] }
+  describe '#get_deployments' do
     let(:extensions_client) { client.extensions_client }
+    let(:apps_client) { client.apps_client }
 
-    describe '#get_deployments' do
-      include_examples 'redirection not allowed', 'get_deployments'
-      include_examples 'dns rebinding not allowed', 'get_deployments'
+    include_examples 'redirection not allowed', 'get_deployments'
+    include_examples 'dns rebinding not allowed', 'get_deployments'
 
-      it 'delegates to the extensions client' do
-        expect(client).to delegate_method(:get_deployments).to(:extensions_client)
+    it 'delegates to the extensions client' do
+      expect(extensions_client).to receive(:get_deployments)
+
+      client.get_deployments
+    end
+
+    context 'extensions does not have deployments for Kubernetes 1.16+ clusters' do
+      before do
+        WebMock
+          .stub_request(:get, api_url + '/apis/extensions/v1beta1')
+          .to_return(kube_response(kube_1_16_extensions_v1beta1_discovery_body))
       end
 
-      it 'responds to the method' do
-        expect(client).to respond_to :get_deployments
+      it 'delegates to the apps client' do
+        expect(apps_client).to receive(:get_deployments)
+
+        client.get_deployments
       end
     end
   end
@@ -261,6 +347,30 @@ describe Gitlab::Kubernetes::KubeClient do
 
         it 'delegates to the istio client' do
           expect(client).to delegate_method(method).to(:istio_client)
+        end
+
+        it 'responds to the method' do
+          expect(client).to respond_to method
+        end
+      end
+    end
+  end
+
+  describe 'networking API group' do
+    let(:networking_client) { client.networking_client }
+
+    [
+      :create_network_policy,
+      :get_network_policies,
+      :update_network_policy,
+      :delete_network_policy
+    ].each do |method|
+      describe "##{method}" do
+        include_examples 'redirection not allowed', method
+        include_examples 'dns rebinding not allowed', method
+
+        it 'delegates to the networking client' do
+          expect(client).to delegate_method(method).to(:networking_client)
         end
 
         it 'responds to the method' do
@@ -293,6 +403,16 @@ describe Gitlab::Kubernetes::KubeClient do
 
     it 'is delegated to the core client' do
       expect(client).to delegate_method(:watch_pod_log).to(:core_client)
+    end
+  end
+
+  shared_examples 'create_or_update method using put' do
+    let(:update_method) { "update_#{resource_type}" }
+
+    it 'calls the update method' do
+      expect(client).to receive(update_method).with(resource)
+
+      subject
     end
   end
 
@@ -335,7 +455,7 @@ describe Gitlab::Kubernetes::KubeClient do
 
     subject { client.create_or_update_cluster_role_binding(resource) }
 
-    it_behaves_like 'create_or_update method'
+    it_behaves_like 'create_or_update method using put'
   end
 
   describe '#create_or_update_role_binding' do
@@ -347,7 +467,7 @@ describe Gitlab::Kubernetes::KubeClient do
 
     subject { client.create_or_update_role_binding(resource) }
 
-    it_behaves_like 'create_or_update method'
+    it_behaves_like 'create_or_update method using put'
   end
 
   describe '#create_or_update_service_account' do

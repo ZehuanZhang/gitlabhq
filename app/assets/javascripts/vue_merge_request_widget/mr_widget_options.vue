@@ -1,5 +1,5 @@
 <script>
-import _ from 'underscore';
+import { isEmpty } from 'lodash';
 import MRWidgetStore from 'ee_else_ce/vue_merge_request_widget/stores/mr_widget_store';
 import MRWidgetService from 'ee_else_ce/vue_merge_request_widget/services/mr_widget_service';
 import stateMaps from 'ee_else_ce/vue_merge_request_widget/stores/state_maps';
@@ -9,6 +9,7 @@ import SmartInterval from '~/smart_interval';
 import createFlash from '../flash';
 import Loading from './components/loading.vue';
 import WidgetHeader from './components/mr_widget_header.vue';
+import WidgetSuggestPipeline from './components/mr_widget_suggest_pipeline.vue';
 import WidgetMergeHelp from './components/mr_widget_merge_help.vue';
 import MrWidgetPipelineContainer from './components/mr_widget_pipeline_container.vue';
 import Deployment from './components/deployment/deployment.vue';
@@ -35,17 +36,20 @@ import CheckingState from './components/states/mr_widget_checking.vue';
 import eventHub from './event_hub';
 import notify from '~/lib/utils/notify';
 import SourceBranchRemovalStatus from './components/source_branch_removal_status.vue';
+import TerraformPlan from './components/mr_widget_terraform_plan.vue';
 import GroupedTestReportsApp from '../reports/components/grouped_test_reports_app.vue';
 import { setFaviconOverlay } from '../lib/utils/common_utils';
+import GroupedAccessibilityReportsApp from '../reports/accessibility_report/grouped_accessibility_reports_app.vue';
 
 export default {
   el: '#js-vue-mr-widget',
   // False positive i18n lint: https://gitlab.com/gitlab-org/frontend/eslint-plugin-i18n/issues/25
-  // eslint-disable-next-line @gitlab/i18n/no-non-i18n-strings
+  // eslint-disable-next-line @gitlab/require-i18n-strings
   name: 'MRWidget',
   components: {
     Loading,
     'mr-widget-header': WidgetHeader,
+    'mr-widget-suggest-pipeline': WidgetSuggestPipeline,
     'mr-widget-merge-help': WidgetMergeHelp,
     MrWidgetPipelineContainer,
     Deployment,
@@ -72,6 +76,8 @@ export default {
     'mr-widget-rebase': RebaseState,
     SourceBranchRemovalStatus,
     GroupedTestReportsApp,
+    TerraformPlan,
+    GroupedAccessibilityReportsApp,
   },
   props: {
     mrData: {
@@ -96,8 +102,14 @@ export default {
     shouldRenderMergeHelp() {
       return stateMaps.statesToShowHelpWidget.indexOf(this.mr.state) > -1;
     },
+    hasPipelineMustSucceedConflict() {
+      return !this.mr.hasCI && this.mr.onlyAllowMergeIfPipelineSucceeds;
+    },
     shouldRenderPipelines() {
-      return this.mr.hasCI;
+      return this.mr.hasCI || this.hasPipelineMustSucceedConflict;
+    },
+    shouldSuggestPipelines() {
+      return gon.features?.suggestPipeline && !this.mr.hasCI && this.mr.mergeRequestAddCiConfigPath;
     },
     shouldRenderRelatedLinks() {
       return Boolean(this.mr.relatedLinks) && !this.mr.isNothingToMergeState;
@@ -113,7 +125,7 @@ export default {
       return this.mr.allowCollaboration && this.mr.isOpen;
     },
     shouldRenderMergedPipeline() {
-      return this.mr.state === 'merged' && !_.isEmpty(this.mr.mergePipeline);
+      return this.mr.state === 'merged' && !isEmpty(this.mr.mergePipeline);
     },
     showMergePipelineForkWarning() {
       return Boolean(
@@ -121,9 +133,18 @@ export default {
       );
     },
     mergeError() {
+      let { mergeError } = this.mr;
+
+      if (mergeError && mergeError.slice(-1) === '.') {
+        mergeError = mergeError.slice(0, -1);
+      }
+
       return sprintf(s__('mrWidget|Merge failed: %{mergeError}. Please try again.'), {
-        mergeError: this.mr.mergeError,
+        mergeError,
       });
+    },
+    shouldShowAccessibilityReport() {
+      return this.mr.accessibilityReportPath;
     },
   },
   watch: {
@@ -135,15 +156,11 @@ export default {
     },
   },
   mounted() {
-    if (gon && gon.features && gon.features.asyncMrWidget) {
-      MRWidgetService.fetchInitialData()
-        .then(({ data }) => this.initWidget(data))
-        .catch(() =>
-          createFlash(__('Unable to load the merge request widget. Try reloading the page.')),
-        );
-    } else {
-      this.initWidget();
-    }
+    MRWidgetService.fetchInitialData()
+      .then(({ data }) => this.initWidget(data))
+      .catch(() =>
+        createFlash(__('Unable to load the merge request widget. Try reloading the page.')),
+      );
   },
   beforeDestroy() {
     eventHub.$off('mr.discussion.updated', this.checkStatus);
@@ -227,10 +244,10 @@ export default {
     initPolling() {
       this.pollingInterval = new SmartInterval({
         callback: this.checkStatus,
-        startingInterval: 10000,
-        maxInterval: 30000,
-        hiddenInterval: 120000,
-        incrementByFactorOf: 5000,
+        startingInterval: 10 * 1000,
+        maxInterval: 240 * 1000,
+        hiddenInterval: window.gon?.features?.widgetVisibilityPolling && 360 * 1000,
+        incrementByFactorOf: 2,
       });
     },
     initDeploymentsPolling() {
@@ -242,10 +259,9 @@ export default {
     deploymentsPoll(callback) {
       return new SmartInterval({
         callback,
-        startingInterval: 30000,
-        maxInterval: 120000,
-        hiddenInterval: 240000,
-        incrementByFactorOf: 15000,
+        startingInterval: 30 * 1000,
+        maxInterval: 240 * 1000,
+        incrementByFactorOf: 4,
         immediateExecution: true,
       });
     },
@@ -351,6 +367,13 @@ export default {
 <template>
   <div v-if="mr" class="mr-state-widget prepend-top-default">
     <mr-widget-header :mr="mr" />
+    <mr-widget-suggest-pipeline
+      v-if="shouldSuggestPipelines"
+      class="mr-widget-workflow"
+      :pipeline-path="mr.mergeRequestAddCiConfigPath"
+      :pipeline-svg-path="mr.pipelinesEmptySvgPath"
+      :human-access="mr.humanAccess.toLowerCase()"
+    />
     <mr-widget-pipeline-container
       v-if="shouldRenderPipelines"
       class="mr-widget-workflow"
@@ -361,6 +384,13 @@ export default {
         v-if="mr.testResultsPath"
         class="js-reports-container"
         :endpoint="mr.testResultsPath"
+      />
+
+      <terraform-plan v-if="mr.terraformReportsPath" :endpoint="mr.terraformReportsPath" />
+
+      <grouped-accessibility-reports-app
+        v-if="shouldShowAccessibilityReport"
+        :endpoint="mr.accessibilityReportPath"
       />
 
       <div class="mr-widget-section">
@@ -398,7 +428,9 @@ export default {
           <source-branch-removal-status v-if="shouldRenderSourceBranchRemovalStatus" />
         </div>
       </div>
-      <div v-if="shouldRenderMergeHelp" class="mr-widget-footer"><mr-widget-merge-help /></div>
+      <div v-if="shouldRenderMergeHelp" class="mr-widget-footer">
+        <mr-widget-merge-help />
+      </div>
     </div>
     <mr-widget-pipeline-container
       v-if="shouldRenderMergedPipeline"

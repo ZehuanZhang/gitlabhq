@@ -35,6 +35,7 @@ module Ci
     AVAILABLE_SCOPES = (AVAILABLE_TYPES_LEGACY + AVAILABLE_TYPES + AVAILABLE_STATUSES).freeze
 
     FORM_EDITABLE = %i[description tag_list active run_untagged locked access_level maximum_timeout_human_readable].freeze
+    MINUTES_COST_FACTOR_FIELDS = %i[public_projects_minutes_cost_factor private_projects_minutes_cost_factor].freeze
 
     ignore_column :is_shared, remove_after: '2019-12-15', remove_with: '12.6'
 
@@ -68,6 +69,16 @@ module Ci
 
     scope :belonging_to_project, -> (project_id) {
       joins(:runner_projects).where(ci_runner_projects: { project_id: project_id })
+    }
+
+    scope :belonging_to_group, -> (group_id, include_ancestors: false) {
+      groups = ::Group.where(id: group_id)
+
+      if include_ancestors
+        groups = Gitlab::ObjectHierarchy.new(groups).base_and_ancestors
+      end
+
+      joins(:runner_namespaces).where(ci_runner_namespaces: { namespace_id: groups })
     }
 
     scope :belonging_to_parent_group_of_project, -> (project_id) {
@@ -126,6 +137,11 @@ module Ci
     validates :maximum_timeout, allow_nil: true,
                                 numericality: { greater_than_or_equal_to: 600,
                                                 message: 'needs to be at least 10 minutes' }
+
+    validates :public_projects_minutes_cost_factor, :private_projects_minutes_cost_factor,
+      allow_nil: false,
+      numericality: { greater_than_or_equal_to: 0.0,
+                      message: 'needs to be non-negative' }
 
     # Searches for runners matching the given query.
     #
@@ -257,7 +273,7 @@ module Ci
 
     def update_cached_info(values)
       values = values&.slice(:version, :revision, :platform, :architecture, :ip_address) || {}
-      values[:contacted_at] = Time.now
+      values[:contacted_at] = Time.current
 
       cache_attributes(values)
 
@@ -293,7 +309,7 @@ module Ci
 
       real_contacted_at = read_attribute(:contacted_at)
       real_contacted_at.nil? ||
-        (Time.now - real_contacted_at) >= contacted_at_max_age
+        (Time.current - real_contacted_at) >= contacted_at_max_age
     end
 
     def tag_constraints

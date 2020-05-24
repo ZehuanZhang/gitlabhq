@@ -130,6 +130,10 @@
   border-radius: $border-radius-base;
 }
 
+.empty-variables {
+  padding: 20px 0;
+}
+
 .warning-title {
   color: $orange-500;
 }
@@ -257,7 +261,7 @@
     }
 
     .card-header .label-count {
-      color: $white-light;
+      color: $white;
       background: $common-gray-dark;
     }
 
@@ -321,22 +325,13 @@
 
 .saml-settings.info-well {
   .form-control[readonly] {
-    background: $white-light;
+    background: $white;
   }
 }
 
 .modal-doorkeepr-auth {
   .modal-body {
     padding: $gl-padding;
-  }
-}
-
-.deprecated-service {
-  cursor: default;
-
-  a {
-    font-weight: $gl-font-weight-bold;
-    color: $white-light;
   }
 }
 
@@ -351,7 +346,7 @@
   }
 
   .btn-clipboard {
-    background-color: $white-light;
+    background-color: $white;
     border: 1px solid $gray-200;
   }
 
@@ -364,9 +359,36 @@
 .mirror-error-badge {
   background-color: $red-400;
   border-radius: $border-radius-default;
-  color: $white-light;
+  color: $white;
 }
 
 .push-pull-table {
   margin-top: 1em;
+}
+
+.ci-variable-table {
+  table {
+    thead {
+      border-bottom: 1px solid $white-normal;
+    }
+
+    tr {
+      td,
+      th {
+        padding-left: 0;
+      }
+
+      th {
+        background-color: transparent;
+        font-weight: $gl-font-weight-bold;
+        border: 0;
+      }
+    }
+  }
+
+  @media(max-width: map-get($grid-breakpoints, lg)-1) {
+    .truncated-container {
+      justify-content: flex-end;
+    }
+  }
 }

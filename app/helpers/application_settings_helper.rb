@@ -111,12 +111,15 @@ module ApplicationSettingsHelper
     ]
   end
 
-  def repository_storages_options_for_select(selected)
+  def repository_storages_options_json
     options = Gitlab.config.repositories.storages.map do |name, storage|
-      ["#{name} - #{storage['gitaly_address']}", name]
+      {
+        label: "#{name} - #{storage['gitaly_address']}",
+        value: name
+      }
     end
 
-    options_for_select(options, selected)
+    options.to_json
   end
 
   def external_authorization_description
@@ -173,6 +176,7 @@ module ApplicationSettingsHelper
       :authorized_keys_enabled,
       :auto_devops_enabled,
       :auto_devops_domain,
+      :container_expiration_policies_enable_historic_entries,
       :container_registry_token_expire_delay,
       :default_artifacts_expire_in,
       :default_branch_protection,
@@ -202,6 +206,7 @@ module ApplicationSettingsHelper
       :enabled_git_access_protocol,
       :enforce_terms,
       :first_day_of_week,
+      :force_pages_access_control,
       :gitaly_timeout_default,
       :gitaly_timeout_medium,
       :gitaly_timeout_fast,
@@ -224,14 +229,7 @@ module ApplicationSettingsHelper
       :max_artifacts_size,
       :max_attachment_size,
       :max_pages_size,
-      :metrics_enabled,
-      :metrics_host,
       :metrics_method_call_threshold,
-      :metrics_packet_size,
-      :metrics_pool_size,
-      :metrics_port,
-      :metrics_sample_interval,
-      :metrics_timeout,
       :minimum_password_length,
       :mirror_available,
       :pages_domain_verification_enabled,
@@ -263,6 +261,8 @@ module ApplicationSettingsHelper
       :sourcegraph_enabled,
       :sourcegraph_url,
       :sourcegraph_public_only,
+      :spam_check_endpoint_enabled,
+      :spam_check_endpoint_url,
       :terminal_max_session_time,
       :terms,
       :throttle_authenticated_api_enabled,
@@ -283,7 +283,6 @@ module ApplicationSettingsHelper
       :unique_ips_limit_enabled,
       :unique_ips_limit_per_user,
       :unique_ips_limit_time_window,
-      :updating_name_disabled_for_users,
       :usage_ping_enabled,
       :instance_statistics_visibility_private,
       :user_default_external,
@@ -304,7 +303,11 @@ module ApplicationSettingsHelper
       :push_event_hooks_limit,
       :push_event_activities_limit,
       :custom_http_clone_url_root,
-      :snippet_size_limit
+      :snippet_size_limit,
+      :email_restrictions_enabled,
+      :email_restrictions,
+      :issues_create_limit,
+      :raw_blob_request_limit
     ]
   end
 
@@ -344,16 +347,22 @@ module ApplicationSettingsHelper
       'status_create_self_monitoring_project_path' =>
         status_create_self_monitoring_project_admin_application_settings_path,
 
+      'delete_self_monitoring_project_path' =>
+        delete_self_monitoring_project_admin_application_settings_path,
+
+      'status_delete_self_monitoring_project_path' =>
+        status_delete_self_monitoring_project_admin_application_settings_path,
+
       'self_monitoring_project_exists' =>
-        Gitlab::CurrentSettings.instance_administration_project.present?,
+        Gitlab::CurrentSettings.self_monitoring_project.present?.to_s,
 
       'self_monitoring_project_full_path' =>
-        Gitlab::CurrentSettings.instance_administration_project&.full_path
+        Gitlab::CurrentSettings.self_monitoring_project&.full_path
     }
   end
 end
 
-ApplicationSettingsHelper.prepend_if_ee('EE::ApplicationSettingsHelper') # rubocop: disable Cop/InjectEnterpriseEditionModule
+ApplicationSettingsHelper.prepend_if_ee('EE::ApplicationSettingsHelper')
 
 # The methods in `EE::ApplicationSettingsHelper` should be available as both
 # instance and class methods.

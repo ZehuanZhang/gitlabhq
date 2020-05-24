@@ -10,45 +10,8 @@ describe Clusters::Applications::ElasticStack do
   include_examples 'cluster application version specs', :clusters_applications_elastic_stack
   include_examples 'cluster application helm specs', :clusters_applications_elastic_stack
 
-  describe '#can_uninstall?' do
-    let(:ingress) { create(:clusters_applications_ingress, :installed, external_hostname: 'localhost.localdomain') }
-    let(:elastic_stack) { create(:clusters_applications_elastic_stack, cluster: ingress.cluster) }
-
-    subject { elastic_stack.can_uninstall? }
-
-    it { is_expected.to be_truthy }
-  end
-
-  describe '#set_initial_status' do
-    before do
-      elastic_stack.set_initial_status
-    end
-
-    context 'when ingress is not installed' do
-      let(:cluster) { create(:cluster, :provided_by_gcp) }
-      let(:elastic_stack) { create(:clusters_applications_elastic_stack, cluster: cluster) }
-
-      it { expect(elastic_stack).to be_not_installable }
-    end
-
-    context 'when ingress is installed and external_ip is assigned' do
-      let(:ingress) { create(:clusters_applications_ingress, :installed, external_ip: '127.0.0.1') }
-      let(:elastic_stack) { create(:clusters_applications_elastic_stack, cluster: ingress.cluster) }
-
-      it { expect(elastic_stack).to be_installable }
-    end
-
-    context 'when ingress is installed and external_hostname is assigned' do
-      let(:ingress) { create(:clusters_applications_ingress, :installed, external_hostname: 'localhost.localdomain') }
-      let(:elastic_stack) { create(:clusters_applications_elastic_stack, cluster: ingress.cluster) }
-
-      it { expect(elastic_stack).to be_installable }
-    end
-  end
-
   describe '#install_command' do
-    let!(:ingress) { create(:clusters_applications_ingress, :installed, external_ip: '127.0.0.1') }
-    let!(:elastic_stack) { create(:clusters_applications_elastic_stack, cluster: ingress.cluster) }
+    let!(:elastic_stack) { create(:clusters_applications_elastic_stack) }
 
     subject { elastic_stack.install_command }
 
@@ -56,10 +19,12 @@ describe Clusters::Applications::ElasticStack do
 
     it 'is initialized with elastic stack arguments' do
       expect(subject.name).to eq('elastic-stack')
-      expect(subject.chart).to eq('stable/elastic-stack')
-      expect(subject.version).to eq('1.8.0')
+      expect(subject.chart).to eq('elastic-stack/elastic-stack')
+      expect(subject.version).to eq('3.0.0')
+      expect(subject.repository).to eq('https://charts.gitlab.io')
       expect(subject).to be_rbac
       expect(subject.files).to eq(elastic_stack.files)
+      expect(subject.preinstall).to be_empty
     end
 
     context 'on a non rbac enabled cluster' do
@@ -70,18 +35,77 @@ describe Clusters::Applications::ElasticStack do
       it { is_expected.not_to be_rbac }
     end
 
+    context 'on versions older than 2' do
+      before do
+        elastic_stack.status = elastic_stack.status_states[:updating]
+        elastic_stack.version = "1.9.0"
+      end
+
+      it 'includes a preinstall script' do
+        expect(subject.preinstall).not_to be_empty
+        expect(subject.preinstall.first).to include("delete")
+      end
+    end
+
+    context 'on versions older than 3' do
+      before do
+        elastic_stack.status = elastic_stack.status_states[:updating]
+        elastic_stack.version = "2.9.0"
+      end
+
+      it 'includes a preinstall script' do
+        expect(subject.preinstall).not_to be_empty
+        expect(subject.preinstall.first).to include("delete")
+      end
+    end
+
     context 'application failed to install previously' do
       let(:elastic_stack) { create(:clusters_applications_elastic_stack, :errored, version: '0.0.1') }
 
       it 'is initialized with the locked version' do
-        expect(subject.version).to eq('1.8.0')
+        expect(subject.version).to eq('3.0.0')
       end
     end
   end
 
+  describe '#chart_above_v2?' do
+    let(:elastic_stack) { create(:clusters_applications_elastic_stack, version: version) }
+
+    subject { elastic_stack.chart_above_v2? }
+
+    context 'on v1.9.0' do
+      let(:version) { '1.9.0' }
+
+      it { is_expected.to be_falsy }
+    end
+
+    context 'on v2.0.0' do
+      let(:version) { '2.0.0' }
+
+      it { is_expected.to be_truthy }
+    end
+  end
+
+  describe '#chart_above_v3?' do
+    let(:elastic_stack) { create(:clusters_applications_elastic_stack, version: version) }
+
+    subject { elastic_stack.chart_above_v3? }
+
+    context 'on v1.9.0' do
+      let(:version) { '1.9.0' }
+
+      it { is_expected.to be_falsy }
+    end
+
+    context 'on v3.0.0' do
+      let(:version) { '3.0.0' }
+
+      it { is_expected.to be_truthy }
+    end
+  end
+
   describe '#uninstall_command' do
-    let!(:ingress) { create(:clusters_applications_ingress, :installed, external_ip: '127.0.0.1') }
-    let!(:elastic_stack) { create(:clusters_applications_elastic_stack, cluster: ingress.cluster) }
+    let!(:elastic_stack) { create(:clusters_applications_elastic_stack) }
 
     subject { elastic_stack.uninstall_command }
 
@@ -95,21 +119,8 @@ describe Clusters::Applications::ElasticStack do
 
     it 'specifies a post delete command to remove custom resource definitions' do
       expect(subject.postdelete).to eq([
-        'kubectl delete pvc --selector release\\=elastic-stack'
+        'kubectl delete pvc --selector app\\=elastic-stack-elasticsearch-master --namespace gitlab-managed-apps'
       ])
-    end
-  end
-
-  describe '#files' do
-    let!(:ingress) { create(:clusters_applications_ingress, :installed, external_ip: '127.0.0.1') }
-    let!(:elastic_stack) { create(:clusters_applications_elastic_stack, cluster: ingress.cluster) }
-
-    let(:values) { subject[:'values.yaml'] }
-
-    subject { elastic_stack.files }
-
-    it 'includes elastic stack specific keys in the values.yaml file' do
-      expect(values).to include('ELASTICSEARCH_HOSTS')
     end
   end
 

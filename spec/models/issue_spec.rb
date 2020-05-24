@@ -7,13 +7,30 @@ describe Issue do
 
   describe "Associations" do
     it { is_expected.to belong_to(:milestone) }
+    it { is_expected.to belong_to(:iteration) }
     it { is_expected.to belong_to(:project) }
     it { is_expected.to belong_to(:moved_to).class_name('Issue') }
+    it { is_expected.to have_one(:moved_from).class_name('Issue') }
     it { is_expected.to belong_to(:duplicated_to).class_name('Issue') }
     it { is_expected.to belong_to(:closed_by).class_name('User') }
     it { is_expected.to have_many(:assignees) }
     it { is_expected.to have_many(:user_mentions).class_name("IssueUserMention") }
+    it { is_expected.to have_many(:designs) }
+    it { is_expected.to have_many(:design_versions) }
     it { is_expected.to have_one(:sentry_issue) }
+    it { is_expected.to have_one(:alert_management_alert) }
+    it { is_expected.to have_many(:resource_milestone_events) }
+    it { is_expected.to have_many(:resource_state_events) }
+
+    describe 'versions.most_recent' do
+      it 'returns the most recent version' do
+        issue = create(:issue)
+        create_list(:design_version, 2, issue: issue)
+        last_version = create(:design_version, issue: issue)
+
+        expect(issue.design_versions.most_recent).to eq(last_version)
+      end
+    end
   end
 
   describe 'modules' do
@@ -23,6 +40,8 @@ describe Issue do
     it { is_expected.to include_module(Referable) }
     it { is_expected.to include_module(Sortable) }
     it { is_expected.to include_module(Taskable) }
+    it { is_expected.to include_module(MilestoneEventable) }
+    it { is_expected.to include_module(StateEventable) }
 
     it_behaves_like 'AtomicInternalId' do
       let(:internal_id_attribute) { :iid }
@@ -61,6 +80,18 @@ describe Issue do
     end
   end
 
+  describe '.with_alert_management_alerts' do
+    subject { described_class.with_alert_management_alerts }
+
+    it 'gets only issues with alerts' do
+      alert = create(:alert_management_alert, issue: create(:issue))
+      issue = create(:issue)
+
+      expect(subject).to contain_exactly(alert.issue)
+      expect(subject).not_to include(issue)
+    end
+  end
+
   describe 'locking' do
     using RSpec::Parameterized::TableSyntax
 
@@ -81,6 +112,16 @@ describe Issue do
 
         expect(issue.reload.title).to eq('locking test')
       end
+    end
+  end
+
+  describe '.simple_sorts' do
+    it 'includes all keys' do
+      expect(described_class.simple_sorts.keys).to include(
+        *%w(created_asc created_at_asc created_date created_desc created_at_desc
+            closest_future_date closest_future_date_asc due_date due_date_asc due_date_desc
+            id_asc id_desc relative_position relative_position_asc
+            updated_desc updated_asc updated_at_asc updated_at_desc))
     end
   end
 
@@ -135,7 +176,7 @@ describe Issue do
   describe '#close' do
     subject(:issue) { create(:issue, state: 'opened') }
 
-    it 'sets closed_at to Time.now when an issue is closed' do
+    it 'sets closed_at to Time.current when an issue is closed' do
       expect { issue.close }.to change { issue.closed_at }.from(nil)
     end
 
@@ -149,7 +190,7 @@ describe Issue do
 
   describe '#reopen' do
     let(:user) { create(:user) }
-    let(:issue) { create(:issue, state: 'closed', closed_at: Time.now, closed_by: user) }
+    let(:issue) { create(:issue, state: 'closed', closed_at: Time.current, closed_by: user) }
 
     it 'sets closed_at to nil when an issue is reopend' do
       expect { issue.reopen }.to change { issue.closed_at }.to(nil)
@@ -168,67 +209,63 @@ describe Issue do
     let(:namespace) { build(:namespace, path: 'sample-namespace') }
     let(:project)   { build(:project, name: 'sample-project', namespace: namespace) }
     let(:issue)     { build(:issue, iid: 1, project: project) }
-    let(:group)     { create(:group, name: 'Group', path: 'sample-group') }
 
     context 'when nil argument' do
       it 'returns issue id' do
         expect(issue.to_reference).to eq "#1"
       end
-    end
 
-    context 'when full is true' do
-      it 'returns complete path to the issue' do
-        expect(issue.to_reference(full: true)).to          eq 'sample-namespace/sample-project#1'
-        expect(issue.to_reference(project, full: true)).to eq 'sample-namespace/sample-project#1'
-        expect(issue.to_reference(group, full: true)).to   eq 'sample-namespace/sample-project#1'
+      it 'returns complete path to the issue with full: true' do
+        expect(issue.to_reference(full: true)).to eq 'sample-namespace/sample-project#1'
       end
     end
 
-    context 'when same project argument' do
-      it 'returns issue id' do
-        expect(issue.to_reference(project)).to eq("#1")
+    context 'when argument is a project' do
+      context 'when same project' do
+        it 'returns issue id' do
+          expect(issue.to_reference(project)).to eq("#1")
+        end
+
+        it 'returns full reference with full: true' do
+          expect(issue.to_reference(project, full: true)).to eq 'sample-namespace/sample-project#1'
+        end
       end
-    end
 
-    context 'when cross namespace project argument' do
-      let(:another_namespace_project) { create(:project, name: 'another-project') }
+      context 'when cross-project in same namespace' do
+        let(:another_project) do
+          build(:project, name: 'another-project', namespace: project.namespace)
+        end
 
-      it 'returns complete path to the issue' do
-        expect(issue.to_reference(another_namespace_project)).to eq 'sample-namespace/sample-project#1'
+        it 'returns a cross-project reference' do
+          expect(issue.to_reference(another_project)).to eq "sample-project#1"
+        end
       end
-    end
 
-    it 'supports a cross-project reference' do
-      another_project = build(:project, name: 'another-project', namespace: project.namespace)
-      expect(issue.to_reference(another_project)).to eq "sample-project#1"
-    end
+      context 'when cross-project in different namespace' do
+        let(:another_namespace) { build(:namespace, path: 'another-namespace') }
+        let(:another_namespace_project) { build(:project, path: 'another-project', namespace: another_namespace) }
 
-    context 'when same namespace / cross-project argument' do
-      let(:another_project) { create(:project, namespace: namespace) }
-
-      it 'returns path to the issue with the project name' do
-        expect(issue.to_reference(another_project)).to eq 'sample-project#1'
-      end
-    end
-
-    context 'when different namespace / cross-project argument' do
-      let(:another_namespace) { create(:namespace, path: 'another-namespace') }
-      let(:another_project)   { create(:project, path: 'another-project', namespace: another_namespace) }
-
-      it 'returns full path to the issue' do
-        expect(issue.to_reference(another_project)).to eq 'sample-namespace/sample-project#1'
+        it 'returns complete path to the issue' do
+          expect(issue.to_reference(another_namespace_project)).to eq 'sample-namespace/sample-project#1'
+        end
       end
     end
 
     context 'when argument is a namespace' do
-      context 'with same project path' do
+      context 'when same as issue' do
         it 'returns path to the issue with the project name' do
           expect(issue.to_reference(namespace)).to eq 'sample-project#1'
         end
+
+        it 'returns full reference with full: true' do
+          expect(issue.to_reference(namespace, full: true)).to eq 'sample-namespace/sample-project#1'
+        end
       end
 
-      context 'with different project path' do
-        it 'returns full path to the issue' do
+      context 'when different to issue namespace' do
+        let(:group) { build(:group, name: 'Group', path: 'sample-group') }
+
+        it 'returns full path to the issue with full: true' do
           expect(issue.to_reference(group)).to eq 'sample-namespace/sample-project#1'
         end
       end
@@ -307,19 +344,16 @@ describe Issue do
   end
 
   describe '#moved?' do
-    let(:issue) { create(:issue) }
+    context 'when issue has not been moved' do
+      subject { build_stubbed(:issue) }
 
-    subject { issue.moved? }
-
-    context 'issue not moved' do
-      it { is_expected.to eq false }
+      it { is_expected.not_to be_moved }
     end
 
-    context 'issue already moved' do
-      let(:moved_to_issue) { create(:issue) }
-      let(:issue) { create(:issue, moved_to: moved_to_issue) }
+    context 'when issue has already been moved' do
+      subject { build_stubbed(:issue, moved_to: build_stubbed(:issue)) }
 
-      it { is_expected.to eq true }
+      it { is_expected.to be_moved }
     end
   end
 
@@ -349,7 +383,7 @@ describe Issue do
       allow(subject.project).to receive(:repository).and_return(repository)
     end
 
-    context '#to_branch_name does not exists' do
+    describe '#to_branch_name does not exists' do
       before do
         allow(repository).to receive(:branch_exists?).and_return(false)
       end
@@ -359,7 +393,7 @@ describe Issue do
       end
     end
 
-    context '#to_branch_name exists not ending with -index' do
+    describe '#to_branch_name exists not ending with -index' do
       before do
         allow(repository).to receive(:branch_exists?).and_return(true)
         allow(repository).to receive(:branch_exists?).with(/#{subject.to_branch_name}-\d/).and_return(false)
@@ -370,7 +404,7 @@ describe Issue do
       end
     end
 
-    context '#to_branch_name exists ending with -index' do
+    describe '#to_branch_name exists ending with -index' do
       before do
         allow(repository).to receive(:branch_exists?).and_return(true)
         allow(repository).to receive(:branch_exists?).with("#{subject.to_branch_name}-3").and_return(false)
@@ -419,16 +453,16 @@ describe Issue do
     let(:issue) { create(:issue, title: 'testing-issue') }
 
     it 'starts with the issue iid' do
-      expect(issue.to_branch_name).to match /\A#{issue.iid}-[A-Za-z\-]+\z/
+      expect(issue.to_branch_name).to match(/\A#{issue.iid}-[A-Za-z\-]+\z/)
     end
 
     it "contains the issue title if not confidential" do
-      expect(issue.to_branch_name).to match /testing-issue\z/
+      expect(issue.to_branch_name).to match(/testing-issue\z/)
     end
 
     it "does not contain the issue title if confidential" do
       issue = create(:issue, title: 'testing-issue', confidential: true)
-      expect(issue.to_branch_name).to match /confidential-issue\z/
+      expect(issue.to_branch_name).to match(/confidential-issue\z/)
     end
 
     context 'issue title longer than 100 characters' do
@@ -526,88 +560,153 @@ describe Issue do
   end
 
   describe '#visible_to_user?' do
+    let(:project) { build(:project) }
+    let(:issue)   { build(:issue, project: project) }
+    let(:user)    { create(:user) }
+
+    subject { issue.visible_to_user?(user) }
+
+    context 'with a project' do
+      it 'returns false when feature is disabled' do
+        project.project_feature.update_attribute(:issues_access_level, ProjectFeature::DISABLED)
+
+        is_expected.to eq(false)
+      end
+
+      it 'returns false when restricted for members' do
+        project.project_feature.update_attribute(:issues_access_level, ProjectFeature::PRIVATE)
+
+        is_expected.to eq(false)
+      end
+    end
+
     context 'without a user' do
-      let(:issue) { build(:issue) }
+      let(:user) { nil }
 
       it 'returns true when the issue is publicly visible' do
         expect(issue).to receive(:publicly_visible?).and_return(true)
 
-        expect(issue.visible_to_user?).to eq(true)
+        is_expected.to eq(true)
       end
 
       it 'returns false when the issue is not publicly visible' do
         expect(issue).to receive(:publicly_visible?).and_return(false)
 
-        expect(issue.visible_to_user?).to eq(false)
+        is_expected.to eq(false)
       end
     end
 
     context 'with a user' do
-      let(:user) { create(:user) }
-      let(:issue) { build(:issue) }
-
-      it 'returns true when the issue is readable' do
-        expect(issue).to receive(:readable_by?).with(user).and_return(true)
-
-        expect(issue.visible_to_user?(user)).to eq(true)
+      shared_examples 'issue readable by user' do
+        it { is_expected.to eq(true) }
       end
 
-      it 'returns false when the issue is not readable' do
-        expect(issue).to receive(:readable_by?).with(user).and_return(false)
-
-        expect(issue.visible_to_user?(user)).to eq(false)
+      shared_examples 'issue not readable by user' do
+        it { is_expected.to eq(false) }
       end
 
-      it 'returns false when feature is disabled' do
-        expect(issue).not_to receive(:readable_by?)
+      shared_examples 'confidential issue readable by user' do
+        specify do
+          issue.confidential = true
 
-        issue.project.project_feature.update_attribute(:issues_access_level, ProjectFeature::DISABLED)
-
-        expect(issue.visible_to_user?(user)).to eq(false)
-      end
-
-      it 'returns false when restricted for members' do
-        expect(issue).not_to receive(:readable_by?)
-
-        issue.project.project_feature.update_attribute(:issues_access_level, ProjectFeature::PRIVATE)
-
-        expect(issue.visible_to_user?(user)).to eq(false)
-      end
-    end
-
-    describe 'with a regular user that is not a team member' do
-      let(:user) { create(:user) }
-
-      context 'using a public project' do
-        let(:project) { create(:project, :public) }
-
-        it 'returns true for a regular issue' do
-          issue = build(:issue, project: project)
-
-          expect(issue.visible_to_user?(user)).to eq(true)
-        end
-
-        it 'returns false for a confidential issue' do
-          issue = build(:issue, project: project, confidential: true)
-
-          expect(issue.visible_to_user?(user)).to eq(false)
+          is_expected.to eq(true)
         end
       end
 
-      context 'using an internal project' do
-        let(:project) { create(:project, :internal) }
+      shared_examples 'confidential issue not readable by user' do
+        specify do
+          issue.confidential = true
 
-        context 'using an internal user' do
-          it 'returns true for a regular issue' do
-            issue = build(:issue, project: project)
+          is_expected.to eq(false)
+        end
+      end
 
-            expect(issue.visible_to_user?(user)).to eq(true)
+      context 'with an admin user' do
+        let(:user) { build(:admin) }
+
+        context 'when admin mode is enabled', :enable_admin_mode do
+          it_behaves_like 'issue readable by user'
+          it_behaves_like 'confidential issue readable by user'
+        end
+
+        context 'when admin mode is disabled' do
+          it_behaves_like 'issue not readable by user'
+          it_behaves_like 'confidential issue not readable by user'
+        end
+      end
+
+      context 'with an owner' do
+        before do
+          project.add_maintainer(user)
+        end
+
+        it_behaves_like 'issue readable by user'
+        it_behaves_like 'confidential issue readable by user'
+      end
+
+      context 'with a reporter user' do
+        before do
+          project.add_reporter(user)
+        end
+
+        it_behaves_like 'issue readable by user'
+        it_behaves_like 'confidential issue readable by user'
+      end
+
+      context 'with a guest user' do
+        before do
+          project.add_guest(user)
+        end
+
+        it_behaves_like 'issue readable by user'
+        it_behaves_like 'confidential issue not readable by user'
+
+        context 'when user is an assignee' do
+          before do
+            issue.update!(assignees: [user])
           end
 
-          it 'returns false for a confidential issue' do
-            issue = build(:issue, :confidential, project: project)
+          it_behaves_like 'issue readable by user'
+          it_behaves_like 'confidential issue readable by user'
+        end
 
-            expect(issue.visible_to_user?(user)).to eq(false)
+        context 'when user is the author' do
+          before do
+            issue.update!(author: user)
+          end
+
+          it_behaves_like 'issue readable by user'
+          it_behaves_like 'confidential issue readable by user'
+        end
+      end
+
+      context 'with a user that is not a member' do
+        context 'using a public project' do
+          let(:project) { build(:project, :public) }
+
+          it_behaves_like 'issue readable by user'
+          it_behaves_like 'confidential issue not readable by user'
+        end
+
+        context 'using an internal project' do
+          let(:project) { build(:project, :internal) }
+
+          context 'using an internal user' do
+            before do
+              allow(user).to receive(:external?).and_return(false)
+            end
+
+            it_behaves_like 'issue readable by user'
+            it_behaves_like 'confidential issue not readable by user'
+          end
+
+          context 'using an external user' do
+            before do
+              allow(user).to receive(:external?).and_return(true)
+            end
+
+            it_behaves_like 'issue not readable by user'
+            it_behaves_like 'confidential issue not readable by user'
           end
         end
 
@@ -616,132 +715,126 @@ describe Issue do
             allow(user).to receive(:external?).and_return(true)
           end
 
-          it 'returns false for a regular issue' do
-            issue = build(:issue, project: project)
+          it_behaves_like 'issue not readable by user'
+          it_behaves_like 'confidential issue not readable by user'
+        end
+      end
 
-            expect(issue.visible_to_user?(user)).to eq(false)
+      context 'with an external authentication service' do
+        before do
+          enable_external_authorization_service_check
+        end
+
+        it 'is `false` when an external authorization service is enabled' do
+          issue = build(:issue, project: build(:project, :public))
+
+          expect(issue).not_to be_visible_to_user
+        end
+
+        it 'checks the external service to determine if an issue is readable by a user' do
+          project = build(:project, :public,
+                          external_authorization_classification_label: 'a-label')
+          issue = build(:issue, project: project)
+          user = build(:user)
+
+          expect(::Gitlab::ExternalAuthorization).to receive(:access_allowed?).with(user, 'a-label') { false }
+          expect(issue.visible_to_user?(user)).to be_falsy
+        end
+
+        it 'does not check the external service if a user does not have access to the project' do
+          project = build(:project, :private,
+                          external_authorization_classification_label: 'a-label')
+          issue = build(:issue, project: project)
+          user = build(:user)
+
+          expect(::Gitlab::ExternalAuthorization).not_to receive(:access_allowed?)
+          expect(issue.visible_to_user?(user)).to be_falsy
+        end
+
+        context 'with an admin' do
+          context 'when admin mode is enabled', :enable_admin_mode do
+            it 'does not check the external webservice' do
+              issue = build(:issue)
+              user = build(:admin)
+
+              expect(::Gitlab::ExternalAuthorization).not_to receive(:access_allowed?)
+
+              issue.visible_to_user?(user)
+            end
           end
 
-          it 'returns false for a confidential issue' do
-            issue = build(:issue, :confidential, project: project)
+          context 'when admin mode is disabled' do
+            it 'checks the external service to determine if an issue is readable by the admin' do
+              project = build(:project, :public,
+                              external_authorization_classification_label: 'a-label')
+              issue = build(:issue, project: project)
+              user = build(:admin)
 
-            expect(issue.visible_to_user?(user)).to eq(false)
+              expect(::Gitlab::ExternalAuthorization).to receive(:access_allowed?).with(user, 'a-label') { false }
+              expect(issue.visible_to_user?(user)).to be_falsy
+            end
           end
         end
       end
 
-      context 'using a private project' do
-        let(:project) { create(:project, :private) }
+      context 'when issue is moved to a private project' do
+        let(:private_project) { build(:project, :private)}
 
-        it 'returns false for a regular issue' do
-          issue = build(:issue, project: project)
-
-          expect(issue.visible_to_user?(user)).to eq(false)
+        before do
+          issue.update(project: private_project) # move issue to private project
         end
 
-        it 'returns false for a confidential issue' do
-          issue = build(:issue, :confidential, project: project)
+        shared_examples 'issue visible if user has guest access' do
+          context 'when user is not a member' do
+            it_behaves_like 'issue not readable by user'
+            it_behaves_like 'confidential issue not readable by user'
+          end
 
-          expect(issue.visible_to_user?(user)).to eq(false)
+          context 'when user is a guest' do
+            before do
+              private_project.add_guest(user)
+            end
+
+            it_behaves_like 'issue readable by user'
+            it_behaves_like 'confidential issue readable by user'
+          end
         end
 
-        context 'when the user is the project owner' do
+        context 'when user is the author of the original issue' do
           before do
-            project.add_maintainer(user)
+            issue.update!(author: user)
           end
 
-          it 'returns true for a regular issue' do
-            issue = build(:issue, project: project)
+          it_behaves_like 'issue visible if user has guest access'
+        end
 
-            expect(issue.visible_to_user?(user)).to eq(true)
+        context 'when user is an assignee in the original issue' do
+          before do
+            issue.update!(assignees: [user])
           end
 
-          it 'returns true for a confidential issue' do
-            issue = build(:issue, :confidential, project: project)
+          it_behaves_like 'issue visible if user has guest access'
+        end
 
-            expect(issue.visible_to_user?(user)).to eq(true)
+        context 'when user is not the author or an assignee in original issue' do
+          context 'when user is a guest' do
+            before do
+              private_project.add_guest(user)
+            end
+
+            it_behaves_like 'issue readable by user'
+            it_behaves_like 'confidential issue not readable by user'
+          end
+
+          context 'when user is a reporter' do
+            before do
+              private_project.add_reporter(user)
+            end
+
+            it_behaves_like 'issue readable by user'
+            it_behaves_like 'confidential issue readable by user'
           end
         end
-      end
-    end
-
-    context 'with a regular user that is a team member' do
-      let(:user) { create(:user) }
-      let(:project) { create(:project, :public) }
-
-      context 'using a public project' do
-        before do
-          project.add_developer(user)
-        end
-
-        it 'returns true for a regular issue' do
-          issue = build(:issue, project: project)
-
-          expect(issue.visible_to_user?(user)).to eq(true)
-        end
-
-        it 'returns true for a confidential issue' do
-          issue = build(:issue, :confidential, project: project)
-
-          expect(issue.visible_to_user?(user)).to eq(true)
-        end
-      end
-
-      context 'using an internal project' do
-        let(:project) { create(:project, :internal) }
-
-        before do
-          project.add_developer(user)
-        end
-
-        it 'returns true for a regular issue' do
-          issue = build(:issue, project: project)
-
-          expect(issue.visible_to_user?(user)).to eq(true)
-        end
-
-        it 'returns true for a confidential issue' do
-          issue = build(:issue, :confidential, project: project)
-
-          expect(issue.visible_to_user?(user)).to eq(true)
-        end
-      end
-
-      context 'using a private project' do
-        let(:project) { create(:project, :private) }
-
-        before do
-          project.add_developer(user)
-        end
-
-        it 'returns true for a regular issue' do
-          issue = build(:issue, project: project)
-
-          expect(issue.visible_to_user?(user)).to eq(true)
-        end
-
-        it 'returns true for a confidential issue' do
-          issue = build(:issue, :confidential, project: project)
-
-          expect(issue.visible_to_user?(user)).to eq(true)
-        end
-      end
-    end
-
-    context 'with an admin user' do
-      let(:project) { create(:project) }
-      let(:user) { create(:admin) }
-
-      it 'returns true for a regular issue' do
-        issue = build(:issue, project: project)
-
-        expect(issue.visible_to_user?(user)).to eq(true)
-      end
-
-      it 'returns true for a confidential issue' do
-        issue = build(:issue, :confidential, project: project)
-
-        expect(issue.visible_to_user?(user)).to eq(true)
       end
     end
   end
@@ -861,51 +954,24 @@ describe Issue do
     end
   end
 
-  it_behaves_like 'throttled touch' do
-    subject { create(:issue, updated_at: 1.hour.ago) }
+  describe '.by_project_id_and_iid' do
+    let_it_be(:issue_a) { create(:issue) }
+    let_it_be(:issue_b) { create(:issue, iid: issue_a.iid) }
+    let_it_be(:issue_c) { create(:issue, project: issue_a.project) }
+    let_it_be(:issue_d) { create(:issue, project: issue_a.project) }
+
+    it_behaves_like 'a where_composite scope', :by_project_id_and_iid do
+      let(:all_results) { [issue_a, issue_b, issue_c, issue_d] }
+      let(:first_result) { issue_a }
+
+      let(:composite_ids) do
+        all_results.map { |issue| { project_id: issue.project_id, iid: issue.iid } }
+      end
+    end
   end
 
-  context 'when an external authentication service' do
-    before do
-      enable_external_authorization_service_check
-    end
-
-    describe '#visible_to_user?' do
-      it 'is `false` when an external authorization service is enabled' do
-        issue = build(:issue, project: build(:project, :public))
-
-        expect(issue).not_to be_visible_to_user
-      end
-
-      it 'checks the external service to determine if an issue is readable by a user' do
-        project = build(:project, :public,
-                        external_authorization_classification_label: 'a-label')
-        issue = build(:issue, project: project)
-        user = build(:user)
-
-        expect(::Gitlab::ExternalAuthorization).to receive(:access_allowed?).with(user, 'a-label') { false }
-        expect(issue.visible_to_user?(user)).to be_falsy
-      end
-
-      it 'does not check the external service if a user does not have access to the project' do
-        project = build(:project, :private,
-                        external_authorization_classification_label: 'a-label')
-        issue = build(:issue, project: project)
-        user = build(:user)
-
-        expect(::Gitlab::ExternalAuthorization).not_to receive(:access_allowed?)
-        expect(issue.visible_to_user?(user)).to be_falsy
-      end
-
-      it 'does not check the external webservice for admins' do
-        issue = build(:issue)
-        user = build(:admin)
-
-        expect(::Gitlab::ExternalAuthorization).not_to receive(:access_allowed?)
-
-        issue.visible_to_user?(user)
-      end
-    end
+  it_behaves_like 'throttled touch' do
+    subject { create(:issue, updated_at: 1.hour.ago) }
   end
 
   describe "#labels_hook_attrs" do
@@ -926,4 +992,97 @@ describe Issue do
   end
 
   it_behaves_like 'versioned description'
+
+  describe "#previous_updated_at" do
+    let_it_be(:updated_at) { Time.zone.local(2012, 01, 06) }
+    let_it_be(:issue) { create(:issue, updated_at: updated_at) }
+
+    it 'returns updated_at value if updated_at did not change at all' do
+      allow(issue).to receive(:previous_changes).and_return({})
+
+      expect(issue.previous_updated_at).to eq(updated_at)
+    end
+
+    it 'returns updated_at value if `previous_changes` has nil value for `updated_at`' do
+      allow(issue).to receive(:previous_changes).and_return({ 'updated_at' => nil })
+
+      expect(issue.previous_updated_at).to eq(updated_at)
+    end
+
+    it 'returns updated_at value if previous updated_at value is not present' do
+      allow(issue).to receive(:previous_changes).and_return({ 'updated_at' => [nil, Time.zone.local(2013, 02, 06)] })
+
+      expect(issue.previous_updated_at).to eq(updated_at)
+    end
+
+    it 'returns previous updated_at when present' do
+      allow(issue).to receive(:previous_changes).and_return({ 'updated_at' => [Time.zone.local(2013, 02, 06), Time.zone.local(2013, 03, 06)] })
+
+      expect(issue.previous_updated_at).to eq(Time.zone.local(2013, 02, 06))
+    end
+  end
+
+  describe '#design_collection' do
+    it 'returns a design collection' do
+      issue = build(:issue)
+      collection = issue.design_collection
+
+      expect(collection).to be_a(DesignManagement::DesignCollection)
+      expect(collection.issue).to eq(issue)
+    end
+  end
+
+  describe 'current designs' do
+    let(:issue) { create(:issue) }
+
+    subject { issue.designs.current }
+
+    context 'an issue has no designs' do
+      it { is_expected.to be_empty }
+    end
+
+    context 'an issue only has current designs' do
+      let!(:design_a) { create(:design, :with_file, issue: issue) }
+      let!(:design_b) { create(:design, :with_file, issue: issue) }
+      let!(:design_c) { create(:design, :with_file, issue: issue) }
+
+      it { is_expected.to include(design_a, design_b, design_c) }
+    end
+
+    context 'an issue only has deleted designs' do
+      let!(:design_a) { create(:design, :with_file, issue: issue, deleted: true) }
+      let!(:design_b) { create(:design, :with_file, issue: issue, deleted: true) }
+      let!(:design_c) { create(:design, :with_file, issue: issue, deleted: true) }
+
+      it { is_expected.to be_empty }
+    end
+
+    context 'an issue has a mixture of current and deleted designs' do
+      let!(:design_a) { create(:design, :with_file, issue: issue) }
+      let!(:design_b) { create(:design, :with_file, issue: issue, deleted: true) }
+      let!(:design_c) { create(:design, :with_file, issue: issue) }
+
+      it { is_expected.to contain_exactly(design_a, design_c) }
+    end
+  end
+
+  describe '.with_label_attributes' do
+    subject { described_class.with_label_attributes(label_attributes) }
+
+    let(:label_attributes) { { title: 'hello world', description: 'hi' } }
+
+    it 'gets issues with given label attributes' do
+      label = create(:label, **label_attributes)
+      labeled_issue = create(:labeled_issue, project: label.project, labels: [label])
+
+      expect(subject).to include(labeled_issue)
+    end
+
+    it 'excludes issues without given label attributes' do
+      label = create(:label, title: 'GitLab', description: 'tanuki')
+      labeled_issue = create(:labeled_issue, project: label.project, labels: [label])
+
+      expect(subject).not_to include(labeled_issue)
+    end
+  end
 end

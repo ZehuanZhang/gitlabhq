@@ -5,6 +5,11 @@ module Projects
     class CiCdController < Projects::ApplicationController
       before_action :authorize_admin_pipeline!
       before_action :define_variables
+      before_action do
+        push_frontend_feature_flag(:new_variables_ui, @project, default_enabled: true)
+        push_frontend_feature_flag(:ajax_new_deploy_token, @project)
+        push_frontend_feature_flag(:ci_key_autocomplete, default_enabled: true)
+      end
 
       def show
       end
@@ -53,7 +58,7 @@ module Projects
         [
           :runners_token, :builds_enabled, :build_allow_git_fetch,
           :build_timeout_human_readable, :build_coverage_regex, :public_builds,
-          :auto_cancel_pending_pipelines, :ci_config_path,
+          :auto_cancel_pending_pipelines, :forward_deployment_enabled, :ci_config_path,
           auto_devops_attributes: [:id, :domain, :enabled, :deploy_strategy],
           ci_cd_settings_attributes: [:default_git_depth]
         ].tap do |list|
@@ -69,7 +74,9 @@ module Projects
           return
         end
 
+        # rubocop:disable CodeReuse/Worker
         CreatePipelineWorker.perform_async(project.id, current_user.id, project.default_branch, :web, ignore_skip_ci: true, save_on_errors: false)
+        # rubocop:enable CodeReuse/Worker
 
         pipelines_link_start = '<a href="%{url}">'.html_safe % { url: project_pipelines_path(@project) }
         flash[:toast] = _("A new Auto DevOps pipeline has been created, go to %{pipelines_link_start}Pipelines page%{pipelines_link_end} for details") % { pipelines_link_start: pipelines_link_start, pipelines_link_end: "</a>".html_safe }

@@ -1,43 +1,55 @@
 # frozen_string_literal: true
 
-module QA::Page
-  module Project::Job
-    class Show < QA::Page::Base
-      include Component::CiBadgeLink
+module QA
+  module Page
+    module Project
+      module Job
+        class Show < QA::Page::Base
+          include Component::CiBadgeLink
 
-      view 'app/assets/javascripts/jobs/components/log/log.vue' do
-        element :job_log_content
-      end
+          view 'app/assets/javascripts/jobs/components/log/log.vue' do
+            element :job_log_content
+          end
 
-      view 'app/assets/javascripts/jobs/components/stages_dropdown.vue' do
-        element :pipeline_path
-      end
+          view 'app/assets/javascripts/jobs/components/stages_dropdown.vue' do
+            element :pipeline_path
+          end
 
-      def successful?(timeout: 60)
-        raise "Timed out waiting for the build trace to load" unless loaded?
-        raise "Timed out waiting for the status to be a valid completed state" unless completed?(timeout: timeout)
+          view 'app/assets/javascripts/jobs/components/sidebar.vue' do
+            element :retry_button
+          end
 
-        status_badge == PASSED_STATUS
-      end
+          def successful?(timeout: 60)
+            raise "Timed out waiting for the build trace to load" unless loaded?
+            raise "Timed out waiting for the status to be a valid completed state" unless completed?(timeout: timeout)
 
-      # Reminder: You may wish to wait for a particular job status before checking output
-      def output(wait: 5)
-        result = ''
+            passed?
+          end
 
-        wait(reload: false, max: wait, interval: 1) do
-          result = find_element(:job_log_content).text
+          # Reminder: You may wish to wait for a particular job status before checking output
+          def output(wait: 5)
+            result = ''
 
-          result.include?('Job')
-        end
+            wait_until(reload: false, max_duration: wait, sleep_interval: 1) do
+              result = find_element(:job_log_content).text
 
-        result
-      end
+              result.include?('Job')
+            end
 
-      private
+            result
+          end
 
-      def loaded?(wait: 60)
-        wait(reload: true, max: wait, interval: 1) do
-          has_element?(:job_log_content, wait: 1)
+          def retry!
+            click_element :retry_button
+          end
+
+          private
+
+          def loaded?(wait: 60)
+            wait_until(reload: true, max_duration: wait, sleep_interval: 1) do
+              has_element?(:job_log_content, wait: 1)
+            end
+          end
         end
       end
     end

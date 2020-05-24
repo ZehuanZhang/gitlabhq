@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class Notify < BaseMailer
+class Notify < ApplicationMailer
   include ActionDispatch::Routing::PolymorphicRoutes
   include GitlabRoutingHelper
   include EmailsHelper
@@ -17,6 +17,7 @@ class Notify < BaseMailer
   include Emails::AutoDevops
   include Emails::RemoteMirrors
   include Emails::Releases
+  include Emails::Groups
 
   helper MilestonesHelper
   helper MergeRequestsHelper

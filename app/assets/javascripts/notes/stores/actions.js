@@ -8,7 +8,6 @@ import Poll from '../../lib/utils/poll';
 import * as types from './mutation_types';
 import * as utils from './utils';
 import * as constants from '../constants';
-import service from '../services/notes_service';
 import loadAwardsHandler from '../../awards_handler';
 import sidebarTimeTrackingEventHub from '../../sidebar/event_hub';
 import { isInViewport, scrollToElement, isInMRPage } from '../../lib/utils/common_utils';
@@ -47,16 +46,31 @@ export const setNotesFetchedState = ({ commit }, state) =>
 
 export const toggleDiscussion = ({ commit }, data) => commit(types.TOGGLE_DISCUSSION, data);
 
-export const fetchDiscussions = ({ commit, dispatch }, { path, filter, persistFilter }) =>
-  service.fetchDiscussions(path, filter, persistFilter).then(({ data }) => {
+export const setExpandDiscussions = ({ commit }, { discussionIds, expanded }) => {
+  commit(types.SET_EXPAND_DISCUSSIONS, { discussionIds, expanded });
+};
+
+export const fetchDiscussions = ({ commit, dispatch }, { path, filter, persistFilter }) => {
+  const config =
+    filter !== undefined
+      ? { params: { notes_filter: filter, persist_filter: persistFilter } }
+      : null;
+
+  return axios.get(path, config).then(({ data }) => {
     commit(types.SET_INITIAL_DISCUSSIONS, data);
+
     dispatch('updateResolvableDiscussionsCounts');
   });
+};
 
 export const updateDiscussion = ({ commit, state }, discussion) => {
   commit(types.UPDATE_DISCUSSION, discussion);
 
   return utils.findNoteObjectById(state.discussions, discussion.id);
+};
+
+export const setDiscussionSortDirection = ({ commit }, direction) => {
+  commit(types.SET_DISCUSSIONS_SORT, direction);
 };
 
 export const removeNote = ({ commit, dispatch, state }, note) => {
@@ -78,7 +92,7 @@ export const deleteNote = ({ dispatch }, note) =>
   });
 
 export const updateNote = ({ commit, dispatch }, { endpoint, note }) =>
-  service.updateNote(endpoint, note).then(({ data }) => {
+  axios.put(endpoint, note).then(({ data }) => {
     commit(types.UPDATE_NOTE, data);
     dispatch('startTaskList');
   });
@@ -109,7 +123,7 @@ export const replyToDiscussion = (
   { commit, state, getters, dispatch },
   { endpoint, data: reply },
 ) =>
-  service.replyToDiscussion(endpoint, reply).then(({ data }) => {
+  axios.post(endpoint, reply).then(({ data }) => {
     if (data.discussion) {
       commit(types.UPDATE_DISCUSSION, data.discussion);
 
@@ -126,7 +140,7 @@ export const replyToDiscussion = (
   });
 
 export const createNewNote = ({ commit, dispatch }, { endpoint, data: reply }) =>
-  service.createNewNote(endpoint, reply).then(({ data }) => {
+  axios.post(endpoint, reply).then(({ data }) => {
     if (!data.errors) {
       commit(types.ADD_NEW_NOTE, data);
 
@@ -156,29 +170,48 @@ export const resolveDiscussion = ({ state, dispatch, getters }, { discussionId }
   });
 };
 
-export const toggleResolveNote = ({ commit, dispatch }, { endpoint, isResolved, discussion }) =>
-  service.toggleResolveNote(endpoint, isResolved).then(({ data }) => {
-    const mutationType = discussion ? types.UPDATE_DISCUSSION : types.UPDATE_NOTE;
+export const toggleResolveNote = ({ commit, dispatch }, { endpoint, isResolved, discussion }) => {
+  const method = isResolved
+    ? constants.UNRESOLVE_NOTE_METHOD_NAME
+    : constants.RESOLVE_NOTE_METHOD_NAME;
+  const mutationType = discussion ? types.UPDATE_DISCUSSION : types.UPDATE_NOTE;
 
+  return axios[method](endpoint).then(({ data }) => {
     commit(mutationType, data);
 
     dispatch('updateResolvableDiscussionsCounts');
 
     dispatch('updateMergeRequestWidget');
   });
+};
+
+export const toggleBlockedIssueWarning = ({ commit }, value) => {
+  commit(types.TOGGLE_BLOCKED_ISSUE_WARNING, value);
+  // Hides Close issue button at the top of issue page
+  const closeDropdown = document.querySelector('.js-issuable-close-dropdown');
+  if (closeDropdown) {
+    closeDropdown.classList.toggle('d-none');
+  } else {
+    const closeButton = document.querySelector(
+      '.detail-page-header-actions .btn-close.btn-grouped',
+    );
+    closeButton.classList.toggle('d-md-block');
+  }
+};
 
 export const closeIssue = ({ commit, dispatch, state }) => {
   dispatch('toggleStateButtonLoading', true);
-  return service.toggleIssueState(state.notesData.closePath).then(({ data }) => {
+  return axios.put(state.notesData.closePath).then(({ data }) => {
     commit(types.CLOSE_ISSUE);
     dispatch('emitStateChangedEvent', data);
     dispatch('toggleStateButtonLoading', false);
+    dispatch('toggleBlockedIssueWarning', false);
   });
 };
 
 export const reopenIssue = ({ commit, dispatch, state }) => {
   dispatch('toggleStateButtonLoading', true);
-  return service.toggleIssueState(state.notesData.reopenPath).then(({ data }) => {
+  return axios.put(state.notesData.reopenPath).then(({ data }) => {
     commit(types.REOPEN_ISSUE);
     dispatch('emitStateChangedEvent', data);
     dispatch('toggleStateButtonLoading', false);
@@ -215,7 +248,7 @@ export const saveNote = ({ commit, dispatch }, noteData) => {
   const hasQuickActions = utils.hasQuickActions(placeholderText);
   const replyId = noteData.data.in_reply_to_discussion_id;
   let methodToDispatch;
-  const postData = Object.assign({}, noteData);
+  const postData = { ...noteData };
   if (postData.isDraft === true) {
     methodToDispatch = replyId
       ? 'batchComments/addDraftToDiscussion'
@@ -355,11 +388,35 @@ const pollSuccessCallBack = (resp, commit, state, getters, dispatch) => {
   return resp;
 };
 
+const getFetchDataParams = state => {
+  const endpoint = state.notesData.notesPath;
+  const options = {
+    headers: {
+      'X-Last-Fetched-At': state.lastFetchedAt ? `${state.lastFetchedAt}` : undefined,
+    },
+  };
+
+  return { endpoint, options };
+};
+
+export const fetchData = ({ commit, state, getters }) => {
+  const { endpoint, options } = getFetchDataParams(state);
+
+  axios
+    .get(endpoint, options)
+    .then(({ data }) => pollSuccessCallBack(data, commit, state, getters))
+    .catch(() => Flash(__('Something went wrong while fetching latest comments.')));
+};
+
 export const poll = ({ commit, state, getters, dispatch }) => {
   eTagPoll = new Poll({
-    resource: service,
+    resource: {
+      poll: () => {
+        const { endpoint, options } = getFetchDataParams(state);
+        return axios.get(endpoint, options);
+      },
+    },
     method: 'poll',
-    data: state,
     successCallback: ({ data }) => pollSuccessCallBack(data, commit, state, getters, dispatch),
     errorCallback: () => Flash(__('Something went wrong while fetching latest comments.')),
   });
@@ -367,7 +424,7 @@ export const poll = ({ commit, state, getters, dispatch }) => {
   if (!Visibility.hidden()) {
     eTagPoll.makeRequest();
   } else {
-    service.poll(state);
+    fetchData({ commit, state, getters });
   }
 
   Visibility.change(() => {
@@ -385,18 +442,6 @@ export const stopPolling = () => {
 
 export const restartPolling = () => {
   if (eTagPoll) eTagPoll.restart();
-};
-
-export const fetchData = ({ commit, state, getters }) => {
-  const requestData = {
-    endpoint: state.notesData.notesPath,
-    lastFetchedAt: state.lastFetchedAt,
-  };
-
-  service
-    .poll(requestData)
-    .then(({ data }) => pollSuccessCallBack(data, commit, state, getters))
-    .catch(() => Flash(__('Something went wrong while fetching latest comments.')));
 };
 
 export const toggleAward = ({ commit, getters }, { awardName, noteId }) => {
@@ -491,19 +536,68 @@ export const convertToDiscussion = ({ commit }, noteId) =>
 export const removeConvertedDiscussion = ({ commit }, noteId) =>
   commit(types.REMOVE_CONVERTED_DISCUSSION, noteId);
 
-export const fetchDescriptionVersion = (_, { endpoint, startingVersion }) => {
+export const setCurrentDiscussionId = ({ commit }, discussionId) =>
+  commit(types.SET_CURRENT_DISCUSSION_ID, discussionId);
+
+export const fetchDescriptionVersion = ({ dispatch }, { endpoint, startingVersion, versionId }) => {
   let requestUrl = endpoint;
 
   if (startingVersion) {
     requestUrl = mergeUrlParams({ start_version_id: startingVersion }, requestUrl);
   }
+  dispatch('requestDescriptionVersion');
 
   return axios
     .get(requestUrl)
-    .then(res => res.data)
-    .catch(() => {
+    .then(res => {
+      dispatch('receiveDescriptionVersion', { descriptionVersion: res.data, versionId });
+    })
+    .catch(error => {
+      dispatch('receiveDescriptionVersionError', error);
       Flash(__('Something went wrong while fetching description changes. Please try again.'));
     });
+};
+
+export const requestDescriptionVersion = ({ commit }) => {
+  commit(types.REQUEST_DESCRIPTION_VERSION);
+};
+export const receiveDescriptionVersion = ({ commit }, descriptionVersion) => {
+  commit(types.RECEIVE_DESCRIPTION_VERSION, descriptionVersion);
+};
+export const receiveDescriptionVersionError = ({ commit }, error) => {
+  commit(types.RECEIVE_DESCRIPTION_VERSION_ERROR, error);
+};
+
+export const softDeleteDescriptionVersion = (
+  { dispatch },
+  { endpoint, startingVersion, versionId },
+) => {
+  let requestUrl = endpoint;
+
+  if (startingVersion) {
+    requestUrl = mergeUrlParams({ start_version_id: startingVersion }, requestUrl);
+  }
+  dispatch('requestDeleteDescriptionVersion');
+
+  return axios
+    .delete(requestUrl)
+    .then(() => {
+      dispatch('receiveDeleteDescriptionVersion', versionId);
+    })
+    .catch(error => {
+      dispatch('receiveDeleteDescriptionVersionError', error);
+      Flash(__('Something went wrong while deleting description changes. Please try again.'));
+    });
+};
+
+export const requestDeleteDescriptionVersion = ({ commit }) => {
+  commit(types.REQUEST_DELETE_DESCRIPTION_VERSION);
+};
+export const receiveDeleteDescriptionVersion = ({ commit }, versionId) => {
+  commit(types.RECEIVE_DELETE_DESCRIPTION_VERSION, { [versionId]: __('Deleted') });
+};
+export const receiveDeleteDescriptionVersionError = ({ commit }, error) => {
+  commit(types.RECEIVE_DELETE_DESCRIPTION_VERSION_ERROR, error);
 };
 
 // prevent babel-plugin-rewire from generating an invalid default during karma tests

@@ -17,6 +17,7 @@ module Prometheus
     # is expected to change *and* be fetched again by the frontend
     self.reactive_cache_refresh_interval = 90.seconds
     self.reactive_cache_lifetime = 1.minute
+    self.reactive_cache_work_type = :external_dependency
     self.reactive_cache_worker_finder = ->(_id, *args) { from_cache(*args) }
 
     attr_accessor :proxyable, :method, :path, :params
@@ -114,11 +115,23 @@ module Prometheus
     end
 
     def filter_params(params, path)
+      params = substitute_params(params)
+
       params.slice(*PROXY_SUPPORT.dig(path, :params))
     end
 
     def can_proxy?
       PROXY_SUPPORT.dig(@path, :method)&.include?(@method)
+    end
+
+    def substitute_params(params)
+      start_time = params[:start_time]
+      end_time   = params[:end_time]
+
+      params['start'] = start_time if start_time
+      params['end']   = end_time if end_time
+
+      params
     end
   end
 end

@@ -1,27 +1,37 @@
 <script>
-import envrionmentsAppMixin from 'ee_else_ce/environments/mixins/environments_app_mixin';
-import Flash from '../../flash';
-import { s__ } from '../../locale';
+import { GlDeprecatedButton } from '@gitlab/ui';
+import Flash from '~/flash';
+import { s__ } from '~/locale';
 import emptyState from './empty_state.vue';
 import eventHub from '../event_hub';
 import environmentsMixin from '../mixins/environments_mixin';
-import CIPaginationMixin from '../../vue_shared/mixins/ci_pagination_api_mixin';
+import CIPaginationMixin from '~/vue_shared/mixins/ci_pagination_api_mixin';
+import EnableReviewAppButton from './enable_review_app_button.vue';
 import StopEnvironmentModal from './stop_environment_modal.vue';
+import DeleteEnvironmentModal from './delete_environment_modal.vue';
 import ConfirmRollbackModal from './confirm_rollback_modal.vue';
 
 export default {
   components: {
-    emptyState,
-    StopEnvironmentModal,
     ConfirmRollbackModal,
+    emptyState,
+    EnableReviewAppButton,
+    GlDeprecatedButton,
+    StopEnvironmentModal,
+    DeleteEnvironmentModal,
   },
 
-  mixins: [CIPaginationMixin, environmentsMixin, envrionmentsAppMixin],
+  mixins: [CIPaginationMixin, environmentsMixin],
 
   props: {
     endpoint: {
       type: String,
       required: true,
+    },
+    canaryDeploymentFeatureId: {
+      type: String,
+      required: false,
+      default: '',
     },
     canCreateEnvironment: {
       type: Boolean,
@@ -35,6 +45,11 @@ export default {
       type: String,
       required: true,
     },
+    helpCanaryDeploymentsPath: {
+      type: String,
+      required: false,
+      default: '',
+    },
     helpPagePath: {
       type: String,
       required: true,
@@ -44,17 +59,37 @@ export default {
       required: false,
       default: '',
     },
+    lockPromotionSvgPath: {
+      type: String,
+      required: false,
+      default: '',
+    },
+    showCanaryDeploymentCallout: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    userCalloutsPath: {
+      type: String,
+      required: false,
+      default: '',
+    },
   },
 
   created() {
     eventHub.$on('toggleFolder', this.toggleFolder);
+    eventHub.$on('toggleDeployBoard', this.toggleDeployBoard);
   },
 
   beforeDestroy() {
     eventHub.$off('toggleFolder');
+    eventHub.$off('toggleDeployBoard');
   },
 
   methods: {
+    toggleDeployBoard(model) {
+      this.store.toggleDeployBoard(model.id);
+    },
     toggleFolder(folder) {
       this.store.toggleFolder(folder);
 
@@ -91,15 +126,22 @@ export default {
 <template>
   <div>
     <stop-environment-modal :environment="environmentInStopModal" />
+    <delete-environment-modal :environment="environmentInDeleteModal" />
     <confirm-rollback-modal :environment="environmentInRollbackModal" />
 
     <div class="top-area">
       <tabs :tabs="tabs" scope="environments" @onChangeTab="onChangeTab" />
 
-      <div v-if="canCreateEnvironment && !isLoading" class="nav-controls">
-        <a :href="newEnvironmentPath" class="btn btn-success">
+      <div class="nav-controls">
+        <enable-review-app-button v-if="state.reviewAppDetails.can_setup_review_app" class="mr-2" />
+        <gl-deprecated-button
+          v-if="canCreateEnvironment && !isLoading"
+          :href="newEnvironmentPath"
+          category="primary"
+          variant="success"
+        >
           {{ s__('Environments|New environment') }}
-        </a>
+        </gl-deprecated-button>
       </div>
     </div>
 
@@ -116,13 +158,13 @@ export default {
       :deploy-boards-help-path="deployBoardsHelpPath"
       @onChangePage="onChangePage"
     >
-      <empty-state
-        v-if="!isLoading && state.environments.length === 0"
-        slot="emptyState"
-        :new-path="newEnvironmentPath"
-        :help-path="helpPagePath"
-        :can-create-environment="canCreateEnvironment"
-      />
+      <template v-if="!isLoading && state.environments.length === 0" #emptyState>
+        <empty-state
+          :new-path="newEnvironmentPath"
+          :help-path="helpPagePath"
+          :can-create-environment="canCreateEnvironment"
+        />
+      </template>
     </container>
   </div>
 </template>

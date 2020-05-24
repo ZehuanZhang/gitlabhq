@@ -28,8 +28,14 @@ describe Metrics::Dashboard::GrafanaMetricEmbedService do
 
     it { is_expected.to be_truthy }
 
-    context 'not embedded' do
+    context 'missing embedded' do
       let(:params) { valid_params.except(:embedded) }
+
+      it { is_expected.to be_falsey }
+    end
+
+    context 'not embedded' do
+      let(:params) { valid_params.merge(embedded: 'false') }
 
       it { is_expected.to be_falsey }
     end
@@ -148,7 +154,7 @@ describe Metrics::Dashboard::GrafanaMetricEmbedService do
 
       context 'when value not present in cache' do
         it 'returns nil' do
-          expect(ReactiveCachingWorker)
+          expect(ExternalServiceReactiveCachingWorker)
             .to receive(:perform_async)
             .with(service.class, service.id, *cache_params)
 
@@ -211,7 +217,7 @@ describe Metrics::Dashboard::DatasourceNameParser do
   include GrafanaApiHelpers
 
   let(:grafana_url) { valid_grafana_dashboard_link('https://gitlab.grafana.net') }
-  let(:grafana_dashboard) { JSON.parse(fixture_file('grafana/dashboard_response.json'), symbolize_names: true) }
+  let(:grafana_dashboard) { Gitlab::Json.parse(fixture_file('grafana/dashboard_response.json'), symbolize_names: true) }
 
   subject { described_class.new(grafana_url, grafana_dashboard).parse }
 

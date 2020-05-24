@@ -5,9 +5,9 @@ require 'spec_helper'
 describe 'Adding an AwardEmoji' do
   include GraphqlHelpers
 
-  set(:current_user) { create(:user) }
-  set(:project) { create(:project) }
-  set(:awardable) { create(:note, project: project) }
+  let_it_be(:current_user) { create(:user) }
+  let_it_be(:project) { create(:project) }
+  let_it_be(:awardable) { create(:note, project: project) }
   let(:emoji_name) { 'thumbsup' }
   let(:mutation) do
     variables = {
@@ -23,7 +23,7 @@ describe 'Adding an AwardEmoji' do
   end
 
   shared_examples 'a mutation that does not create an AwardEmoji' do
-    it do
+    specify do
       expect do
         post_graphql_mutation(mutation, current_user: current_user)
       end.not_to change { AwardEmoji.count }

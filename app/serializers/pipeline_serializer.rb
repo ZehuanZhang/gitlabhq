@@ -7,6 +7,10 @@ class PipelineSerializer < BaseSerializer
   # rubocop: disable CodeReuse/ActiveRecord
   def represent(resource, opts = {})
     if resource.is_a?(ActiveRecord::Relation)
+      # We don't want PipelineDetailsEntity to preload the job_artifacts_archive
+      # because we do it with preloaded_relations in a more optimal way
+      # if the given resource is a collection of multiple pipelines.
+      opts[:preload_job_artifacts_archive] = false
       resource = resource.preload(preloaded_relations)
     end
 
@@ -41,6 +45,7 @@ class PipelineSerializer < BaseSerializer
   def preloaded_relations
     [
       :latest_statuses_ordered_by_stage,
+      :project,
       :stages,
       {
         failed_builds: %i(project metadata)
@@ -51,13 +56,19 @@ class PipelineSerializer < BaseSerializer
       :manual_actions,
       :scheduled_actions,
       :artifacts,
-      :merge_request,
       :user,
+      {
+        merge_request: {
+          source_project: [:route, { namespace: :route }],
+          target_project: [:route, { namespace: :route }]
+        }
+      },
       {
         pending_builds: :project,
         project: [:route, { namespace: :route }],
         artifacts: {
-          project: [:route, { namespace: :route }]
+          project: [:route, { namespace: :route }],
+          job_artifacts_archive: []
         }
       },
       { triggered_by_pipeline: [:project, :user] },

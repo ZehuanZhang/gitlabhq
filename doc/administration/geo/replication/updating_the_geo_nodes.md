@@ -11,7 +11,12 @@ Updating Geo nodes involves performing:
 Depending on which version of Geo you are updating to/from, there may be
 different steps.
 
+- [Updating to GitLab 12.9](version_specific_updates.md#updating-to-gitlab-129)
+- [Updating to GitLab 12.7](version_specific_updates.md#updating-to-gitlab-127)
+- [Updating to GitLab 12.2](version_specific_updates.md#updating-to-gitlab-122)
 - [Updating to GitLab 12.1](version_specific_updates.md#updating-to-gitlab-121)
+- [Updating to GitLab 12.0](version_specific_updates.md#updating-to-gitlab-120)
+- [Updating to GitLab 11.11](version_specific_updates.md#updating-to-gitlab-1111)
 - [Updating to GitLab 10.8](version_specific_updates.md#updating-to-gitlab-108)
 - [Updating to GitLab 10.6](version_specific_updates.md#updating-to-gitlab-106)
 - [Updating to GitLab 10.5](version_specific_updates.md#updating-to-gitlab-105)
@@ -40,9 +45,9 @@ and all **secondary** nodes:
 Now that the update process is complete, you may want to check whether
 everything is working correctly:
 
-1. Run the Geo raketask on all nodes, everything should be green:
+1. Run the Geo Rake task on all nodes, everything should be green:
 
-   ```sh
+   ```shell
    sudo gitlab-rake gitlab:geo:check
    ```
 

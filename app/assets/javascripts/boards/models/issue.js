@@ -10,50 +10,23 @@ import IssueProject from './project';
 import boardsStore from '../stores/boards_store';
 
 class ListIssue {
-  constructor(obj, defaultAvatar) {
+  constructor(obj) {
     this.subscribed = obj.subscribed;
     this.labels = [];
     this.assignees = [];
     this.selected = false;
-    this.position = obj.relative_position || Infinity;
+    this.position = obj.position || obj.relative_position || Infinity;
     this.isFetching = {
       subscriptions: true,
     };
+    this.closed = obj.closed;
     this.isLoading = {};
 
-    this.refreshData(obj, defaultAvatar);
+    this.refreshData(obj);
   }
 
-  refreshData(obj, defaultAvatar) {
-    this.id = obj.id;
-    this.iid = obj.iid;
-    this.title = obj.title;
-    this.confidential = obj.confidential;
-    this.dueDate = obj.due_date;
-    this.sidebarInfoEndpoint = obj.issue_sidebar_endpoint;
-    this.referencePath = obj.reference_path;
-    this.path = obj.real_path;
-    this.toggleSubscriptionEndpoint = obj.toggle_subscription_endpoint;
-    this.project_id = obj.project_id;
-    this.timeEstimate = obj.time_estimate;
-    this.assignableLabelsEndpoint = obj.assignable_labels_endpoint;
-
-    if (obj.project) {
-      this.project = new IssueProject(obj.project);
-    }
-
-    if (obj.milestone) {
-      this.milestone = new ListMilestone(obj.milestone);
-      this.milestone_id = obj.milestone.id;
-    }
-
-    if (obj.labels) {
-      this.labels = obj.labels.map(label => new ListLabel(label));
-    }
-
-    if (obj.assignees) {
-      this.assignees = obj.assignees.map(a => new ListAssignee(a, defaultAvatar));
-    }
+  refreshData(obj) {
+    boardsStore.refreshIssueData(this, obj);
   }
 
   addLabel(label) {
@@ -126,31 +99,7 @@ class ListIssue {
   }
 
   update() {
-    const data = {
-      issue: {
-        milestone_id: this.milestone ? this.milestone.id : null,
-        due_date: this.dueDate,
-        assignee_ids: this.assignees.length > 0 ? this.assignees.map(u => u.id) : [0],
-        label_ids: this.labels.map(label => label.id),
-      },
-    };
-
-    if (!data.issue.label_ids.length) {
-      data.issue.label_ids = [''];
-    }
-
-    const projectPath = this.project ? this.project.path : '';
-    return axios.patch(`${this.path}.json`, data).then(({ data: body = {} } = {}) => {
-      /**
-       * Since post implementation of Scoped labels, server can reject
-       * same key-ed labels. To keep the UI and server Model consistent,
-       * we're just assigning labels that server echo's back to us when we
-       * PATCH the said object.
-       */
-      if (body) {
-        this.labels = convertObjectPropsToCamelCase(body.labels, { deep: true });
-      }
-    });
+    return boardsStore.updateIssue(this);
   }
 }
 

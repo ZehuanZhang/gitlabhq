@@ -8,15 +8,20 @@ module Gitlab
     AmbiguousProcessError = Class.new(IdentificationError)
     UnknownProcessError = Class.new(IdentificationError)
 
+    AVAILABLE_RUNTIMES = [
+      :console,
+      :geo_log_cursor,
+      :puma,
+      :rails_runner,
+      :rake,
+      :sidekiq,
+      :test_suite,
+      :unicorn
+    ].freeze
+
     class << self
       def identify
-        matches = []
-        matches << :puma if puma?
-        matches << :unicorn if unicorn?
-        matches << :console if console?
-        matches << :sidekiq if sidekiq?
-        matches << :rake if rake?
-        matches << :rspec if rspec?
+        matches = AVAILABLE_RUNTIMES.select { |runtime| public_send("#{runtime}?") } # rubocop:disable GitlabSecurity/PublicSend
 
         if matches.one?
           matches.first
@@ -32,7 +37,7 @@ module Gitlab
       end
 
       def puma?
-        !!defined?(::Puma)
+        !!defined?(::Puma) && !defined?(ACTION_CABLE_SERVER)
       end
 
       # For unicorn, we need to check for actual server instances to avoid false positives.
@@ -48,24 +53,48 @@ module Gitlab
         !!(defined?(::Rake) && Rake.application.top_level_tasks.any?)
       end
 
-      def rspec?
-        Rails.env.test? && process_name == 'rspec'
+      def test_suite?
+        Rails.env.test?
       end
 
       def console?
         !!defined?(::Rails::Console)
       end
 
+      def geo_log_cursor?
+        !!defined?(::GeoLogCursorOptionParser)
+      end
+
+      def rails_runner?
+        !!defined?(::Rails::Command::RunnerCommand)
+      end
+
       def web_server?
-        puma? || unicorn?
+        puma? || unicorn? || action_cable?
+      end
+
+      def action_cable?
+        !!defined?(ACTION_CABLE_SERVER)
       end
 
       def multi_threaded?
-        puma? || sidekiq?
+        puma? || sidekiq? || action_cable?
       end
 
-      def process_name
-        File.basename($0)
+      def max_threads
+        main_thread = 1
+
+        if action_cable?
+          Gitlab::Application.config.action_cable.worker_pool_size
+        elsif puma?
+          Puma.cli_config.options[:max_threads]
+        elsif sidekiq?
+          # An extra thread for the poller in Sidekiq Cron:
+          # https://github.com/ondrejbartas/sidekiq-cron#under-the-hood
+          Sidekiq.options[:concurrency] + 1
+        else
+          0
+        end + main_thread
       end
     end
   end

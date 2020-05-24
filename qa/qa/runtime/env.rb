@@ -15,11 +15,24 @@ module QA
       # supports the given feature
       SUPPORTED_FEATURES = {
         git_protocol_v2: 'QA_CAN_TEST_GIT_PROTOCOL_V2',
-        admin: 'QA_CAN_TEST_ADMIN_FEATURES'
+        admin: 'QA_CAN_TEST_ADMIN_FEATURES',
+        praefect: 'QA_CAN_TEST_PRAEFECT'
       }.freeze
 
       def supported_features
         SUPPORTED_FEATURES
+      end
+
+      def dot_com?
+        Runtime::Scenario.gitlab_address.include?(".com")
+      end
+
+      def additional_repository_storage
+        ENV['QA_ADDITIONAL_REPOSITORY_STORAGE']
+      end
+
+      def praefect_repository_storage
+        ENV['QA_PRAEFECT_REPOSITORY_STORAGE']
       end
 
       def admin_password
@@ -32,6 +45,10 @@ module QA
 
       def admin_personal_access_token
         ENV['GITLAB_QA_ADMIN_ACCESS_TOKEN']
+      end
+
+      def ci_project_name
+        ENV['CI_PROJECT_NAME']
       end
 
       def debug?
@@ -191,6 +208,18 @@ module QA
 
       def gitlab_qa_1p_github_uuid
         ENV['GITLAB_QA_1P_GITHUB_UUID']
+      end
+
+      def jira_admin_username
+        ENV['JIRA_ADMIN_USERNAME']
+      end
+
+      def jira_admin_password
+        ENV['JIRA_ADMIN_PASSWORD']
+      end
+
+      def jira_hostname
+        ENV['JIRA_HOSTNAME']
       end
 
       def knapsack?

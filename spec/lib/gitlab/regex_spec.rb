@@ -3,9 +3,7 @@
 require 'spec_helper'
 
 describe Gitlab::Regex do
-  describe '.project_name_regex' do
-    subject { described_class.project_name_regex }
-
+  shared_examples_for 'project/group name regex' do
     it { is_expected.to match('gitlab-ce') }
     it { is_expected.to match('GitLab CE') }
     it { is_expected.to match('100 lines') }
@@ -13,6 +11,38 @@ describe Gitlab::Regex do
     it { is_expected.to match('Český název') }
     it { is_expected.to match('Dash – is this') }
     it { is_expected.not_to match('?gitlab') }
+  end
+
+  describe '.project_name_regex' do
+    subject { described_class.project_name_regex }
+
+    it_behaves_like 'project/group name regex'
+  end
+
+  describe '.group_name_regex' do
+    subject { described_class.group_name_regex }
+
+    it_behaves_like 'project/group name regex'
+
+    it 'allows parenthesis' do
+      is_expected.to match('Group One (Test)')
+    end
+
+    it 'does not start with parenthesis' do
+      is_expected.not_to match('(Invalid Group name)')
+    end
+  end
+
+  describe '.project_name_regex_message' do
+    subject { described_class.project_name_regex_message }
+
+    it { is_expected.to eq("can contain only letters, digits, emojis, '_', '.', dash, space. It must start with letter, digit, emoji or '_'.") }
+  end
+
+  describe '.group_name_regex_message' do
+    subject { described_class.group_name_regex_message }
+
+    it { is_expected.to eq("can contain only letters, digits, emojis, '_', '.', dash, space, parenthesis. It must start with letter, digit, emoji or '_'.") }
   end
 
   describe '.environment_name_regex' do
@@ -99,5 +129,38 @@ describe Gitlab::Regex do
     it { is_expected.not_to match('11-1234-90') }
     it { is_expected.not_to match('aa-1234-cc') }
     it { is_expected.not_to match('9/9/2018') }
+  end
+
+  describe '.kubernetes_namespace_regex' do
+    subject { described_class.kubernetes_namespace_regex }
+
+    it { is_expected.to match('foo') }
+    it { is_expected.to match('foo-bar') }
+    it { is_expected.to match('1foo-bar') }
+    it { is_expected.to match('foo-bar2') }
+    it { is_expected.to match('foo-1bar') }
+    it { is_expected.not_to match('foo.bar') }
+    it { is_expected.not_to match('Foo') }
+    it { is_expected.not_to match('FoO') }
+    it { is_expected.not_to match('FoO-') }
+    it { is_expected.not_to match('-foo-') }
+    it { is_expected.not_to match('foo/bar') }
+  end
+
+  describe '.kubernetes_dns_subdomain_regex' do
+    subject { described_class.kubernetes_dns_subdomain_regex }
+
+    it { is_expected.to match('foo') }
+    it { is_expected.to match('foo-bar') }
+    it { is_expected.to match('foo.bar') }
+    it { is_expected.to match('foo1.bar') }
+    it { is_expected.to match('foo1.2bar') }
+    it { is_expected.to match('foo.bar1') }
+    it { is_expected.to match('1foo.bar1') }
+    it { is_expected.not_to match('Foo') }
+    it { is_expected.not_to match('FoO') }
+    it { is_expected.not_to match('FoO-') }
+    it { is_expected.not_to match('-foo-') }
+    it { is_expected.not_to match('foo/bar') }
   end
 end

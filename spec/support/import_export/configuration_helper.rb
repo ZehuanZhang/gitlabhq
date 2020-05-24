@@ -36,16 +36,16 @@ module ConfigurationHelper
   end
 
   def relation_class_for_name(relation_name)
-    relation_name = Gitlab::ImportExport::RelationFactory.overrides[relation_name.to_sym] || relation_name
-    Gitlab::ImportExport::RelationFactory.relation_class(relation_name)
+    relation_name = Gitlab::ImportExport::Project::RelationFactory.overrides[relation_name.to_sym] || relation_name
+    Gitlab::ImportExport::Project::RelationFactory.relation_class(relation_name)
   end
 
   def parsed_attributes(relation_name, attributes, config: Gitlab::ImportExport.config_file)
     import_export_config = config_hash(config)
     excluded_attributes = import_export_config[:excluded_attributes][relation_name.to_sym]
     included_attributes = import_export_config[:included_attributes][relation_name.to_sym]
-    attributes = attributes - JSON[excluded_attributes.to_json] if excluded_attributes
-    attributes = attributes & JSON[included_attributes.to_json] if included_attributes
+    attributes = attributes - Gitlab::Json.parse(excluded_attributes.to_json) if excluded_attributes
+    attributes = attributes & Gitlab::Json.parse(included_attributes.to_json) if included_attributes
 
     attributes
   end

@@ -5,8 +5,7 @@ require 'spec_helper'
 describe 'Merge request > User posts notes', :js do
   include NoteInteractionHelpers
 
-  set(:project) { create(:project, :repository) }
-
+  let_it_be(:project) { create(:project, :repository) }
   let(:user) { project.creator }
   let(:merge_request) do
     create(:merge_request, source_project: project, target_project: project)
@@ -148,7 +147,10 @@ describe 'Merge request > User posts notes', :js do
       it 'resets the edit note form textarea with the original content of the note if cancelled' do
         within('.current-note-edit-form') do
           fill_in 'note[note]', with: 'Some new content'
-          find('.btn-cancel').click
+
+          accept_confirm do
+            find('.btn-cancel').click
+          end
         end
         expect(find('.js-note-text').text).to eq ''
       end
@@ -165,9 +167,9 @@ describe 'Merge request > User posts notes', :js do
         find('.js-note-edit').click
 
         page.within('.current-note-edit-form') do
-          expect(find('#note_note').value).to eq('This is the new content')
+          expect(find('#note_note').value).to include('This is the new content')
           first('.js-md').click
-          expect(find('#note_note').value).to eq('This is the new content****')
+          expect(find('#note_note').value).to include('This is the new content****')
         end
       end
 

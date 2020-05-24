@@ -1,6 +1,6 @@
 <script>
 /* eslint-disable vue/require-default-prop */
-/* eslint-disable @gitlab/vue-i18n/no-bare-strings */
+/* eslint-disable @gitlab/vue-require-i18n-strings */
 import { GlLink, GlModalDirective } from '@gitlab/ui';
 import { s__, __, sprintf } from '~/locale';
 import eventHub from '../event_hub';
@@ -95,6 +95,7 @@ export default {
     updateable: {
       type: Boolean,
       default: true,
+      required: false,
     },
     updateSuccessful: {
       type: Boolean,
@@ -307,7 +308,7 @@ export default {
           <a
             v-if="titleLink"
             :href="titleLink"
-            target="blank"
+            target="_blank"
             rel="noopener noreferrer"
             class="js-cluster-application-title"
             >{{ title }}</a

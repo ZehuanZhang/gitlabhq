@@ -17,6 +17,11 @@ There are several ways to create users on GitLab. See the [creating users docume
 There are several ways to sign into your GitLab account.
 See the [authentication topic](../../topics/authentication/index.md) for more details.
 
+### Unknown sign-in
+
+GitLab will notify you if a sign-in occurs that is from an unknown IP address.
+See [Unknown Sign-In Notification](unknown_sign_in_notification.md) for more details.
+
 ## User profile
 
 To access your profile:
@@ -44,6 +49,7 @@ To access your profile settings:
 From there, you can:
 
 - Update your personal information
+- Change your [password](#changing-your-password)
 - Set a [custom status](#current-status) for your profile
 - Manage your [commit email](#commit-email) for your profile
 - Manage [2FA](account/two_factor_authentication.md)
@@ -59,6 +65,18 @@ From there, you can:
   to customize your own GitLab experience
 - [View your active sessions](active_sessions.md) and revoke any of them if necessary
 - Access your audit log, a security log of important events involving your account
+
+## Changing your password
+
+1. Navigate to your [profile's](#profile-settings) **Settings > Password**.
+1. Enter your current password in the 'Current password' field.
+1. Enter your desired new password twice, once in the 'New password' field and
+   once in the 'Password confirmation' field.
+1. Click the 'Save password' button.
+
+If you don't know your current password, select the 'I forgot my password' link.
+
+![Change your password](./img/change_password_v13_0.png)
 
 ## Changing your username
 
@@ -129,7 +147,7 @@ To add links to other accounts:
 
 ## Private contributions
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/issues/14078) in GitLab 11.3.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/14078) in GitLab 11.3.
 
 Enabling private contributions will include contributions to private projects, in the user contribution calendar graph and user recent activity.
 
@@ -173,7 +191,7 @@ You can also set your current status [using the API](../../api/users.md#user-sta
 
 ## Commit email
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/21598) in GitLab 11.4.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/21598) in GitLab 11.4.
 
 A commit email is an email address displayed in every Git-related action carried out through the GitLab interface.
 
@@ -190,7 +208,7 @@ To change your commit email:
 
 ### Private commit email
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/22560) in GitLab 11.5.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/22560) in GitLab 11.5.
 
 GitLab provides the user with an automatically generated private commit email option,
 which allows the user to keep their email information private.
@@ -209,7 +227,7 @@ Once this option is enabled, every Git-related action will be performed using th
 To stay fully anonymous, you can also copy this private commit email
 and configure it on your local machine using the following command:
 
-```sh
+```shell
 git config --global user.email <your email address>
 ```
 
@@ -224,7 +242,7 @@ and expires after "Application settings -> Session duration (minutes)"/`session_
 
 When signing in to the main GitLab application, you can also check the
 "Remember me" option which sets the `remember_user_token`
-cookie (via [`devise`](https://github.com/plataformatec/devise)).
+cookie (via [`devise`](https://github.com/heartcombo/devise)).
 `remember_user_token` expires after
 `config/initializers/devise.rb` -> `config.remember_for` (defaults to 2 weeks).
 

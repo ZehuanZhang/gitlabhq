@@ -22,14 +22,15 @@ module SpamCheckMethods
   # a dirty instance, which means it should be already assigned with the new
   # attribute values.
   # rubocop:disable Gitlab/ModuleWithInstanceVariables
-  # rubocop: disable CodeReuse/ActiveRecord
   def spam_check(spammable, user)
-    spam_service = SpamService.new(spammable, @request)
-
-    spam_service.when_recaptcha_verified(@recaptcha_verified, @api) do
-      user.spam_logs.find_by(id: @spam_log_id)&.update!(recaptcha_verified: true)
-    end
+    Spam::SpamActionService.new(
+      spammable: spammable,
+      request: @request
+    ).execute(
+      api: @api,
+      recaptcha_verified: @recaptcha_verified,
+      spam_log_id: @spam_log_id,
+      user: user)
   end
-  # rubocop: enable CodeReuse/ActiveRecord
   # rubocop:enable Gitlab/ModuleWithInstanceVariables
 end

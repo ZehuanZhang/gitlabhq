@@ -10,6 +10,7 @@ class DashboardController < Dashboard::ApplicationController
   before_action :projects, only: [:issues, :merge_requests]
   before_action :set_show_full_reference, only: [:issues, :merge_requests]
   before_action :check_filters_presence!, only: [:issues, :merge_requests]
+  before_action :set_not_query_feature_flag
 
   respond_to :html
 
@@ -19,7 +20,7 @@ class DashboardController < Dashboard::ApplicationController
 
       format.json do
         load_events
-        pager_json("events/_events", @events.count)
+        pager_json('events/_events', @events.count { |event| event.visible_to_user?(current_user) })
       end
     end
   end
@@ -37,6 +38,7 @@ class DashboardController < Dashboard::ApplicationController
     @events = EventCollection
       .new(projects, offset: params[:offset].to_i, filter: event_filter)
       .to_a
+      .map(&:present)
 
     Events::RenderService.new(current_user).execute(@events)
   end

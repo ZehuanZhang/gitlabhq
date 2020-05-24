@@ -1,6 +1,6 @@
 <script>
 import { mapActions, mapState } from 'vuex';
-import _ from 'underscore';
+import { debounce } from 'lodash';
 import { GlLoadingIcon } from '@gitlab/ui';
 import { __ } from '~/locale';
 import Icon from '~/vue_shared/components/icon.vue';
@@ -59,7 +59,7 @@ export default {
     loadMergeRequests() {
       this.fetchMergeRequests({ type: this.type, search: this.search });
     },
-    searchMergeRequests: _.debounce(function debounceSearch() {
+    searchMergeRequests: debounce(function debounceSearch() {
       this.loadMergeRequests();
     }, 250),
     onSearchFocus() {
@@ -90,7 +90,7 @@ export default {
     <div class="dropdown-content ide-merge-requests-dropdown-content d-flex">
       <gl-loading-icon
         v-if="isLoading"
-        :size="2"
+        size="lg"
         class="mt-3 mb-3 align-self-center ml-auto mr-auto"
       />
       <template v-else>

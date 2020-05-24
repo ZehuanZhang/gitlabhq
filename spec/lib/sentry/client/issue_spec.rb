@@ -8,7 +8,7 @@ describe Sentry::Client::Issue do
   let(:token) { 'test-token' }
   let(:sentry_url) { 'https://sentrytest.gitlab.com/api/0' }
   let(:client) { Sentry::Client.new(sentry_url, token) }
-  let(:issue_id) { 503504 }
+  let(:issue_id) { 11 }
 
   describe '#list_issues' do
     shared_examples 'issues have correct return type' do |klass|
@@ -23,14 +23,14 @@ describe Sentry::Client::Issue do
 
     let(:issues_sample_response) do
       Gitlab::Utils.deep_indifferent_access(
-        JSON.parse(fixture_file('sentry/issues_sample_response.json'))
+        Gitlab::Json.parse(fixture_file('sentry/issues_sample_response.json'))
       )
     end
 
     let(:default_httparty_options) do
       {
         follow_redirects: false,
-        headers: { "Authorization" => "Bearer test-token" }
+        headers: { 'Content-Type' => 'application/json', 'Authorization' => "Bearer test-token" }
       }
     end
 
@@ -49,7 +49,7 @@ describe Sentry::Client::Issue do
     it_behaves_like 'calls sentry api'
 
     it_behaves_like 'issues have correct return type', Gitlab::ErrorTracking::Error
-    it_behaves_like 'issues have correct length', 1
+    it_behaves_like 'issues have correct length', 3
 
     shared_examples 'has correct external_url' do
       context 'external_url' do
@@ -107,28 +107,6 @@ describe Sentry::Client::Issue do
       let(:sentry_api_url) { sentry_url + '/issues/?limit=20&query=is:unresolved' }
 
       it_behaves_like 'no Sentry redirects'
-    end
-
-    # Sentry API returns 404 if there are extra slashes in the URL!
-    context 'extra slashes in URL' do
-      let(:sentry_url) { 'https://sentrytest.gitlab.com/api/0/projects//sentry-org/sentry-project/' }
-
-      let(:sentry_request_url) do
-        'https://sentrytest.gitlab.com/api/0/projects/sentry-org/sentry-project/' \
-          'issues/?limit=20&query=is:unresolved'
-      end
-
-      it 'removes extra slashes in api url' do
-        expect(client.url).to eq(sentry_url)
-        expect(Gitlab::HTTP).to receive(:get).with(
-          URI('https://sentrytest.gitlab.com/api/0/projects/sentry-org/sentry-project/issues/'),
-          anything
-        ).and_call_original
-
-        subject
-
-        expect(sentry_api_request).to have_been_requested
-      end
     end
 
     context 'requests with sort parameter in sentry api' do
@@ -206,7 +184,7 @@ describe Sentry::Client::Issue do
       it_behaves_like 'calls sentry api'
 
       it_behaves_like 'issues have correct return type', Gitlab::ErrorTracking::Error
-      it_behaves_like 'issues have correct length', 1
+      it_behaves_like 'issues have correct length', 3
     end
 
     context 'when cursor is present' do
@@ -216,14 +194,14 @@ describe Sentry::Client::Issue do
       it_behaves_like 'calls sentry api'
 
       it_behaves_like 'issues have correct return type', Gitlab::ErrorTracking::Error
-      it_behaves_like 'issues have correct length', 1
+      it_behaves_like 'issues have correct length', 3
     end
   end
 
   describe '#issue_details' do
     let(:issue_sample_response) do
       Gitlab::Utils.deep_indifferent_access(
-        JSON.parse(fixture_file('sentry/issue_sample_response.json'))
+        Gitlab::Json.parse(fixture_file('sentry/issue_sample_response.json'))
       )
     end
 
@@ -231,14 +209,6 @@ describe Sentry::Client::Issue do
     let!(:sentry_api_request) { stub_sentry_request(sentry_request_url, body: issue_sample_response) }
 
     subject { client.issue_details(issue_id: issue_id) }
-
-    it 'escapes issue ID' do
-      allow(CGI).to receive(:escape).and_call_original
-
-      subject
-
-      expect(CGI).to have_received(:escape).with(issue_id.to_s)
-    end
 
     context 'error object created from sentry response' do
       using RSpec::Parameterized::TableSyntax
@@ -273,7 +243,7 @@ describe Sentry::Client::Issue do
       end
 
       it 'has a correct external URL' do
-        expect(subject.external_url).to eq('https://sentrytest.gitlab.com/api/0/issues/503504')
+        expect(subject.external_url).to eq('https://sentrytest.gitlab.com/api/0/issues/11')
       end
 
       it 'issue has a correct external base url' do
@@ -282,6 +252,34 @@ describe Sentry::Client::Issue do
 
       it 'has a correct GitLab issue url' do
         expect(subject.gitlab_issue).to eq('https://gitlab.com/gitlab-org/gitlab/issues/1')
+      end
+
+      context 'when issue annotations exist' do
+        before do
+          issue_sample_response['annotations'] = [
+            nil,
+            '',
+            "<a href=\"http://github.com/issues/6\">github-issue-6</a>",
+            "<div>annotation</a>",
+            "<a href=\"http://localhost/gitlab-org/gitlab/issues/2\">gitlab-org/gitlab#2</a>"
+          ]
+          stub_sentry_request(sentry_request_url, body: issue_sample_response)
+        end
+
+        it 'has a correct GitLab issue url' do
+          expect(subject.gitlab_issue).to eq('http://localhost/gitlab-org/gitlab/issues/2')
+        end
+      end
+
+      context 'when no GitLab issue is linked' do
+        before do
+          issue_sample_response['pluginIssues'] = []
+          stub_sentry_request(sentry_request_url, body: issue_sample_response)
+        end
+
+        it 'does not find a GitLab issue' do
+          expect(subject.gitlab_issue).to be_nil
+        end
       end
 
       it 'has the correct tags' do

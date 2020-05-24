@@ -1,7 +1,7 @@
 /* eslint-disable no-return-assign, consistent-return, class-methods-use-this */
 
 import $ from 'jquery';
-import { escape, throttle } from 'underscore';
+import { escape, throttle } from 'lodash';
 import { s__, __ } from '~/locale';
 import { getIdenticonBackgroundClass, getIdenticonTitle } from '~/helpers/avatar_helper';
 import axios from './lib/utils/axios_utils';
@@ -407,7 +407,7 @@ export class SearchAutocomplete {
   disableAutocomplete() {
     if (!this.searchInput.hasClass('js-autocomplete-disabled') && this.dropdown.hasClass('show')) {
       this.searchInput.addClass('js-autocomplete-disabled');
-      this.dropdown.dropdown('toggle');
+      this.dropdownToggle.dropdown('toggle');
       this.restoreMenu();
     }
   }
@@ -420,11 +420,11 @@ export class SearchAutocomplete {
   onClick(item, $el, e) {
     if (window.location.pathname.indexOf(item.url) !== -1) {
       if (!e.metaKey) e.preventDefault();
-      /* eslint-disable-next-line @gitlab/i18n/no-non-i18n-strings */
+      /* eslint-disable-next-line @gitlab/require-i18n-strings */
       if (item.category === 'Projects') {
         this.projectInputEl.val(item.id);
       }
-      /* eslint-disable-next-line @gitlab/i18n/no-non-i18n-strings */
+      // eslint-disable-next-line @gitlab/require-i18n-strings
       if (item.category === 'Groups') {
         this.groupInputEl.val(item.id);
       }

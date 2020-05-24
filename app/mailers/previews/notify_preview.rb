@@ -80,6 +80,10 @@ class NotifyPreview < ActionMailer::Preview
     Notify.import_issues_csv_email(user.id, project.id, { success: 3, errors: [5, 6, 7], valid_file: true })
   end
 
+  def issues_csv_email
+    Notify.issues_csv_email(user, project, '1997,Ford,E350', { truncated: false, rows_expected: 3, rows_written: 3 }).message
+  end
+
   def closed_merge_request_email
     Notify.closed_merge_request_email(user.id, issue.id, user.id).message
   end
@@ -145,12 +149,20 @@ class NotifyPreview < ActionMailer::Preview
     Notify.pipeline_failed_email(pipeline, pipeline.user.try(:email))
   end
 
+  def pipeline_fixed_email
+    Notify.pipeline_fixed_email(pipeline, pipeline.user.try(:email))
+  end
+
   def autodevops_disabled_email
     Notify.autodevops_disabled_email(pipeline, user.email).message
   end
 
   def remote_mirror_update_failed_email
     Notify.remote_mirror_update_failed_email(remote_mirror.id, user.id).message
+  end
+
+  def unknown_sign_in_email
+    Notify.unknown_sign_in_email(user, '127.0.0.1').message
   end
 
   private

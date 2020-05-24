@@ -24,13 +24,21 @@ namespace :admin do
   end
 
   resource :session, only: [:new, :create] do
-    get 'destroy', action: :destroy, as: :destroy
+    post 'destroy', action: :destroy, as: :destroy
   end
 
   resource :impersonation, only: :destroy
 
   resources :abuse_reports, only: [:index, :destroy]
   resources :gitaly_servers, only: [:index]
+
+  namespace :serverless do
+    resources :domains, only: [:index, :create, :update, :destroy] do
+      member do
+        post '/verify', to: 'domains#verify'
+      end
+    end
+  end
 
   resources :spam_logs, only: [:index, :destroy] do
     member do
@@ -73,7 +81,6 @@ namespace :admin do
     post :preview, on: :collection
   end
 
-  resource :logs, only: [:show]
   resource :health_check, controller: 'health_check', only: [:show]
   resource :background_jobs, controller: 'background_jobs', only: [:show]
 
@@ -107,8 +114,13 @@ namespace :admin do
     end
   end
 
-  resource :application_settings, only: [:show, :update] do
+  resource :application_settings, only: :update do
     resources :services, only: [:index, :edit, :update]
+    resources :integrations, only: [:edit, :update] do
+      member do
+        put :test
+      end
+    end
 
     get :usage_data
     put :reset_registration_token
@@ -119,6 +131,8 @@ namespace :admin do
 
     post :create_self_monitoring_project
     get :status_create_self_monitoring_project
+    delete :delete_self_monitoring_project
+    get :status_delete_self_monitoring_project
   end
 
   resources :labels
@@ -140,7 +154,13 @@ namespace :admin do
     end
   end
 
+  namespace :ci do
+    resource :variables, only: [:show, :update]
+  end
+
   concerns :clusterable
+
+  get '/dashboard/stats', to: 'dashboard#stats'
 
   root to: 'dashboard#index'
 end

@@ -10,7 +10,9 @@ module Boards
       end
 
       def execute
-        fetch_issues.order_by_position_and_priority
+        return fetch_issues.order_closed_date_desc if list&.closed?
+
+        fetch_issues.order_by_position_and_priority(with_cte: params[:search].present?)
       end
 
       # rubocop: disable CodeReuse/ActiveRecord
@@ -63,6 +65,7 @@ module Boards
         set_state
         set_scope
         set_non_archived
+        set_attempt_search_optimizations
 
         params
       end
@@ -85,6 +88,16 @@ module Boards
 
       def set_non_archived
         params[:non_archived] = parent.is_a?(Group)
+      end
+
+      def set_attempt_search_optimizations
+        return unless params[:search].present?
+
+        if board.group_board?
+          params[:attempt_group_search_optimizations] = true
+        else
+          params[:attempt_project_search_optimizations] = true
+        end
       end
 
       # rubocop: disable CodeReuse/ActiveRecord
@@ -113,6 +126,10 @@ module Boards
                                             .where("label_links.label_id = ?", list.label_id).limit(1))
       end
       # rubocop: enable CodeReuse/ActiveRecord
+
+      def board_group
+        board.group_board? ? parent : parent.group
+      end
     end
   end
 end

@@ -40,7 +40,7 @@ describe 'help/index' do
         render
 
         expect(rendered).to match '8.0.2'
-        expect(rendered).to have_link('abcdefg', href: %r{https://gitlab.com/gitlab-org/(gitlab|gitlab-foss)/commits/abcdefg})
+        expect(rendered).to have_link('abcdefg', href: %r{https://gitlab.com/gitlab-org/(gitlab|gitlab-foss)/-/commits/abcdefg})
       end
     end
   end
@@ -50,6 +50,18 @@ describe 'help/index' do
       render
 
       expect(rendered).to have_link(nil, href: help_instance_configuration_url)
+    end
+  end
+
+  describe 'Markdown rendering' do
+    before do
+      assign(:help_index, 'Welcome to [GitLab](https://about.gitlab.com/) Documentation.')
+    end
+
+    it 'renders Markdown' do
+      render
+
+      expect(rendered).to have_link('GitLab', href: 'https://about.gitlab.com/')
     end
   end
 

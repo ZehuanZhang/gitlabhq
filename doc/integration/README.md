@@ -57,9 +57,9 @@ GitLab can be integrated with the following enhancements:
 - Attach merge requests to [Trello](trello_power_up.md) cards.
 - Enable integrated code intelligence powered by [Sourcegraph](sourcegraph.md).
 
-## Project services
+## Integrations
 
-Integration with services such as Campfire, Flowdock, HipChat, Pivotal Tracker, and Slack are available as [Project Services](../user/project/integrations/project_services.md).
+Integration with services such as Campfire, Flowdock, HipChat, Pivotal Tracker, and Slack are available as [Integrations](../user/project/integrations/overview.md).
 
 ## Troubleshooting
 
@@ -83,7 +83,7 @@ at Super User also has relevant information.
 **Omnibus Trusted Chain**
 
 [Install the self signed certificate or custom certificate authorities](https://docs.gitlab.com/omnibus/common_installation_problems/README.html#using-self-signed-certificate-or-custom-certificate-authorities)
-in to GitLab Omnibus.
+in to Omnibus GitLab.
 
 It is enough to concatenate the certificate to the main trusted certificate
 however it may be overwritten during upgrades:

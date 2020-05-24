@@ -28,7 +28,7 @@ class SubmitUsagePingService
 
     true
   rescue Gitlab::HTTP::Error => e
-    Rails.logger.info "Unable to contact GitLab, Inc.: #{e}" # rubocop:disable Gitlab/RailsLogger
+    Gitlab::AppLogger.info("Unable to contact GitLab, Inc.: #{e}")
 
     false
   end
@@ -36,10 +36,12 @@ class SubmitUsagePingService
   private
 
   def store_metrics(response)
-    return unless response['conv_index'].present?
+    metrics = response['conv_index'] || response['dev_ops_score']
+
+    return unless metrics.present?
 
     DevOpsScore::Metric.create!(
-      response['conv_index'].slice(*METRICS)
+      metrics.slice(*METRICS)
     )
   end
 end

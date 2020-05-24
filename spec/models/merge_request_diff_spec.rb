@@ -3,6 +3,8 @@
 require 'spec_helper'
 
 describe MergeRequestDiff do
+  using RSpec::Parameterized::TableSyntax
+
   include RepoHelpers
 
   let(:diff_with_commits) { create(:merge_request).merge_request_diff }
@@ -54,20 +56,20 @@ describe MergeRequestDiff do
   end
 
   describe '.ids_for_external_storage_migration' do
-    set(:merge_request) { create(:merge_request) }
-    set(:outdated) { merge_request.merge_request_diff }
-    set(:latest) { merge_request.create_merge_request_diff }
+    let_it_be(:merge_request) { create(:merge_request) }
+    let_it_be(:outdated) { merge_request.merge_request_diff }
+    let_it_be(:latest) { merge_request.create_merge_request_diff }
 
-    set(:closed_mr) { create(:merge_request, :closed_last_month) }
+    let_it_be(:closed_mr) { create(:merge_request, :closed_last_month) }
     let(:closed) { closed_mr.merge_request_diff }
 
-    set(:merged_mr) { create(:merge_request, :merged_last_month) }
+    let_it_be(:merged_mr) { create(:merge_request, :merged_last_month) }
     let(:merged) { merged_mr.merge_request_diff }
 
-    set(:recently_closed_mr) { create(:merge_request, :closed) }
+    let_it_be(:recently_closed_mr) { create(:merge_request, :closed) }
     let(:closed_recently) { recently_closed_mr.merge_request_diff }
 
-    set(:recently_merged_mr) { create(:merge_request, :merged) }
+    let_it_be(:recently_merged_mr) { create(:merge_request, :merged) }
     let(:merged_recently) { recently_merged_mr.merge_request_diff }
 
     before do
@@ -125,18 +127,71 @@ describe MergeRequestDiff do
     end
   end
 
+  describe '#update_external_diff_store' do
+    let_it_be(:merge_request) { create(:merge_request) }
+
+    let(:diff) { merge_request.merge_request_diff }
+    let(:store) { diff.external_diff.object_store }
+
+    where(:change_stored_externally, :change_external_diff) do
+      false | false
+      false | true
+      true  | false
+      true  | true
+    end
+
+    with_them do
+      it do
+        diff.stored_externally = true if change_stored_externally
+        diff.external_diff = "new-filename" if change_external_diff
+
+        update_store = receive(:update_column).with(:external_diff_store, store)
+
+        if change_stored_externally || change_external_diff
+          expect(diff).to update_store
+        else
+          expect(diff).not_to update_store
+        end
+
+        diff.save!
+      end
+    end
+  end
+
   describe '#migrate_files_to_external_storage!' do
+    let(:uploader) { ExternalDiffUploader }
+    let(:file_store) { uploader::Store::LOCAL }
+    let(:remote_store) { uploader::Store::REMOTE }
     let(:diff) { create(:merge_request).merge_request_diff }
 
-    it 'converts from in-database to external storage' do
+    it 'converts from in-database to external file storage' do
       expect(diff).not_to be_stored_externally
 
       stub_external_diffs_setting(enabled: true)
-      expect(diff).to receive(:save!)
+
+      expect(diff).to receive(:save!).and_call_original
 
       diff.migrate_files_to_external_storage!
 
       expect(diff).to be_stored_externally
+      expect(diff.external_diff_store).to eq(file_store)
+    end
+
+    it 'converts from in-database to external object storage' do
+      expect(diff).not_to be_stored_externally
+
+      stub_external_diffs_setting(enabled: true)
+
+      # Without direct_upload: true, the files would be saved to disk, and a
+      # background job would be enqueued to move the file to object storage
+      stub_external_diffs_object_storage(uploader, direct_upload: true)
+
+      expect(diff).to receive(:save!).and_call_original
+
+      diff.migrate_files_to_external_storage!
+
+      expect(diff).to be_stored_externally
+      expect(diff.external_diff_store).to eq(remote_store)
     end
 
     it 'does nothing with an external diff' do
@@ -153,6 +208,41 @@ describe MergeRequestDiff do
       expect(diff).not_to receive(:save!)
 
       diff.migrate_files_to_external_storage!
+    end
+  end
+
+  describe '#migrate_files_to_database!' do
+    let(:diff) { create(:merge_request).merge_request_diff }
+
+    it 'converts from external to in-database storage' do
+      stub_external_diffs_setting(enabled: true)
+
+      expect(diff).to be_stored_externally
+      expect(diff).to receive(:update!).and_call_original
+
+      file = diff.external_diff
+      file_data = file.read
+      diff.migrate_files_to_database!
+
+      expect(diff).not_to be_stored_externally
+      expect(file).not_to exist
+      expect(diff.merge_request_diff_files.map(&:diff).join('')).to eq(file_data)
+    end
+
+    it 'does nothing with an in-database diff' do
+      expect(diff).not_to be_stored_externally
+      expect(diff).not_to receive(:update!)
+
+      diff.migrate_files_to_database!
+    end
+
+    it 'does nothing with an empty diff' do
+      stub_external_diffs_setting(enabled: true)
+      MergeRequestDiffFile.where(merge_request_diff_id: diff.id).delete_all
+
+      expect(diff).not_to receive(:update!)
+
+      diff.migrate_files_to_database!
     end
   end
 
@@ -530,6 +620,45 @@ describe MergeRequestDiff do
 
     it 'returns affected file paths' do
       expect(subject.modified_paths).to eq(%w{foo bar baz})
+    end
+
+    context "when fallback_on_overflow is true" do
+      let(:merge_request) { create(:merge_request, source_branch: 'feature', target_branch: 'master') }
+      let(:diff) { merge_request.merge_request_diff }
+
+      # before do
+      #   # Temporarily unstub diff.modified_paths in favor of original code
+      #   #
+      #   allow(diff).to receive(:modified_paths).and_call_original
+      # end
+
+      context "when the merge_request_diff is overflowed" do
+        before do
+          expect(diff).to receive(:overflow?).and_return(true)
+        end
+
+        it "returns file paths via project.repository#diff_stats" do
+          expect(diff.project.repository).to receive(:diff_stats).and_call_original
+
+          expect(
+            diff.modified_paths(fallback_on_overflow: true)
+          ).to eq(diff.modified_paths)
+        end
+      end
+
+      context "when the merge_request_diff is not overflowed" do
+        before do
+          expect(subject).to receive(:overflow?).and_return(false)
+        end
+
+        it "returns expect file paths withoout called #modified_paths_for_overflowed_mr" do
+          expect(subject.project.repository).not_to receive(:diff_stats)
+
+          expect(
+            subject.modified_paths(fallback_on_overflow: true)
+          ).to eq(subject.modified_paths)
+        end
+      end
     end
   end
 

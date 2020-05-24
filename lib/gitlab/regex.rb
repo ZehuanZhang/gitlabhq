@@ -5,11 +5,23 @@ module Gitlab
     extend self
 
     def project_name_regex
-      @project_name_regex ||= /\A[\p{Alnum}\u{00A9}-\u{1f9c0}_][\p{Alnum}\p{Pd}\u{00A9}-\u{1f9c0}_\. ]*\z/.freeze
+      # The character range \p{Alnum} overlaps with \u{00A9}-\u{1f9ff}
+      # hence the Ruby warning.
+      # https://gitlab.com/gitlab-org/gitlab/merge_requests/23165#not-easy-fixable
+      @project_name_regex ||= /\A[\p{Alnum}\u{00A9}-\u{1f9ff}_][\p{Alnum}\p{Pd}\u{00A9}-\u{1f9ff}_\. ]*\z/.freeze
     end
 
     def project_name_regex_message
       "can contain only letters, digits, emojis, '_', '.', dash, space. " \
+      "It must start with letter, digit, emoji or '_'."
+    end
+
+    def group_name_regex
+      @group_name_regex ||= /\A[\p{Alnum}\u{00A9}-\u{1f9ff}_][\p{Alnum}\p{Pd}\u{00A9}-\u{1f9ff}_()\. ]*\z/.freeze
+    end
+
+    def group_name_regex_message
+      "can contain only letters, digits, emojis, '_', '.', dash, space, parenthesis. " \
       "It must start with letter, digit, emoji or '_'."
     end
 
@@ -65,6 +77,12 @@ module Gitlab
     def kubernetes_namespace_regex_message
       "can contain only lowercase letters, digits, and '-'. " \
       "Must start with a letter, and cannot end with '-'"
+    end
+
+    # Pod name adheres to DNS Subdomain Names(RFC 1123) naming convention
+    # https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-subdomain-names
+    def kubernetes_dns_subdomain_regex
+      /\A[a-z0-9]([a-z0-9\-\.]*[a-z0-9])?\z/
     end
 
     def environment_slug_regex
@@ -140,6 +158,10 @@ module Gitlab
 
     def utc_date_regex
       @utc_date_regex ||= /\A[0-9]{4}-[0-9]{2}-[0-9]{2}\z/.freeze
+    end
+
+    def issue
+      @issue ||= /(?<issue>\d+\b)/
     end
   end
 end

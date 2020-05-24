@@ -1,13 +1,21 @@
 import { shallowMount } from '@vue/test-utils';
 import JumpToNextDiscussionButton from '~/notes/components/discussion_jump_to_next_button.vue';
+import { mockTracking } from '../../helpers/tracking_helper';
 
 describe('JumpToNextDiscussionButton', () => {
+  const fromDiscussionId = 'abc123';
   let wrapper;
+  let trackingSpy;
+  let jumpFn;
 
   beforeEach(() => {
+    jumpFn = jest.fn();
     wrapper = shallowMount(JumpToNextDiscussionButton, {
-      attachToDocument: true,
+      propsData: { fromDiscussionId },
     });
+    wrapper.setMethods({ jumpToNextRelativeDiscussion: jumpFn });
+
+    trackingSpy = mockTracking('_category_', wrapper.element, jest.spyOn);
   });
 
   afterEach(() => {
@@ -18,14 +26,18 @@ describe('JumpToNextDiscussionButton', () => {
     expect(wrapper.vm.$el).toMatchSnapshot();
   });
 
-  it('emits onClick event on button click', () => {
-    const button = wrapper.find({ ref: 'button' });
+  it('calls jumpToNextRelativeDiscussion when clicked', () => {
+    wrapper.find({ ref: 'button' }).trigger('click');
 
-    button.trigger('click');
+    expect(jumpFn).toHaveBeenCalledWith(fromDiscussionId);
+  });
 
-    return wrapper.vm.$nextTick().then(() => {
-      expect(wrapper.emitted().onClick).toBeTruthy();
-      expect(wrapper.emitted().onClick.length).toBe(1);
+  it('sends the correct tracking event when clicked', () => {
+    wrapper.find({ ref: 'button' }).trigger('click');
+
+    expect(trackingSpy).toHaveBeenCalledWith('_category_', 'click_button', {
+      label: 'mr_next_unresolved_thread',
+      property: 'click_next_unresolved_thread',
     });
   });
 });

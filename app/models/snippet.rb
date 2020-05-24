@@ -6,7 +6,6 @@ class Snippet < ApplicationRecord
   include CacheMarkdownField
   include Noteable
   include Participable
-  include Referable
   include Sortable
   include Awardable
   include Mentionable
@@ -14,7 +13,13 @@ class Snippet < ApplicationRecord
   include Editable
   include Gitlab::SQL::Pattern
   include FromUnion
+  include IgnorableColumns
+  include HasRepository
+  include AfterCommitQueue
   extend ::Gitlab::Utils::Override
+
+  MAX_FILE_COUNT = 10
+  MAX_SINGLE_FILE_COUNT = 1
 
   cache_markdown_field :title, pipeline: :single_line
   cache_markdown_field :description
@@ -37,7 +42,8 @@ class Snippet < ApplicationRecord
   belongs_to :project
 
   has_many :notes, as: :noteable, dependent: :destroy # rubocop:disable Cop/ActiveRecordDependent
-  has_many :user_mentions, class_name: "SnippetUserMention"
+  has_many :user_mentions, class_name: "SnippetUserMention", dependent: :delete_all # rubocop:disable Cop/ActiveRecordDependent
+  has_one :snippet_repository, inverse_of: :snippet
 
   delegate :name, :email, to: :author, prefix: true, allow_nil: true
 
@@ -60,6 +66,8 @@ class Snippet < ApplicationRecord
             if: :content_changed?
 
   validates :visibility_level, inclusion: { in: Gitlab::VisibilityLevel.values }
+
+  after_save :store_mentions!, if: :any_mentionable_attributes_changed?
 
   # Scopes
   scope :are_internal, -> { where(visibility_level: Snippet::INTERNAL) }
@@ -93,6 +101,10 @@ class Snippet < ApplicationRecord
 
   def self.only_personal_snippets
     where(project_id: nil)
+  end
+
+  def self.only_project_snippets
+    where.not(project_id: nil)
   end
 
   def self.only_include_projects_visible_to(current_user = nil)
@@ -154,6 +166,14 @@ class Snippet < ApplicationRecord
     @link_reference_pattern ||= super("snippets", /(?<snippet>\d+)/)
   end
 
+  def self.find_by_id_and_project(id:, project:)
+    Snippet.find_by(id: id, project: project)
+  end
+
+  def self.max_file_limit(user)
+    Feature.enabled?(:snippet_multiple_files, user) ? MAX_FILE_COUNT : MAX_SINGLE_FILE_COUNT
+  end
+
   def initialize(attributes = {})
     # We can't use default_value_for because the database has a default
     # value of 0 for visibility_level. If someone attempts to create a
@@ -176,22 +196,20 @@ class Snippet < ApplicationRecord
     reference = "#{self.class.reference_prefix}#{id}"
 
     if project.present?
-      "#{project.to_reference(from, full: full)}#{reference}"
+      "#{project.to_reference_base(from, full: full)}#{reference}"
     else
       reference
     end
   end
 
-  def self.content_types
-    [
-      ".rb", ".py", ".pl", ".scala", ".c", ".cpp", ".java",
-      ".haml", ".html", ".sass", ".scss", ".xml", ".php", ".erb",
-      ".js", ".sh", ".coffee", ".yml", ".md"
-    ]
+  def blob
+    @blob ||= Blob.decorate(SnippetBlob.new(self), self)
   end
 
-  def blob
-    @blob ||= Blob.decorate(SnippetBlob.new(self), nil)
+  def blobs
+    return [] unless repository_exists?
+
+    repository.ls_files(repository.root_ref).map { |file| Blob.lazy(repository, repository.root_ref, file) }
   end
 
   def hook_attrs
@@ -202,7 +220,7 @@ class Snippet < ApplicationRecord
     super.to_s
   end
 
-  def sanitized_file_name
+  def self.sanitized_file_name(file_name)
     file_name.gsub(/[^a-zA-Z0-9_\-\.]+/, '')
   end
 
@@ -211,9 +229,7 @@ class Snippet < ApplicationRecord
   end
 
   def embeddable?
-    ability = project_id? ? :read_project_snippet : :read_personal_snippet
-
-    Ability.allowed?(nil, ability, self)
+    Ability.allowed?(nil, :read_snippet, self)
   end
 
   def notes_with_associations
@@ -225,7 +241,7 @@ class Snippet < ApplicationRecord
       (public? && (title_changed? || content_changed?))
   end
 
-  # snippers are the biggest sources of spam
+  # snippets are the biggest sources of spam
   override :allow_possible_spam?
   def allow_possible_spam?
     false
@@ -236,7 +252,7 @@ class Snippet < ApplicationRecord
   end
 
   def to_ability_name
-    model_name.singular
+    'snippet'
   end
 
   def valid_secret_token?(token)
@@ -252,8 +268,74 @@ class Snippet < ApplicationRecord
     super
   end
 
+  override :repository
+  def repository
+    @repository ||= Repository.new(full_path, self, shard: repository_storage, disk_path: disk_path, repo_type: Gitlab::GlRepository::SNIPPET)
+  end
+
+  override :repository_size_checker
+  def repository_size_checker
+    strong_memoize(:repository_size_checker) do
+      ::Gitlab::RepositorySizeChecker.new(
+        current_size_proc: -> { repository.size.megabytes },
+        limit: Gitlab::CurrentSettings.snippet_size_limit
+      )
+    end
+  end
+
+  override :storage
+  def storage
+    @storage ||= Storage::Hashed.new(self, prefix: Storage::Hashed::SNIPPET_REPOSITORY_PATH_PREFIX)
+  end
+
+  # This is the full_path used to identify the
+  # the snippet repository. It will be used mostly
+  # for logging purposes.
+  override :full_path
+  def full_path
+    return unless persisted?
+
+    @full_path ||= begin
+      components = []
+      components << project.full_path if project_id?
+      components << '@snippets'
+      components << self.id
+      components.join('/')
+    end
+  end
+
+  def repository_storage
+    snippet_repository&.shard_name || self.class.pick_repository_storage
+  end
+
+  def create_repository
+    return if repository_exists? && snippet_repository
+
+    repository.create_if_not_exists
+    track_snippet_repository(repository.storage)
+  end
+
+  def track_snippet_repository(shard)
+    snippet_repo = snippet_repository || build_snippet_repository
+    snippet_repo.update!(shard_name: shard, disk_path: disk_path)
+  end
+
+  def can_cache_field?(field)
+    field != :content || MarkupHelper.gitlab_markdown?(file_name)
+  end
+
+  def hexdigest
+    Digest::SHA256.hexdigest("#{title}#{description}#{created_at}#{updated_at}")
+  end
+
+  def file_name_on_repo
+    return if repository.empty?
+
+    repository.ls_files(repository.root_ref).first
+  end
+
   class << self
-    # Searches for snippets with a matching title or file name.
+    # Searches for snippets with a matching title, description or file name.
     #
     # This method uses ILIKE on PostgreSQL and LIKE on MySQL.
     #
@@ -261,18 +343,7 @@ class Snippet < ApplicationRecord
     #
     # Returns an ActiveRecord::Relation.
     def search(query)
-      fuzzy_search(query, [:title, :file_name])
-    end
-
-    # Searches for snippets with matching content.
-    #
-    # This method uses ILIKE on PostgreSQL and LIKE on MySQL.
-    #
-    # query - The search query as a String.
-    #
-    # Returns an ActiveRecord::Relation.
-    def search_code(query)
-      fuzzy_search(query, [:content])
+      fuzzy_search(query, [:title, :description, :file_name])
     end
 
     def parent_class

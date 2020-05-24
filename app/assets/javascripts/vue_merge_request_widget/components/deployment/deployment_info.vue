@@ -32,12 +32,12 @@ export default {
     },
   },
   deployedTextMap: {
-    [MANUAL_DEPLOY]: __('Can deploy manually to'),
+    [MANUAL_DEPLOY]: __('Can be manually deployed to'),
     [WILL_DEPLOY]: __('Will deploy to'),
     [RUNNING]: __('Deploying to'),
     [SUCCESS]: __('Deployed to'),
     [FAILED]: __('Failed to deploy to'),
-    [CANCELED]: __('Canceled deploy to'),
+    [CANCELED]: __('Canceled deployment to'),
   },
   computed: {
     deployTimeago() {
@@ -75,7 +75,7 @@ export default {
           :href="deployment.url"
           target="_blank"
           rel="noopener noreferrer nofollow"
-          class="js-deploy-meta gl-font-size-12"
+          class="js-deploy-meta gl-font-sm"
         >
           {{ deployment.name }}
         </gl-link>

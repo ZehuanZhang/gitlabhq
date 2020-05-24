@@ -3,8 +3,8 @@
 require 'spec_helper'
 
 describe MergeRequestSerializer do
-  set(:user) { create(:user) }
-  set(:resource) { create(:merge_request, description: "Description") }
+  let_it_be(:user) { create(:user) }
+  let_it_be(:resource) { create(:merge_request, description: "Description") }
 
   let(:json_entity) do
     described_class.new(current_user: user)
@@ -66,6 +66,22 @@ describe MergeRequestSerializer do
       it 'matches noteable merge request json schema' do
         expect(json_entity).to match_schema('entities/merge_request_noteable')
       end
+    end
+  end
+
+  context 'poll cached widget merge request serialization' do
+    let(:serializer) { 'poll_cached_widget' }
+
+    it 'matches basic merge request json schema' do
+      expect(json_entity).to match_schema('entities/merge_request_poll_cached_widget')
+    end
+  end
+
+  context 'poll widget merge request serialization' do
+    let(:serializer) { 'poll_widget' }
+
+    it 'matches basic merge request json schema' do
+      expect(json_entity).to match_schema('entities/merge_request_poll_widget')
     end
   end
 

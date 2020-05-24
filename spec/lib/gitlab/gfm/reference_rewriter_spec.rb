@@ -3,12 +3,12 @@
 require 'spec_helper'
 
 describe Gitlab::Gfm::ReferenceRewriter do
-  let(:group) { create(:group) }
-  let(:old_project) { create(:project, name: 'old-project', group: group) }
-  let(:new_project) { create(:project, name: 'new-project', group: group) }
-  let(:user) { create(:user) }
+  let_it_be(:group) { create(:group) }
+  let_it_be(:user) { create(:user) }
 
-  let(:old_project_ref) { old_project.to_reference(new_project) }
+  let(:new_project) { create(:project, name: 'new-project', group: group) }
+  let(:old_project) { create(:project, name: 'old-project', group: group) }
+  let(:old_project_ref) { old_project.to_reference_base(new_project) }
   let(:text) { 'some text' }
 
   before do
@@ -35,7 +35,7 @@ describe Gitlab::Gfm::ReferenceRewriter do
 
       context 'description with ignored elements' do
         let(:text) do
-          "Hi. This references #1, but not `#2`\n" +
+          "Hi. This references #1, but not `#2`\n" \
             '<pre>and not !1</pre>'
         end
 
@@ -143,6 +143,18 @@ describe Gitlab::Gfm::ReferenceRewriter do
       end
 
       let(:text) { 'milestone %"10.0"' }
+
+      it { is_expected.to eq text }
+    end
+
+    context 'when referring to a group' do
+      let(:text) { "group @#{group.full_path}" }
+
+      it { is_expected.to eq text }
+    end
+
+    context 'when referring to a user' do
+      let(:text) { "user @#{user.full_path}" }
 
       it { is_expected.to eq text }
     end

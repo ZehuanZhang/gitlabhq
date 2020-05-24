@@ -83,6 +83,7 @@ class Note < ApplicationRecord
   has_many :events, as: :target, dependent: :delete_all # rubocop:disable Cop/ActiveRecordDependent
   has_one :system_note_metadata
   has_one :note_diff_file, inverse_of: :diff_note, foreign_key: :diff_note_id
+  has_many :diff_note_positions
 
   delegate :gfm_reference, :local_reference, to: :noteable
   delegate :name, to: :project, prefix: true
@@ -124,7 +125,7 @@ class Note < ApplicationRecord
   scope :inc_author, -> { includes(:author) }
   scope :inc_relations_for_view, -> do
     includes(:project, { author: :status }, :updated_by, :resolved_by, :award_emoji,
-             :system_note_metadata, :note_diff_file, :suggestions)
+             { system_note_metadata: :description_version }, :note_diff_file, :diff_note_positions, :suggestions)
   end
 
   scope :with_notes_filter, -> (notes_filter) do
@@ -157,6 +158,9 @@ class Note < ApplicationRecord
   after_save :expire_etag_cache, unless: :importing?
   after_save :touch_noteable, unless: :importing?
   after_destroy :expire_etag_cache
+  after_save :store_mentions!, if: :any_mentionable_attributes_changed?
+  after_commit :notify_after_create, on: :create
+  after_commit :notify_after_destroy, on: :destroy
 
   class << self
     def model_name
@@ -222,7 +226,7 @@ class Note < ApplicationRecord
   end
 
   # rubocop: disable CodeReuse/ServiceClass
-  def cross_reference?
+  def system_note_with_references?
     return unless system?
 
     if force_cross_reference_regex_check?
@@ -277,6 +281,10 @@ class Note < ApplicationRecord
     !for_personal_snippet?
   end
 
+  def for_design?
+    noteable_type == DesignManagement::Design.name
+  end
+
   def for_issuable?
     for_issue? || for_merge_request?
   end
@@ -287,6 +295,19 @@ class Note < ApplicationRecord
 
   def commit
     @commit ||= project.commit(commit_id) if commit_id.present?
+  end
+
+  # Notes on merge requests and commits can be traced back to one or several
+  # MRs. This method returns a relation if the note is for one of these types,
+  # or nil if it is a note on some other object.
+  def merge_requests
+    if for_commit?
+      project.merge_requests.by_commit_sha(commit_id)
+    elsif for_merge_request?
+      MergeRequest.id_in(noteable_id)
+    else
+      nil
+    end
   end
 
   # override to return commits, which are not active record
@@ -306,6 +327,13 @@ class Note < ApplicationRecord
     super(noteable_type.to_s.classify.constantize.base_class.to_s)
   end
 
+  def noteable_assignee_or_author?(user)
+    return false unless user
+    return noteable.assignee_or_author?(user) if [MergeRequest, Issue].include?(noteable.class)
+
+    noteable.author_id == user.id
+  end
+
   def special_role=(role)
     raise "Role is undefined, #{role} not found in #{SpecialRole.values}" unless SpecialRole.value?(role)
 
@@ -323,7 +351,7 @@ class Note < ApplicationRecord
   end
 
   def confidential?
-    noteable.try(:confidential?)
+    confidential || noteable.try(:confidential?)
   end
 
   def editable?
@@ -338,12 +366,10 @@ class Note < ApplicationRecord
     super
   end
 
-  def cross_reference_not_visible_for?(user)
-    cross_reference? && !all_referenced_mentionables_allowed?(user)
-  end
-
-  def visible_for?(user)
-    !cross_reference_not_visible_for?(user) && system_note_viewable_by?(user)
+  # This method is to be used for checking read permissions on a note instead of `system_note_with_references_visible_for?`
+  def readable_by?(user)
+    # note_policy accounts for #system_note_with_references_visible_for?(user) check when granting read access
+    Ability.allowed?(user, :read_note, self)
   end
 
   def award_emoji?
@@ -367,7 +393,7 @@ class Note < ApplicationRecord
   end
 
   def noteable_ability_name
-    for_snippet? ? noteable.class.name.underscore : noteable_type.demodulize.underscore
+    for_snippet? ? 'snippet' : noteable_type.demodulize.underscore
   end
 
   def can_be_discussion_note?
@@ -485,6 +511,14 @@ class Note < ApplicationRecord
     noteable_object
   end
 
+  def notify_after_create
+    noteable&.after_note_created(self)
+  end
+
+  def notify_after_destroy
+    noteable&.after_note_destroyed(self)
+  end
+
   def banzai_render_context(field)
     super.merge(noteable: noteable, system_note: system?)
   end
@@ -498,7 +532,13 @@ class Note < ApplicationRecord
   end
 
   def user_mentions
+    return Note.none unless noteable.present?
+
     noteable.user_mentions.where(note: self)
+  end
+
+  def system_note_with_references_visible_for?(user)
+    (!system_note_with_references? || all_referenced_mentionables_allowed?(user)) && system_note_viewable_by?(user)
   end
 
   private
@@ -506,6 +546,8 @@ class Note < ApplicationRecord
   # Using this method followed by a call to `save` may result in ActiveRecord::RecordNotUnique exception
   # in a multithreaded environment. Make sure to use it within a `safe_ensure_unique` block.
   def model_user_mention
+    return if user_mentions.is_a?(ActiveRecord::NullRelation)
+
     user_mentions.first_or_initialize
   end
 
@@ -545,7 +587,8 @@ class Note < ApplicationRecord
       # if they are not equal, then there are private/confidential references as well
       user_visible_reference_count > 0 && user_visible_reference_count == total_reference_count
     else
-      referenced_mentionables(user).any?
+      refs = all_references(user)
+      refs.all.any? && refs.stateful_not_visible_counter == 0
     end
   end
 

@@ -3,15 +3,18 @@
 exports[`Remove cluster confirmation modal renders splitbutton with modal included 1`] = `
 <div>
   <div
-    class="dropdown btn-group b-dropdown gl-dropdown"
+    class="dropdown b-dropdown gl-dropdown btn-group"
   >
     <button
       class="btn btn-danger"
       type="button"
     >
-      
-    Remove integration and resources
-    
+      <span
+        class="gl-dropdown-toggle-text"
+      >
+        Remove integration and resources
+      </span>
+       
       <!---->
     </button>
     <button
@@ -31,7 +34,9 @@ exports[`Remove cluster confirmation modal renders splitbutton with modal includ
       role="menu"
       tabindex="-1"
     >
-      <li>
+      <li
+        role="presentation"
+      >
         <button
           class="dropdown-item is-active"
           role="menuitem"
@@ -47,14 +52,18 @@ exports[`Remove cluster confirmation modal renders splitbutton with modal includ
         </button>
       </li>
        
-      <li>
+      <li
+        role="presentation"
+      >
         <hr
           aria-orientation="horizontal"
           class="dropdown-divider"
           role="separator"
         />
       </li>
-      <li>
+      <li
+        role="presentation"
+      >
         <button
           class="dropdown-item"
           role="menuitem"

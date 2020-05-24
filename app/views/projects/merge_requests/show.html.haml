@@ -51,6 +51,8 @@
 
     .tab-content#diff-notes-app
       #js-diff-file-finder
+      - if native_code_navigation_enabled?(@project)
+        #js-code-navigation
       = render "projects/merge_requests/tabs/pane", id: "notes", class: "notes voting_notes" do
         .row
           %section.col-md-12
@@ -78,6 +80,7 @@
         endpoint: diffs_project_merge_request_path(@project, @merge_request, 'json', request.query_parameters),
         endpoint_metadata: diffs_metadata_project_json_merge_request_path(@project, @merge_request, 'json', request.query_parameters),
         endpoint_batch: diffs_batch_project_json_merge_request_path(@project, @merge_request, 'json', request.query_parameters),
+        endpoint_coverage: @coverage_path,
         help_page_path: suggest_changes_help_path,
         current_user_data: @current_user_data,
         project_path: project_path(@merge_request.project),
@@ -88,7 +91,8 @@
         show_whitespace_default: @show_whitespace_default.to_s }
 
     .mr-loading-status
-      = spinner
+      .loading.hide
+        .spinner.spinner-md
 
 = render 'shared/issuable/sidebar', issuable_sidebar: @issuable_sidebar, assignees: @merge_request.assignees
 

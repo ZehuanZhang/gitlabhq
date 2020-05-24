@@ -1,5 +1,5 @@
 <script>
-import _ from 'underscore';
+import { escape } from 'lodash';
 import helmInstallIllustration from '@gitlab/svgs/dist/illustrations/kubernetes-installation.svg';
 import { GlLoadingIcon } from '@gitlab/ui';
 import elasticsearchLogo from 'images/cluster_app_logos/elasticsearch.png';
@@ -14,6 +14,7 @@ import knativeLogo from 'images/cluster_app_logos/knative.png';
 import meltanoLogo from 'images/cluster_app_logos/meltano.png';
 import prometheusLogo from 'images/cluster_app_logos/prometheus.png';
 import elasticStackLogo from 'images/cluster_app_logos/elastic_stack.png';
+import fluentdLogo from 'images/cluster_app_logos/fluentd.png';
 import { s__, sprintf } from '../../locale';
 import applicationRow from './application_row.vue';
 import clipboardButton from '../../vue_shared/components/clipboard_button.vue';
@@ -21,6 +22,8 @@ import KnativeDomainEditor from './knative_domain_editor.vue';
 import { CLUSTER_TYPE, PROVIDER_TYPE, APPLICATION_STATUS, INGRESS } from '../constants';
 import eventHub from '~/clusters/event_hub';
 import CrossplaneProviderStack from './crossplane_provider_stack.vue';
+import IngressModsecuritySettings from './ingress_modsecurity_settings.vue';
+import FluentdOutputSettings from './fluentd_output_settings.vue';
 
 export default {
   components: {
@@ -29,6 +32,8 @@ export default {
     GlLoadingIcon,
     KnativeDomainEditor,
     CrossplaneProviderStack,
+    IngressModsecuritySettings,
+    FluentdOutputSettings,
   },
   props: {
     type: {
@@ -100,13 +105,18 @@ export default {
     meltanoLogo,
     prometheusLogo,
     elasticStackLogo,
+    fluentdLogo,
   }),
   computed: {
     isProjectCluster() {
       return this.type === CLUSTER_TYPE.PROJECT;
     },
+    managedAppsLocalTillerEnabled() {
+      return Boolean(gon.features?.managedAppsLocalTiller);
+    },
     helmInstalled() {
       return (
+        this.managedAppsLocalTillerEnabled ||
         this.applications.helm.status === APPLICATION_STATUS.INSTALLED ||
         this.applications.helm.status === APPLICATION_STATUS.UPDATED
       );
@@ -117,9 +127,6 @@ export default {
     ingressInstalled() {
       return this.applications.ingress.status === APPLICATION_STATUS.INSTALLED;
     },
-    ingressEnableModsecurity() {
-      return this.applications.ingress.modsecurity_enabled;
-    },
     ingressExternalEndpoint() {
       return this.applications.ingress.externalIp || this.applications.ingress.externalHostname;
     },
@@ -129,27 +136,9 @@ export default {
     crossplaneInstalled() {
       return this.applications.crossplane.status === APPLICATION_STATUS.INSTALLED;
     },
-    enableClusterApplicationCrossplane() {
-      return gon.features && gon.features.enableClusterApplicationCrossplane;
-    },
-    enableClusterApplicationElasticStack() {
-      return gon.features && gon.features.enableClusterApplicationElasticStack;
-    },
-    ingressModSecurityDescription() {
-      const escapedUrl = _.escape(this.ingressModSecurityHelpPath);
-
-      return sprintf(
-        s__('ClusterIntegration|Learn more about %{startLink}ModSecurity%{endLink}'),
-        {
-          startLink: `<a href="${escapedUrl}" target="_blank" rel="noopener noreferrer">`,
-          endLink: '</a>',
-        },
-        false,
-      );
-    },
     ingressDescription() {
       return sprintf(
-        _.escape(
+        escape(
           s__(
             `ClusterIntegration|Installing Ingress may incur additional costs. Learn more about %{pricingLink}.`,
           ),
@@ -157,14 +146,14 @@ export default {
         {
           pricingLink: `<a href="https://cloud.google.com/compute/pricing#lb"
               target="_blank" rel="noopener noreferrer">
-              ${_.escape(s__('ClusterIntegration|pricing'))}</a>`,
+              ${escape(s__('ClusterIntegration|pricing'))}</a>`,
         },
         false,
       );
     },
     certManagerDescription() {
       return sprintf(
-        _.escape(
+        escape(
           s__(
             `ClusterIntegration|Cert-Manager is a native Kubernetes certificate management controller that helps with issuing certificates.
             Installing Cert-Manager on your cluster will issue a certificate by %{letsEncrypt} and ensure that certificates
@@ -174,14 +163,14 @@ export default {
         {
           letsEncrypt: `<a href="https://letsencrypt.org/"
               target="_blank" rel="noopener noreferrer">
-              ${_.escape(s__("ClusterIntegration|Let's Encrypt"))}</a>`,
+              ${escape(s__("ClusterIntegration|Let's Encrypt"))}</a>`,
         },
         false,
       );
     },
     crossplaneDescription() {
       return sprintf(
-        _.escape(
+        escape(
           s__(
             `ClusterIntegration|Crossplane enables declarative provisioning of managed services from your cloud of choice using %{kubectl} or %{gitlabIntegrationLink}.
 Crossplane runs inside your Kubernetes cluster and supports secure connectivity and secrets management between app containers and the cloud services they depend on.`,
@@ -190,7 +179,7 @@ Crossplane runs inside your Kubernetes cluster and supports secure connectivity 
         {
           gitlabIntegrationLink: `<a href="https://docs.gitlab.com/ee/user/clusters/applications.html#crossplane"
           target="_blank" rel="noopener noreferrer">
-          ${_.escape(s__('ClusterIntegration|Gitlab Integration'))}</a>`,
+          ${escape(s__('ClusterIntegration|Gitlab Integration'))}</a>`,
           kubectl: `<code>kubectl</code>`,
         },
         false,
@@ -199,7 +188,7 @@ Crossplane runs inside your Kubernetes cluster and supports secure connectivity 
 
     prometheusDescription() {
       return sprintf(
-        _.escape(
+        escape(
           s__(
             `ClusterIntegration|Prometheus is an open-source monitoring system
             with %{gitlabIntegrationLink} to monitor deployed applications.`,
@@ -208,7 +197,7 @@ Crossplane runs inside your Kubernetes cluster and supports secure connectivity 
         {
           gitlabIntegrationLink: `<a href="https://docs.gitlab.com/ce/user/project/integrations/prometheus.html"
               target="_blank" rel="noopener noreferrer">
-              ${_.escape(s__('ClusterIntegration|GitLab Integration'))}</a>`,
+              ${escape(s__('ClusterIntegration|GitLab Integration'))}</a>`,
         },
         false,
       );
@@ -222,9 +211,6 @@ Crossplane runs inside your Kubernetes cluster and supports secure connectivity 
     elasticStackInstalled() {
       return this.applications.elastic_stack.status === APPLICATION_STATUS.INSTALLED;
     },
-    elasticStackKibanaHostname() {
-      return this.applications.elastic_stack.kibana_hostname;
-    },
     knative() {
       return this.applications.knative;
     },
@@ -237,11 +223,11 @@ Crossplane runs inside your Kubernetes cluster and supports secure connectivity 
     installedVia() {
       if (this.cloudRun) {
         return sprintf(
-          _.escape(s__(`ClusterIntegration|installed via %{installed_via}`)),
+          escape(s__(`ClusterIntegration|installed via %{installed_via}`)),
           {
             installed_via: `<a href="${
               this.cloudRunHelpPath
-            }" target="_blank" rel="noopener noreferrer">${_.escape(
+            }" target="_blank" rel="noopener noreferrer">${escape(
               s__('ClusterIntegration|Cloud Run'),
             )}</a>`,
           },
@@ -250,21 +236,28 @@ Crossplane runs inside your Kubernetes cluster and supports secure connectivity 
       }
       return null;
     },
+    ingress() {
+      return this.applications.ingress;
+    },
   },
   created() {
     this.helmInstallIllustration = helmInstallIllustration;
   },
   methods: {
-    saveKnativeDomain(hostname) {
+    saveKnativeDomain() {
       eventHub.$emit('saveKnativeDomain', {
         id: 'knative',
-        params: { hostname },
+        params: {
+          hostname: this.applications.knative.hostname,
+          pages_domain_id: this.applications.knative.pagesDomain?.id,
+        },
       });
     },
-    setKnativeHostname(hostname) {
-      eventHub.$emit('setKnativeHostname', {
+    setKnativeDomain({ domainId, domain }) {
+      eventHub.$emit('setKnativeDomain', {
         id: 'knative',
-        hostname,
+        domainId,
+        domain,
       });
     },
     setCrossplaneProviderStack(stack) {
@@ -279,7 +272,6 @@ Crossplane runs inside your Kubernetes cluster and supports secure connectivity 
 
 <template>
   <section id="cluster-applications">
-    <h4>{{ s__('ClusterIntegration|Applications') }}</h4>
     <p class="append-bottom-0">
       {{
         s__(`ClusterIntegration|Choose which applications to install on your Kubernetes cluster.
@@ -290,6 +282,7 @@ Crossplane runs inside your Kubernetes cluster and supports secure connectivity 
 
     <div class="cluster-application-list prepend-top-10">
       <application-row
+        v-if="!managedAppsLocalTillerEnabled"
         id="helm"
         :logo-url="helmLogo"
         :title="applications.helm.title"
@@ -333,11 +326,13 @@ Crossplane runs inside your Kubernetes cluster and supports secure connectivity 
         :install-failed="applications.ingress.installFailed"
         :install-application-request-params="{
           modsecurity_enabled: applications.ingress.modsecurity_enabled,
+          modsecurity_mode: applications.ingress.modsecurity_mode,
         }"
         :uninstallable="applications.ingress.uninstallable"
         :uninstall-successful="applications.ingress.uninstallSuccessful"
         :uninstall-failed="applications.ingress.uninstallFailed"
         :disabled="!helmInstalled"
+        :updateable="false"
         title-link="https://kubernetes.io/docs/concepts/services-networking/ingress/"
       >
         <div slot="description">
@@ -349,25 +344,10 @@ Crossplane runs inside your Kubernetes cluster and supports secure connectivity 
             }}
           </p>
 
-          <template>
-            <div class="form-group">
-              <div class="form-check form-check-inline">
-                <input
-                  v-model="applications.ingress.modsecurity_enabled"
-                  :disabled="ingressInstalled"
-                  type="checkbox"
-                  autocomplete="off"
-                  class="form-check-input"
-                />
-                <label class="form-check-label label-bold" for="ingress-enable-modsecurity">
-                  {{ s__('ClusterIntegration|Enable Web Application Firewall') }}
-                </label>
-              </div>
-              <p class="form-text text-muted">
-                <strong v-html="ingressModSecurityDescription"></strong>
-              </p>
-            </div>
-          </template>
+          <ingress-modsecurity-settings
+            :ingress="ingress"
+            :ingress-mod-security-help-path="ingressModSecurityHelpPath"
+          />
 
           <template v-if="ingressInstalled">
             <div class="form-group">
@@ -522,7 +502,6 @@ Crossplane runs inside your Kubernetes cluster and supports secure connectivity 
         </div>
       </application-row>
       <application-row
-        v-if="enableClusterApplicationCrossplane"
         id="crossplane"
         :logo-url="crossplaneLogo"
         :title="applications.crossplane.title"
@@ -620,7 +599,10 @@ Crossplane runs inside your Kubernetes cluster and supports secure connectivity 
         :request-reason="applications.knative.requestReason"
         :installed="applications.knative.installed"
         :install-failed="applications.knative.installFailed"
-        :install-application-request-params="{ hostname: applications.knative.hostname }"
+        :install-application-request-params="{
+          hostname: applications.knative.hostname,
+          pages_domain_id: applications.knative.pagesDomain && applications.knative.pagesDomain.id,
+        }"
         :installed-via="installedVia"
         :uninstallable="applications.knative.uninstallable"
         :uninstall-successful="applications.knative.uninstallSuccessful"
@@ -657,12 +639,11 @@ Crossplane runs inside your Kubernetes cluster and supports secure connectivity 
             :knative="knative"
             :ingress-dns-help-path="ingressDnsHelpPath"
             @save="saveKnativeDomain"
-            @set="setKnativeHostname"
+            @set="setKnativeDomain"
           />
         </div>
       </application-row>
       <application-row
-        v-if="enableClusterApplicationElasticStack"
         id="elastic_stack"
         :logo-url="elasticStackLogo"
         :title="applications.elastic_stack.title"
@@ -681,10 +662,7 @@ Crossplane runs inside your Kubernetes cluster and supports secure connectivity 
         :uninstall-successful="applications.elastic_stack.uninstallSuccessful"
         :uninstall-failed="applications.elastic_stack.uninstallFailed"
         :disabled="!helmInstalled"
-        :install-application-request-params="{
-          kibana_hostname: applications.elastic_stack.kibana_hostname,
-        }"
-        title-link="https://github.com/helm/charts/tree/master/stable/elastic-stack"
+        title-link="https://gitlab.com/gitlab-org/charts/elastic-stack"
       >
         <div slot="description">
           <p>
@@ -694,40 +672,51 @@ Crossplane runs inside your Kubernetes cluster and supports secure connectivity 
               )
             }}
           </p>
+        </div>
+      </application-row>
 
-          <template v-if="ingressExternalEndpoint">
-            <div class="form-group">
-              <label for="elastic-stack-kibana-hostname">{{
-                s__('ClusterIntegration|Kibana Hostname')
-              }}</label>
+      <application-row
+        id="fluentd"
+        :logo-url="fluentdLogo"
+        :title="applications.fluentd.title"
+        :status="applications.fluentd.status"
+        :status-reason="applications.fluentd.statusReason"
+        :request-status="applications.fluentd.requestStatus"
+        :request-reason="applications.fluentd.requestReason"
+        :installed="applications.fluentd.installed"
+        :install-failed="applications.fluentd.installFailed"
+        :install-application-request-params="{
+          host: applications.fluentd.host,
+          port: applications.fluentd.port,
+          protocol: applications.fluentd.protocol,
+          waf_log_enabled: applications.fluentd.wafLogEnabled,
+          cilium_log_enabled: applications.fluentd.ciliumLogEnabled,
+        }"
+        :uninstallable="applications.fluentd.uninstallable"
+        :uninstall-successful="applications.fluentd.uninstallSuccessful"
+        :uninstall-failed="applications.fluentd.uninstallFailed"
+        :disabled="!helmInstalled"
+        :updateable="false"
+        title-link="https://github.com/helm/charts/tree/master/stable/fluentd"
+      >
+        <div slot="description">
+          <p>
+            {{
+              s__(
+                `ClusterIntegration|Fluentd is an open source data collector, which lets you unify the data collection and consumption for a better use and understanding of data. It requires at least one of the following logs to be successfully installed.`,
+              )
+            }}
+          </p>
 
-              <div class="input-group">
-                <input
-                  v-model="applications.elastic_stack.kibana_hostname"
-                  :readonly="elasticStackInstalled"
-                  type="text"
-                  class="form-control js-hostname"
-                />
-                <span class="input-group-btn">
-                  <clipboard-button
-                    :text="elasticStackKibanaHostname"
-                    :title="s__('ClusterIntegration|Copy Kibana Hostname')"
-                    class="js-clipboard-btn"
-                  />
-                </span>
-              </div>
-
-              <p v-if="ingressInstalled" class="form-text text-muted">
-                {{
-                  s__(`ClusterIntegration|Replace this with your own hostname if you want.
-                                If you do so, point hostname to Ingress IP Address from above.`)
-                }}
-                <a :href="ingressDnsHelpPath" target="_blank" rel="noopener noreferrer">
-                  {{ __('More information') }}
-                </a>
-              </p>
-            </div>
-          </template>
+          <fluentd-output-settings
+            :port="applications.fluentd.port"
+            :protocol="applications.fluentd.protocol"
+            :host="applications.fluentd.host"
+            :waf-log-enabled="applications.fluentd.wafLogEnabled"
+            :cilium-log-enabled="applications.fluentd.ciliumLogEnabled"
+            :status="applications.fluentd.status"
+            :update-failed="applications.fluentd.updateFailed"
+          />
         </div>
       </application-row>
     </div>

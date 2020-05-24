@@ -58,8 +58,6 @@ module SearchHelper
       ns_('SearchResults|comment', 'SearchResults|comments', count)
     when 'projects'
       ns_('SearchResults|project', 'SearchResults|projects', count)
-    when 'snippet_blobs'
-      ns_('SearchResults|snippet result', 'SearchResults|snippet results', count)
     when 'snippet_titles'
       ns_('SearchResults|snippet', 'SearchResults|snippets', count)
     when 'users'
@@ -84,19 +82,6 @@ module SearchHelper
       scope: search_entries_scope_label(scope, 0),
       term: "<code>#{h(term)}</code>"
     }).html_safe
-  end
-
-  def find_project_for_result_blob(projects, result)
-    @project
-  end
-
-  # Used in EE
-  def blob_projects(results)
-    nil
-  end
-
-  def parse_search_result(result)
-    result
   end
 
   # Overriden in EE
@@ -222,11 +207,11 @@ module SearchHelper
     end
   end
 
-  def search_filter_input_options(type)
+  def search_filter_input_options(type, placeholder = _('Search or filter results...'))
     opts =
       {
         id: "filtered-search-#{type}",
-        placeholder: _('Search or filter results...'),
+        placeholder: placeholder,
         data: {
           'username-params' => UserSerializer.new.represent(@users)
         },

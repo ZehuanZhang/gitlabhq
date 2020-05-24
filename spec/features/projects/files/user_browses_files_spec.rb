@@ -41,6 +41,11 @@ describe "User browses files" do
 
     it "shows the `Browse Directory` link" do
       click_link("files")
+
+      page.within('.repo-breadcrumb') do
+        expect(page).to have_link('files')
+      end
+
       click_link("History")
 
       expect(page).to have_link("Browse Directory").and have_no_link("Browse Code")
@@ -163,6 +168,98 @@ describe "User browses files" do
         expect(current_path).to eq(project_blob_path(project, "markdown/doc/api/users.md"))
         expect(page).to have_content("List users").and have_content("Get a list of users.")
       end
+    end
+  end
+
+  context 'when commit message has markdown', :js do
+    before do
+      project.repository.create_file(user, 'index', 'test', message: ':star: testing', branch_name: 'master')
+
+      visit(project_tree_path(project, "master"))
+    end
+
+    it 'renders emojis' do
+      expect(page).to have_selector('gl-emoji', count: 2)
+    end
+  end
+
+  context "when browsing a `improve/awesome` branch", :js do
+    before do
+      visit(project_tree_path(project, "improve/awesome"))
+    end
+
+    it "shows files from a repository" do
+      expect(page).to have_content("VERSION")
+        .and have_content(".gitignore")
+        .and have_content("LICENSE")
+
+      click_link("files")
+
+      page.within('.repo-breadcrumb') do
+        expect(page).to have_link('files')
+      end
+
+      click_link("html")
+
+      page.within('.repo-breadcrumb') do
+        expect(page).to have_link('html')
+      end
+
+      expect(page).to have_link('500.html')
+    end
+  end
+
+  context "when browsing a `Ääh-test-utf-8` branch", :js do
+    before do
+      project.repository.create_branch('Ääh-test-utf-8', project.repository.root_ref)
+      visit(project_tree_path(project, "Ääh-test-utf-8"))
+    end
+
+    it "shows files from a repository" do
+      expect(page).to have_content("VERSION")
+        .and have_content(".gitignore")
+        .and have_content("LICENSE")
+
+      click_link("files")
+
+      page.within('.repo-breadcrumb') do
+        expect(page).to have_link('files')
+      end
+
+      click_link("html")
+
+      page.within('.repo-breadcrumb') do
+        expect(page).to have_link('html')
+      end
+
+      expect(page).to have_link('500.html')
+    end
+  end
+
+  context "when browsing a `test-#` branch", :js do
+    before do
+      project.repository.create_branch('test-#', project.repository.root_ref)
+      visit(project_tree_path(project, "test-#"))
+    end
+
+    it "shows files from a repository" do
+      expect(page).to have_content("VERSION")
+        .and have_content(".gitignore")
+        .and have_content("LICENSE")
+
+      click_link("files")
+
+      page.within('.repo-breadcrumb') do
+        expect(page).to have_link('files')
+      end
+
+      click_link("html")
+
+      page.within('.repo-breadcrumb') do
+        expect(page).to have_link('html')
+      end
+
+      expect(page).to have_link('500.html')
     end
   end
 

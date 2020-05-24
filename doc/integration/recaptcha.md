@@ -23,11 +23,11 @@ user logins via passwords, the `X-GitLab-Show-Login-Captcha` HTTP header must
 be set. For example, in NGINX, this can be done via the `proxy_set_header`
 configuration variable:
 
-```
+```nginx
 proxy_set_header X-GitLab-Show-Login-Captcha 1;
 ```
 
-In GitLab Omnibus, this can be configured via `/etc/gitlab/gitlab.rb`:
+In Omnibus GitLab, this can be configured via `/etc/gitlab/gitlab.rb`:
 
 ```ruby
 nginx['proxy_set_headers'] = { 'X-GitLab-Show-Login-Captcha' => 1 }

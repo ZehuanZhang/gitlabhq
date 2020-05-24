@@ -27,7 +27,7 @@ module API
         optional :username, type: String, desc: 'The username of the user who triggered pipelines'
         optional :updated_before, type: DateTime, desc: 'Return pipelines updated before the specified datetime. Format: ISO 8601 YYYY-MM-DDTHH:MM:SSZ'
         optional :updated_after, type: DateTime, desc: 'Return pipelines updated after the specified datetime. Format: ISO 8601 YYYY-MM-DDTHH:MM:SSZ'
-        optional :order_by, type: String, values: PipelinesFinder::ALLOWED_INDEXED_COLUMNS, default: 'id',
+        optional :order_by, type: String, values: Ci::PipelinesFinder::ALLOWED_INDEXED_COLUMNS, default: 'id',
                             desc: 'Order pipelines'
         optional :sort,     type: String, values: %w[asc desc], default: 'desc',
                             desc: 'Sort pipelines'
@@ -36,7 +36,7 @@ module API
         authorize! :read_pipeline, user_project
         authorize! :read_build, user_project
 
-        pipelines = PipelinesFinder.new(user_project, current_user, params).execute
+        pipelines = Ci::PipelinesFinder.new(user_project, current_user, params).execute
         present paginate(pipelines), with: Entities::PipelineBasic
       end
 
@@ -106,6 +106,21 @@ module API
         authorize! :read_pipeline_variable, pipeline
 
         present pipeline.variables, with: Entities::Variable
+      end
+
+      desc 'Gets the test report for a given pipeline' do
+        detail 'This feature was introduced in GitLab 13.0. Disabled by default behind feature flag `junit_pipeline_view`'
+        success TestReportEntity
+      end
+      params do
+        requires :pipeline_id, type: Integer, desc: 'The pipeline ID'
+      end
+      get ':id/pipelines/:pipeline_id/test_report' do
+        not_found! unless Feature.enabled?(:junit_pipeline_view, user_project)
+
+        authorize! :read_build, pipeline
+
+        present pipeline.test_reports, with: TestReportEntity
       end
 
       desc 'Deletes a pipeline' do

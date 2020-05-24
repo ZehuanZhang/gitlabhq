@@ -4,8 +4,6 @@ require 'flipper/adapters/active_record'
 require 'flipper/adapters/active_support_cache_store'
 
 class Feature
-  prepend_if_ee('EE::Feature') # rubocop: disable Cop/InjectEnterpriseEditionModule
-
   # Classes to override flipper table names
   class FlipperFeature < Flipper::Adapters::ActiveRecord::Feature
     # Using `self.table_name` won't work. ActiveRecord bug?
@@ -32,11 +30,13 @@ class Feature
     end
 
     def persisted_names
+      return [] unless Gitlab::Database.exists?
+
       Gitlab::SafeRequestStore[:flipper_persisted_names] ||=
         begin
           # We saw on GitLab.com, this database request was called 2300
           # times/s. Let's cache it for a minute to avoid that load.
-          Gitlab::ThreadMemoryCache.cache_backend.fetch('flipper:persisted_names', expires_in: 1.minute) do
+          Gitlab::ProcessMemoryCache.cache_backend.fetch('flipper:persisted_names', expires_in: 1.minute) do
             FlipperFeature.feature_names
           end
         end
@@ -132,7 +132,7 @@ class Feature
     end
 
     def l1_cache_backend
-      Gitlab::ThreadMemoryCache.cache_backend
+      Gitlab::ProcessMemoryCache.cache_backend
     end
 
     def l2_cache_backend
@@ -184,3 +184,5 @@ class Feature
     end
   end
 end
+
+Feature.prepend_if_ee('EE::Feature')

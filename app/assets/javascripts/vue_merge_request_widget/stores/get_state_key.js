@@ -7,7 +7,7 @@ export default function deviseState(data) {
     return stateKey.missingBranch;
   } else if (!data.commits_count) {
     return stateKey.nothingToMerge;
-  } else if (this.mergeStatus === 'unchecked') {
+  } else if (this.mergeStatus === 'unchecked' || this.mergeStatus === 'checking') {
     return stateKey.checking;
   } else if (data.has_conflicts) {
     return stateKey.conflicts;
@@ -21,7 +21,7 @@ export default function deviseState(data) {
     return stateKey.unresolvedDiscussions;
   } else if (this.isPipelineBlocked) {
     return stateKey.pipelineBlocked;
-  } else if (this.isSHAMismatch) {
+  } else if (this.canMerge && this.isSHAMismatch) {
     return stateKey.shaMismatch;
   } else if (this.autoMergeEnabled) {
     return this.mergeError ? stateKey.autoMergeFailed : stateKey.autoMergeEnabled;

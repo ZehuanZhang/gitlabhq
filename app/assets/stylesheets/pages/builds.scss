@@ -176,7 +176,6 @@
   }
 
   .sidebar-container {
-    width: calc(100% + 100px);
     padding-right: 100px;
     height: 100%;
     overflow-y: scroll;
@@ -254,7 +253,7 @@
       color: $blue-500;
 
       &:hover {
-        color: $white-light;
+        color: $white;
       }
     }
   }
@@ -268,7 +267,7 @@
   }
 
   .builds-container {
-    background-color: $white-light;
+    background-color: $white;
     border-top: 1px solid $border-color;
     border-bottom: 1px solid $border-color;
     max-height: 300px;

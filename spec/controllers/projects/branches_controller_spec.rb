@@ -38,7 +38,7 @@ describe Projects::BranchesController do
 
         it 'redirects' do
           expect(subject)
-            .to redirect_to("/#{project.full_path}/tree/merge_branch")
+            .to redirect_to("/#{project.full_path}/-/tree/merge_branch")
         end
       end
 
@@ -48,7 +48,7 @@ describe Projects::BranchesController do
 
         it 'redirects' do
           expect(subject)
-            .to redirect_to("/#{project.full_path}/tree/alert('merge');")
+            .to redirect_to("/#{project.full_path}/-/tree/alert('merge');")
         end
       end
 
@@ -93,7 +93,7 @@ describe Projects::BranchesController do
              }
 
         expect(subject)
-          .to redirect_to("/#{project.full_path}/tree/1-feature-branch")
+          .to redirect_to("/#{project.full_path}/-/tree/1-feature-branch")
       end
 
       it 'posts a system note' do
@@ -124,55 +124,37 @@ describe Projects::BranchesController do
           )
         end
 
-        context 'create_confidential_merge_request feature is enabled' do
+        context 'user cannot update issue' do
+          let(:issue) { create(:issue, project: confidential_issue_project) }
+
+          it 'does not post a system note' do
+            expect(SystemNoteService).not_to receive(:new_issue_branch)
+
+            create_branch_with_confidential_issue_project
+          end
+        end
+
+        context 'user can update issue' do
           before do
-            stub_feature_flags(create_confidential_merge_request: true)
+            confidential_issue_project.add_reporter(user)
           end
 
-          context 'user cannot update issue' do
+          context 'issue is under the specified project' do
             let(:issue) { create(:issue, project: confidential_issue_project) }
 
-            it 'does not post a system note' do
-              expect(SystemNoteService).not_to receive(:new_issue_branch)
+            it 'posts a system note' do
+              expect(SystemNoteService).to receive(:new_issue_branch).with(issue, confidential_issue_project, user, "1-feature-branch", branch_project: project)
 
               create_branch_with_confidential_issue_project
             end
           end
 
-          context 'user can update issue' do
-            before do
-              confidential_issue_project.add_reporter(user)
+          context 'issue is not under the specified project' do
+            it 'does not post a system note' do
+              expect(SystemNoteService).not_to receive(:new_issue_branch)
+
+              create_branch_with_confidential_issue_project
             end
-
-            context 'issue is under the specified project' do
-              let(:issue) { create(:issue, project: confidential_issue_project) }
-
-              it 'posts a system note' do
-                expect(SystemNoteService).to receive(:new_issue_branch).with(issue, confidential_issue_project, user, "1-feature-branch", branch_project: project)
-
-                create_branch_with_confidential_issue_project
-              end
-            end
-
-            context 'issue is not under the specified project' do
-              it 'does not post a system note' do
-                expect(SystemNoteService).not_to receive(:new_issue_branch)
-
-                create_branch_with_confidential_issue_project
-              end
-            end
-          end
-        end
-
-        context 'create_confidential_merge_request feature is disabled' do
-          before do
-            stub_feature_flags(create_confidential_merge_request: false)
-          end
-
-          it 'posts a system note on project' do
-            expect(SystemNoteService).to receive(:new_issue_branch).with(issue, project, user, "1-feature-branch", branch_project: project)
-
-            create_branch_with_confidential_issue_project
           end
         end
       end
@@ -217,7 +199,7 @@ describe Projects::BranchesController do
                  }
 
             expect(response.location).to include(project_new_blob_path(project, branch))
-            expect(response).to have_gitlab_http_status(302)
+            expect(response).to have_gitlab_http_status(:found)
           end
         end
 
@@ -238,7 +220,7 @@ describe Projects::BranchesController do
                }
 
           expect(response.location).to include(project_new_blob_path(project, branch))
-          expect(response).to have_gitlab_http_status(302)
+          expect(response).to have_gitlab_http_status(:found)
         end
       end
 
@@ -289,7 +271,7 @@ describe Projects::BranchesController do
       it 'returns a successful 200 response' do
         create_branch name: 'my-branch', ref: 'master'
 
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
       end
 
       it 'returns the created branch' do
@@ -303,7 +285,7 @@ describe Projects::BranchesController do
       it 'returns an unprocessable entity 422 response' do
         create_branch name: "<script>alert('merge');</script>", ref: "<script>alert('ref');</script>"
 
-        expect(response).to have_gitlab_http_status(422)
+        expect(response).to have_gitlab_http_status(:unprocessable_entity)
       end
     end
 
@@ -335,7 +317,7 @@ describe Projects::BranchesController do
              project_id: project
            }
 
-      expect(response).to have_gitlab_http_status(303)
+      expect(response).to have_gitlab_http_status(:see_other)
     end
   end
 
@@ -361,28 +343,28 @@ describe Projects::BranchesController do
       context "valid branch name, valid source" do
         let(:branch) { "feature" }
 
-        it { expect(response).to have_gitlab_http_status(200) }
+        it { expect(response).to have_gitlab_http_status(:ok) }
         it { expect(response.body).to be_blank }
       end
 
       context "valid branch name with unencoded slashes" do
         let(:branch) { "improve/awesome" }
 
-        it { expect(response).to have_gitlab_http_status(200) }
+        it { expect(response).to have_gitlab_http_status(:ok) }
         it { expect(response.body).to be_blank }
       end
 
       context "valid branch name with encoded slashes" do
         let(:branch) { "improve%2Fawesome" }
 
-        it { expect(response).to have_gitlab_http_status(200) }
+        it { expect(response).to have_gitlab_http_status(:ok) }
         it { expect(response.body).to be_blank }
       end
 
       context "invalid branch name, valid ref" do
         let(:branch) { "no-branch" }
 
-        it { expect(response).to have_gitlab_http_status(404) }
+        it { expect(response).to have_gitlab_http_status(:not_found) }
         it { expect(response.body).to be_blank }
       end
     end
@@ -398,7 +380,7 @@ describe Projects::BranchesController do
           expect(json_response).to eql("message" => 'Branch was deleted')
         end
 
-        it { expect(response).to have_gitlab_http_status(200) }
+        it { expect(response).to have_gitlab_http_status(:ok) }
       end
 
       context 'valid branch name with unencoded slashes' do
@@ -408,7 +390,7 @@ describe Projects::BranchesController do
           expect(json_response).to eql('message' => 'Branch was deleted')
         end
 
-        it { expect(response).to have_gitlab_http_status(200) }
+        it { expect(response).to have_gitlab_http_status(:ok) }
       end
 
       context "valid branch name with encoded slashes" do
@@ -418,7 +400,7 @@ describe Projects::BranchesController do
           expect(json_response).to eql('message' => 'Branch was deleted')
         end
 
-        it { expect(response).to have_gitlab_http_status(200) }
+        it { expect(response).to have_gitlab_http_status(:ok) }
       end
 
       context 'invalid branch name, valid ref' do
@@ -428,7 +410,7 @@ describe Projects::BranchesController do
           expect(json_response).to eql('message' => 'No such branch')
         end
 
-        it { expect(response).to have_gitlab_http_status(404) }
+        it { expect(response).to have_gitlab_http_status(:not_found) }
       end
     end
 
@@ -478,7 +460,7 @@ describe Projects::BranchesController do
       it 'responds with status 404' do
         destroy_all_merged
 
-        expect(response).to have_gitlab_http_status(404)
+        expect(response).to have_gitlab_http_status(:not_found)
       end
     end
   end
@@ -519,7 +501,7 @@ describe Projects::BranchesController do
               state: 'all'
             }
 
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
       end
     end
 
@@ -537,7 +519,7 @@ describe Projects::BranchesController do
               state: 'all'
             }
 
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
       end
     end
 
@@ -594,7 +576,7 @@ describe Projects::BranchesController do
             names: %w[fix add-pdf-file branch-merged]
           }
 
-      expect(response).to have_gitlab_http_status(200)
+      expect(response).to have_gitlab_http_status(:ok)
       expect(json_response).to eq(
         "fix" => { "behind" => 29, "ahead" => 2 },
         "branch-merged" => { "behind" => 1, "ahead" => 0 },
@@ -612,7 +594,7 @@ describe Projects::BranchesController do
             project_id: project
           }
 
-      expect(response).to have_gitlab_http_status(200)
+      expect(response).to have_gitlab_http_status(:ok)
       expect(json_response.count).to be > 1
     end
 
@@ -629,7 +611,7 @@ describe Projects::BranchesController do
               project_id: project
             }
 
-        expect(response).to have_gitlab_http_status(422)
+        expect(response).to have_gitlab_http_status(:unprocessable_entity)
         expect(json_response['error']).to eq("Specify at least one and at most #{Kaminari.config.default_per_page} branch names")
       end
 
@@ -642,7 +624,7 @@ describe Projects::BranchesController do
               names: %w[fix add-pdf-file branch-merged]
             }
 
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
         expect(json_response.count).to be > 1
       end
     end

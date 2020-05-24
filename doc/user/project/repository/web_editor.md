@@ -75,7 +75,7 @@ ready.
 To keep files in the repository organized it is often helpful to create a new
 directory.
 
-From a project's files page, click the '+' button to the right of the branch selector.
+From a project's files page, click the plus button (`+`) to the right of the branch selector.
 Choose **New directory** from the dropdown.
 
 ![New directory dropdown](img/web_editor_new_directory_dropdown.png)
@@ -91,13 +91,21 @@ There are multiple ways to create a branch from GitLab's web interface.
 
 ### Create a new branch from an issue
 
-> [Introduced][ce-2808] in GitLab 8.6.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/2808) in GitLab 8.6.
 
-In case your development workflow dictates to have an issue for every merge
-request, you can quickly create a branch right on the issue page which will be
-tied with the issue itself. You can see a **Create merge request** dropdown
-below the issue description unless there is already a branch with the same
-name or a referenced merge request.
+If your development workflow dictates to have an issue for every merge
+request, you can quickly create a branch directly from the issue to speed the process up.
+The new branch, and later its merge request, will be marked as related to this issue.
+Once merged, the MR will automatically close the issue.
+You can see a **Create merge request** dropdown below the issue description.
+
+NOTE: **Note:**
+You won't see the **Create merge request** button if there is already a branch with the same
+name or a referenced merge request or your project has an active
+fork relationship.
+If you would like to make this button appear, a possible workaround is to [remove your project's
+fork relationship](../settings/index.md#removing-a-fork-relationship). Once removed, the fork
+relationship cannot be restored and you will no longer be able to send merge requests to the source.
 
 ![Create Button](img/web_editor_new_branch_from_issue_create_button_v12_6.png)
 
@@ -116,9 +124,9 @@ When you click the **Create branch** button in an empty
 repository project, GitLab automatically creates a `master` branch, commits
 a blank `README.md` file to it, and creates and redirects you to a new branch
 based on the issue title.
-If your [project is already configured with a deployment service](../integrations/project_services.md),
+If your [project is already configured with a deployment service](../integrations/overview.md),
 such as Kubernetes, GitLab takes one step further and prompts you to set up
-[auto deploy](../../../topics/autodevops/index.md#auto-deploy)
+[auto deploy](../../../topics/autodevops/stages.md#auto-deploy)
 by helping you create a `.gitlab-ci.yml` file.
 
 After the branch is created, you can edit files in the repository to fix
@@ -179,8 +187,6 @@ you commit the changes you will be taken to a new merge request form.
 If you'd prefer _not_ to use your primary email address for commits created
 through the web editor, you can choose to use another of your linked email
 addresses from the **User Settings > Edit Profile** page.
-
-[ce-2808]: https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/2808
 
 <!-- ## Troubleshooting
 

@@ -17,9 +17,8 @@ describe('IssueAssigneesComponent', () => {
         assignees: mockAssigneesList,
         ...props,
       },
-      attachToDocument: true,
     });
-    vm = wrapper.vm; // eslint-disable-line
+    vm = wrapper.vm;
   };
 
   const findTooltipText = () => wrapper.find('.js-assignee-tooltip').text();

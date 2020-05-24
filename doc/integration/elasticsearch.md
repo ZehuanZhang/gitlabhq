@@ -1,8 +1,7 @@
 # Elasticsearch integration **(STARTER ONLY)**
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab/merge_requests/109 "Elasticsearch Merge Request") in GitLab [Starter](https://about.gitlab.com/pricing/) 8.4. Support
-> for [Amazon Elasticsearch](https://docs.aws.amazon.com/elasticsearch-service/latest/developerguide/es-gsg.html) was [introduced](https://gitlab.com/gitlab-org/gitlab/merge_requests/1305) in GitLab
-> [Starter](https://about.gitlab.com/pricing/) 9.0.
+> - [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/109 "Elasticsearch Merge Request") in GitLab [Starter](https://about.gitlab.com/pricing/) 8.4.
+> - Support for [Amazon Elasticsearch](https://docs.aws.amazon.com/elasticsearch-service/latest/developerguide/es-gsg.html) was [introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/1305) in GitLab [Starter](https://about.gitlab.com/pricing/) 9.0.
 
 This document describes how to set up Elasticsearch with GitLab. Once enabled,
 you'll have the benefit of fast search response times and the advantage of two
@@ -17,24 +16,24 @@ special searches:
 
 | GitLab version | Elasticsearch version |
 | -------------- | --------------------- |
-| GitLab Enterprise Edition 8.4 - 8.17  | Elasticsearch 2.4 with [Delete By Query Plugin](https://www.elastic.co/guide/en/elasticsearch/plugins/2.4/plugins-delete-by-query.html) installed |
+| GitLab Enterprise Edition 8.4 - 8.17   | Elasticsearch 2.4 with [Delete By Query Plugin](https://www.elastic.co/guide/en/elasticsearch/plugins/2.4/plugins-delete-by-query.html) installed |
 | GitLab Enterprise Edition 9.0 - 11.4   | Elasticsearch 5.1 - 5.5 |
-| GitLab Enterprise Edition 11.5+        | Elasticsearch 5.6 - 6.x |
+| GitLab Enterprise Edition 11.5 - 12.6  | Elasticsearch 5.6 - 6.x |
+| GitLab Enterprise Edition 12.7+        | Elasticsearch 6.x - 7.x |
 
 ## Installing Elasticsearch
 
 Elasticsearch is _not_ included in the Omnibus packages. You will have to
-[install it yourself](https://www.elastic.co/guide/en/elasticsearch/reference/current/install-elasticsearch.html "Elasticsearch installation documentation")
+[install it yourself](https://www.elastic.co/guide/en/elasticsearch/reference/6.8/install-elasticsearch.html "Elasticsearch 6.8 installation documentation")
 whether you are using the Omnibus package or installed GitLab from source.
 Providing detailed information on installing Elasticsearch is out of the scope
 of this document.
 
 NOTE: **Note:**
 Elasticsearch should be installed on a separate server, whether you install
-it yourself or by using the
-[Amazon Elasticsearch](https://docs.aws.amazon.com/elasticsearch-service/latest/developerguide/es-gsg.html)
-service. Running Elasticsearch on the same server as GitLab is not recommended
-and it will likely cause performance degradation on the GitLab installation.
+it yourself or use a cloud hosted offering like Elastic's [Elasticsearch Service](https://www.elastic.co/elasticsearch/service) (available on AWS, GCP, or Azure) or the
+[Amazon Elasticsearch](https://docs.aws.amazon.com/elasticsearch-service/latest/developerguide/es-gsg.html) service. Running Elasticsearch on the same server as GitLab is not recommended
+and will likely cause a degradation in GitLab instance performance.
 
 NOTE: **Note:**
 **For a single node Elasticsearch cluster the functional cluster health status will be yellow** (will never be green) because the primary shard is allocated but replicas can not be as there is no other node to which Elasticsearch can assign a replica.
@@ -47,36 +46,38 @@ updated automatically.
 
 For indexing Git repository data, GitLab uses an [indexer written in Go](https://gitlab.com/gitlab-org/gitlab-elasticsearch-indexer).
 
-The Go indexer was included in Omnibus GitLab 11.8 as an optional replacement to a
-Ruby-based indexer. [Since GitLab v12.3](https://gitlab.com/gitlab-org/gitlab/issues/6481),
-all indexing is done by the Go indexer, and the Ruby indexer is removed.
+The way you install the Go indexer depends on your version of GitLab:
 
-If you would like to use the Elasticsearch Go indexer with a source installation or an older version of GitLab, please follow the instructions below.
+- For Omnibus GitLab 11.8 and above, see [Omnibus GitLab](#omnibus-gitlab).
+- For installations from source or older versions of Omnibus GitLab, install the indexer [From Source](#from-source).
 
-### Installation
+### Omnibus GitLab
+
+Since GitLab 11.8 the Go indexer is included in Omnibus GitLab.
+The former Ruby-based indexer was removed in [GitLab 12.3](https://gitlab.com/gitlab-org/gitlab/-/issues/6481).
+
+### From source
 
 First, we need to install some dependencies, then we'll build and install
 the indexer itself.
-
-#### Dependencies
 
 This project relies on [ICU](http://site.icu-project.org/) for text encoding,
 therefore we need to ensure the development packages for your platform are
 installed before running `make`.
 
-##### Debian / Ubuntu
+#### Debian / Ubuntu
 
 To install on Debian or Ubuntu, run:
 
-```sh
+```shell
 sudo apt install libicu-dev
 ```
 
-##### CentOS / RHEL
+#### CentOS / RHEL
 
 To install on CentOS or RHEL, run:
 
-```sh
+```shell
 sudo yum install libicu-devel
 ```
 
@@ -84,16 +85,16 @@ sudo yum install libicu-devel
 
 To install on macOS, run:
 
-```sh
+```shell
 brew install icu4c
 export PKG_CONFIG_PATH="/usr/local/opt/icu4c/lib/pkgconfig:$PKG_CONFIG_PATH"
 ```
 
-#### Building and installing
+### Building and installing
 
 To build and install the indexer, run:
 
-```sh
+```shell
 indexer_path=/home/git/gitlab-elasticsearch-indexer
 
 # Run the installation task for gitlab-elasticsearch-indexer:
@@ -108,7 +109,7 @@ Please remember to pass the `-E` flag to `sudo` if you do so.
 
 Example:
 
-```sh
+```shell
 PREFIX=/usr sudo -E make install
 ```
 
@@ -140,7 +141,7 @@ The following Elasticsearch settings are available:
 
 | Parameter                                             | Description |
 | ----------------------------------------------------- | ----------- |
-| `Elasticsearch indexing`                              | Enables/disables Elasticsearch indexing. You may want to enable indexing but disable search in order to give the index time to be fully completed, for example. Also, keep in mind that this option doesn't have any impact on existing data, this only enables/disables background indexer which tracks data changes. So by enabling this you will not get your existing data indexed, use special rake task for that as explained in [Adding GitLab's data to the Elasticsearch index](#adding-gitlabs-data-to-the-elasticsearch-index). |
+| `Elasticsearch indexing`                              | Enables/disables Elasticsearch indexing. You may want to enable indexing but disable search in order to give the index time to be fully completed, for example. Also, keep in mind that this option doesn't have any impact on existing data, this only enables/disables background indexer which tracks data changes. So by enabling this you will not get your existing data indexed, use special Rake task for that as explained in [Adding GitLab's data to the Elasticsearch index](#adding-gitlabs-data-to-the-elasticsearch-index). |
 | `Search with Elasticsearch enabled`                   | Enables/disables using Elasticsearch in search. |
 | `URL`                                                 | The URL to use for connecting to Elasticsearch. Use a comma-separated list to support clustering (e.g., `http://host1, https://host2:9200`). If your Elasticsearch instance is password protected, pass the `username:password` in the URL (e.g., `http://<username>:<password>@<elastic_host>:9200/`). |
 | `Number of Elasticsearch shards`                      | Elasticsearch indexes are split into multiple shards for performance reasons. In general, larger indexes need to have more shards. Changes to this value do not take effect until the index is recreated. You can read more about tradeoffs in the [Elasticsearch documentation](https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-create-index.html#create-index-settings) |
@@ -150,6 +151,9 @@ The following Elasticsearch settings are available:
 | `AWS Region`                                          | The AWS region your Elasticsearch service is located in. |
 | `AWS Access Key`                                      | The AWS access key. |
 | `AWS Secret Access Key`                               | The AWS secret access key. |
+| `Maximum field length`                                | See [the explanation in instance limits.](../administration/instance_limits.md#maximum-field-length). |
+| `Maximum bulk request size (MiB)` | The Maximum Bulk Request size is used by GitLab's Golang-based indexer processes and indicates how much data it ought to collect (and store in memory) in a given indexing process before submitting the payload to Elasticsearch’s Bulk API. This setting works in tandem with the Bulk request concurrency setting (see below) and needs to accomodate the resource constraints of both the Elasticsearch host(s) and the host(s) running GitLab's Golang-based indexer either from the `gitlab-rake` command or the Sidekiq tasks. |
+| `Bulk request concurrency` | The Bulk request concurrency indicates how many of GitLab's Golang-based indexer processes (or threads) can run in parallel to collect data to subsequently submit to Elasticsearch’s Bulk API. This increases indexing performance, but fills the Elasticsearch bulk requests queue faster. This setting works in tandem with the Maximum bulk request size setting (see above) and needs to accomodate the resource constraints of both the Elasticsearch host(s) and the host(s) running GitLab's Golang-based indexer either from the `gitlab-rake` command or the Sidekiq tasks. |
 
 ### Limiting namespaces and projects
 
@@ -170,7 +174,7 @@ If no namespaces or projects are selected, no Elasticsearch indexing will take p
 
 CAUTION: **Warning**:
 If you have already indexed your instance, you will have to regenerate the index in order to delete all existing data
-for filtering to work correctly. To do this run the rake tasks `gitlab:elastic:create_empty_index` and
+for filtering to work correctly. To do this run the Rake tasks `gitlab:elastic:recreate_index` and
 `gitlab:elastic:clear_index_status`. Afterwards, removing a namespace or a project from the list will delete the data
 from the Elasticsearch index as expected.
 
@@ -184,7 +188,7 @@ To disable the Elasticsearch integration:
 1. Click **Save changes** for the changes to take effect.
 1. (Optional) Delete the existing index by running one of these commands:
 
-   ```sh
+   ```shell
    # Omnibus installations
    sudo gitlab-rake gitlab:elastic:delete_index
 
@@ -199,14 +203,14 @@ To backfill existing data, you can use one of the methods below to index it in b
 
 ### Indexing through the administration UI
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab/merge_requests/15390) in [GitLab Starter](https://about.gitlab.com/pricing/) 12.3.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/15390) in [GitLab Starter](https://about.gitlab.com/pricing/) 12.3.
 
 To index via the Admin Area:
 
 1. [Configure your Elasticsearch host and port](#enabling-elasticsearch).
 1. Create empty indexes using one of the following commands:
 
-   ```sh
+   ```shell
    # Omnibus installations
    sudo gitlab-rake gitlab:elastic:create_empty_index
 
@@ -219,7 +223,7 @@ To index via the Admin Area:
 1. Click **Check progress** in the confirmation message to see the status of the background jobs.
 1. Personal snippets need to be indexed manually by running one of these commands:
 
-   ```sh
+   ```shell
    # Omnibus installations
    sudo gitlab-rake gitlab:elastic:index_snippets
 
@@ -231,6 +235,8 @@ To index via the Admin Area:
 
 ### Indexing through Rake tasks
 
+Indexing can be performed using Rake tasks.
+
 #### Indexing small instances
 
 CAUTION: **Warning**:
@@ -241,7 +247,7 @@ If the database size is less than 500 MiB, and the size of all hosted repos is l
 1. [Enable **Elasticsearch indexing** and configure your host and port](#enabling-elasticsearch).
 1. Index your data using one of the following commands:
 
-   ```sh
+   ```shell
    # Omnibus installations
    sudo gitlab-rake gitlab:elastic:index
 
@@ -255,13 +261,13 @@ If the database size is less than 500 MiB, and the size of all hosted repos is l
 
 CAUTION: **Warning**:
 Performing asynchronous indexing will generate a lot of Sidekiq jobs.
-Make sure to prepare for this task by either [Horizontally Scaling](../administration/high_availability/README.md#basic-scaling)
+Make sure to prepare for this task by having a [Scalable and Highly Available Setup](README.md)
 or creating [extra Sidekiq processes](../administration/operations/extra_sidekiq_processes.md)
 
 1. [Configure your Elasticsearch host and port](#enabling-elasticsearch).
 1. Create empty indexes using one of the following commands:
 
-   ```sh
+   ```shell
    # Omnibus installations
    sudo gitlab-rake gitlab:elastic:create_empty_index
 
@@ -274,7 +280,7 @@ or creating [extra Sidekiq processes](../administration/operations/extra_sidekiq
    can temporarily disable auto-refreshing and replicating. In our experience, you can expect a 20%
    decrease in indexing time. We'll enable them when indexing is done. This step is optional!
 
-   ```bash
+   ```shell
    curl --request PUT localhost:9200/gitlab-production/_settings --header 'Content-Type: application/json' --data '{
        "index" : {
            "refresh_interval" : "-1",
@@ -284,7 +290,7 @@ or creating [extra Sidekiq processes](../administration/operations/extra_sidekiq
 
 1. Index projects and their associated data:
 
-   ```sh
+   ```shell
    # Omnibus installations
    sudo gitlab-rake gitlab:elastic:index_projects
 
@@ -294,9 +300,9 @@ or creating [extra Sidekiq processes](../administration/operations/extra_sidekiq
 
    This enqueues a Sidekiq job for each project that needs to be indexed.
    You can view the jobs in **Admin Area > Monitoring > Background Jobs > Queues Tab**
-   and click `elastic_indexer`, or you can query indexing status using a rake task:
+   and click `elastic_indexer`, or you can query indexing status using a Rake task:
 
-   ```sh
+   ```shell
    # Omnibus installations
    sudo gitlab-rake gitlab:elastic:index_projects_status
 
@@ -309,7 +315,7 @@ or creating [extra Sidekiq processes](../administration/operations/extra_sidekiq
    If you want to limit the index to a range of projects you can provide the
    `ID_FROM` and `ID_TO` parameters:
 
-   ```sh
+   ```shell
    # Omnibus installations
    sudo gitlab-rake gitlab:elastic:index_projects ID_FROM=1001 ID_TO=2000
 
@@ -331,7 +337,7 @@ or creating [extra Sidekiq processes](../administration/operations/extra_sidekiq
    it will check every project repository again to make sure that every commit in
    a repository is indexed, which can be useful in case if your index is outdated:
 
-   ```sh
+   ```shell
    # Omnibus installations
    sudo gitlab-rake gitlab:elastic:index_projects UPDATE_INDEX=true ID_TO=1000
 
@@ -346,7 +352,7 @@ or creating [extra Sidekiq processes](../administration/operations/extra_sidekiq
 1. Personal snippets are not associated with a project and need to be indexed separately
    by running one of these commands:
 
-   ```sh
+   ```shell
    # Omnibus installations
    sudo gitlab-rake gitlab:elastic:index_snippets
 
@@ -356,8 +362,8 @@ or creating [extra Sidekiq processes](../administration/operations/extra_sidekiq
 
 1. Enable replication and refreshing again after indexing (only if you previously disabled it):
 
-   ```bash
-   curl --request PUT localhost:9200/gitlab-production/_settings --header 'Content-Type: application/json' ---data '{
+   ```shell
+   curl --request PUT localhost:9200/gitlab-production/_settings --header 'Content-Type: application/json' --data '{
        "index" : {
            "number_of_replicas" : 1,
            "refresh_interval" : "1s"
@@ -368,8 +374,8 @@ or creating [extra Sidekiq processes](../administration/operations/extra_sidekiq
 
    For Elasticsearch 6.x, the index should be in read-only mode before proceeding with the force merge:
 
-   ```bash
-   curl --request PUT localhost:9200/gitlab-production/_settings ---header 'Content-Type: application/json' --data '{
+   ```shell
+   curl --request PUT localhost:9200/gitlab-production/_settings --header 'Content-Type: application/json' --data '{
      "settings": {
        "index.blocks.write": true
      } }'
@@ -377,14 +383,14 @@ or creating [extra Sidekiq processes](../administration/operations/extra_sidekiq
 
    Then, initiate the force merge:
 
-   ```bash
+   ```shell
    curl --request POST 'localhost:9200/gitlab-production/_forcemerge?max_num_segments=5'
    ```
 
    After this, if your index is in read-only mode, switch back to read-write:
 
-   ```bash
-   curl --request PUT localhost:9200/gitlab-production/_settings ---header 'Content-Type: application/json' --data '{
+   ```shell
+   curl --request PUT localhost:9200/gitlab-production/_settings --header 'Content-Type: application/json' --data '{
      "settings": {
        "index.blocks.write": false
      } }'
@@ -396,36 +402,34 @@ or creating [extra Sidekiq processes](../administration/operations/extra_sidekiq
 
 For repository and snippet files, GitLab will only index up to 1 MiB of content, in order to avoid indexing timeouts.
 
-## GitLab Elasticsearch Rake Tasks
+## GitLab Elasticsearch Rake tasks
 
-There are several rake tasks available to you via the command line:
+Rake tasks are available to:
 
-- [`sudo gitlab-rake gitlab:elastic:index`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)
-  - This is a wrapper task. It does the following:
-    - `sudo gitlab-rake gitlab:elastic:create_empty_index`
-    - `sudo gitlab-rake gitlab:elastic:clear_index_status`
-    - `sudo gitlab-rake gitlab:elastic:index_projects`
-    - `sudo gitlab-rake gitlab:elastic:index_snippets`
-- [`sudo gitlab-rake gitlab:elastic:index_projects`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)
-  - This iterates over all projects and queues Sidekiq jobs to index them in the background.
-- [`sudo gitlab-rake gitlab:elastic:index_projects_status`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)
-  - This determines the overall status of the indexing. It is done by counting the total number of indexed projects, dividing by a count of the total number of projects, then multiplying by 100.
-- [`sudo gitlab-rake gitlab:elastic:create_empty_index`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)
-  - This generates an empty index on the Elasticsearch side, deleting the existing one if present.
-- [`sudo gitlab-rake gitlab:elastic:clear_index_status`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)
-  - This deletes all instances of IndexStatus for all projects.
-- [`sudo gitlab-rake gitlab:elastic:delete_index`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)
-  - This removes the GitLab index on the Elasticsearch instance.
-- [`sudo gitlab-rake gitlab:elastic:recreate_index`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)
-  - Does the same thing as `sudo gitlab-rake gitlab:elastic:create_empty_index`
-- [`sudo gitlab-rake gitlab:elastic:index_snippets`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)
-  - Performs an Elasticsearch import that indexes the snippets data.
-- [`sudo gitlab-rake gitlab:elastic:projects_not_indexed`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)
-  - Displays which projects are not indexed.
+- [Build and install](#building-and-installing) the indexer.
+- Delete indexes when [disabling Elasticsearch](#disabling-elasticsearch).
+- [Add GitLab data](#adding-gitlabs-data-to-the-elasticsearch-index) to an index.
 
-### Environment Variables
+The following are some available Rake tasks:
 
-In addition to the rake tasks, there are some environment variables that can be used to modify the process:
+| Task                                                                                                                                                    | Description                                                                                                                                                                               |
+|:--------------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| [`sudo gitlab-rake gitlab:elastic:index`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)                            | Wrapper task for `gitlab:elastic:create_empty_index`, `gitlab:elastic:clear_index_status`, `gitlab:elastic:index_projects`, and `gitlab:elastic:index_snippets`.                          |
+| [`sudo gitlab-rake gitlab:elastic:index_projects`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)                   | Iterates over all projects and queues Sidekiq jobs to index them in the background.                                                                                                       |
+| [`sudo gitlab-rake gitlab:elastic:index_projects_status`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)            | Determines the overall status of the indexing. It is done by counting the total number of indexed projects, dividing by a count of the total number of projects, then multiplying by 100. |
+| [`sudo gitlab-rake gitlab:elastic:clear_index_status`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)               | Deletes all instances of IndexStatus for all projects.                                                                                                                                    |
+| [`sudo gitlab-rake gitlab:elastic:create_empty_index[<TARGET_NAME>]`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake) | Generates an empty index and assigns an alias for it on the Elasticsearch side only if it doesn't already exist.                                                                                                      |
+| [`sudo gitlab-rake gitlab:elastic:delete_index[<TARGET_NAME>]`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)       | Removes the GitLab index and alias (if exists) on the Elasticsearch instance.                                                                                                                                   |
+| [`sudo gitlab-rake gitlab:elastic:recreate_index[<TARGET_NAME>]`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)     | Wrapper task for `gitlab:elastic:delete_index[<TARGET_NAME>]` and `gitlab:elastic:create_empty_index[<TARGET_NAME>]`.                                                                       |
+| [`sudo gitlab-rake gitlab:elastic:index_snippets`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)                   | Performs an Elasticsearch import that indexes the snippets data.                                                                                                                          |
+| [`sudo gitlab-rake gitlab:elastic:projects_not_indexed`](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/tasks/gitlab/elastic.rake)             | Displays which projects are not indexed.                                                                                                                                                  |
+
+NOTE: **Note:**
+The `TARGET_NAME` parameter is optional and will use the default index/alias name from the current `RAILS_ENV` if not set.
+
+### Environment variables
+
+In addition to the Rake tasks, there are some environment variables that can be used to modify the process:
 
 | Environment Variable | Data Type | What it does                                                                 |
 | -------------------- |:---------:| ---------------------------------------------------------------------------- |
@@ -437,13 +441,13 @@ In addition to the rake tasks, there are some environment variables that can be 
 
 Because the `ID_TO` and `ID_FROM` environment variables use the `or equal to` comparison, you can index only one project by using both these variables with the same project ID number:
 
-```sh
+```shell
 root@git:~# sudo gitlab-rake gitlab:elastic:index_projects ID_TO=5 ID_FROM=5
 Indexing project repositories...I, [2019-03-04T21:27:03.083410 #3384]  INFO -- : Indexing GitLab User / test (ID=33)...
 I, [2019-03-04T21:27:05.215266 #3384]  INFO -- : Indexing GitLab User / test (ID=33) is done!
 ```
 
-## Elasticsearch Index Scopes
+## Elasticsearch index scopes
 
 When performing a search, the GitLab index will use the following scopes:
 
@@ -463,15 +467,15 @@ When performing a search, the GitLab index will use the following scopes:
 
 ### Deleted documents
 
-Whenever a change or deletion is made to an indexed GitLab object (a merge request description is changed, a file is deleted from the master branch in a repository, a project is deleted, etc), a document in the index is deleted.  However, since these are "soft" deletes, the overall number of "deleted documents", and therefore wasted space, increases.  Elasticsearch does intelligent merging of segments in order to remove these deleted documents.  However, depending on the amount and type of activity in your GitLab installation, it's possible to see as much as 50% wasted space in the index.
+Whenever a change or deletion is made to an indexed GitLab object (a merge request description is changed, a file is deleted from the master branch in a repository, a project is deleted, etc), a document in the index is deleted. However, since these are "soft" deletes, the overall number of "deleted documents", and therefore wasted space, increases. Elasticsearch does intelligent merging of segments in order to remove these deleted documents. However, depending on the amount and type of activity in your GitLab installation, it's possible to see as much as 50% wasted space in the index.
 
 In general, we recommend simply letting Elasticsearch merge and reclaim space automatically, with the default settings. From [Lucene's Handling of Deleted Documents](https://www.elastic.co/blog/lucenes-handling-of-deleted-documents "Lucene's Handling of Deleted Documents"), _"Overall, besides perhaps decreasing the maximum segment size, it is best to leave Lucene's defaults as-is and not fret too much about when deletes are reclaimed."_
 
 However, some larger installations may wish to tune the merge policy settings:
 
-- Consider reducing the `index.merge.policy.max_merged_segment` size from the default 5 GB to maybe 2 GB or 3 GB.  Merging only happens when a segment has at least 50% deletions.  Smaller segment sizes will allow merging to happen more frequently.
+- Consider reducing the `index.merge.policy.max_merged_segment` size from the default 5 GB to maybe 2 GB or 3 GB. Merging only happens when a segment has at least 50% deletions. Smaller segment sizes will allow merging to happen more frequently.
 
-  ```bash
+  ```shell
   curl --request PUT localhost:9200/gitlab-production/_settings ---header 'Content-Type: application/json' --data '{
     "index" : {
       "merge.policy.max_merged_segment": "2gb"
@@ -479,9 +483,9 @@ However, some larger installations may wish to tune the merge policy settings:
   }'
   ```
 
-- You can also adjust `index.merge.policy.reclaim_deletes_weight`, which controls how aggressively deletions are targeted.  But this can lead to costly merge decisions, so we recommend not changing this unless you understand the tradeoffs.
+- You can also adjust `index.merge.policy.reclaim_deletes_weight`, which controls how aggressively deletions are targeted. But this can lead to costly merge decisions, so we recommend not changing this unless you understand the tradeoffs.
 
-  ```bash
+  ```shell
   curl --request PUT localhost:9200/gitlab-production/_settings ---header 'Content-Type: application/json' --data '{
     "index" : {
       "merge.policy.reclaim_deletes_weight": "3.0"
@@ -489,9 +493,11 @@ However, some larger installations may wish to tune the merge policy settings:
   }'
   ```
 
-- Do not do a [force merge](https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-forcemerge.html "Force Merge") to remove deleted documents.  A warning in the [documentation](https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-forcemerge.html "Force Merge") states that this can lead to very large segments that may never get reclaimed, and can also cause significant performance or availability issues.
+- Do not do a [force merge](https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-forcemerge.html "Force Merge") to remove deleted documents. A warning in the [documentation](https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-forcemerge.html "Force Merge") states that this can lead to very large segments that may never get reclaimed, and can also cause significant performance or availability issues.
 
 ## Troubleshooting
+
+### Common issues
 
 Here are some common pitfalls and how to overcome them:
 
@@ -508,7 +514,7 @@ Here are some common pitfalls and how to overcome them:
   If you see `Elasticsearch::Model::Response::Records`, you are using Elasticsearch.
 
   NOTE: **Note**:
-  The above instructions are used to verify that GitLab is using Elasticsearch only when indexing all namespaces. This is not to be used for scenarios that only index a [subset of namespaces](https://docs.gitlab.com/ee/integration/elasticsearch.html#limiting-namespaces-and-projects).
+  The above instructions are used to verify that GitLab is using Elasticsearch only when indexing all namespaces. This is not to be used for scenarios that only index a [subset of namespaces](#limiting-namespaces-and-projects).
 
 - **I updated GitLab and now I can't find anything**
 
@@ -531,13 +537,13 @@ Here are some common pitfalls and how to overcome them:
   ```
 
   NOTE: **Note**:
-  The above instructions are not to be used for scenarios that only index a [subset of namespaces](https://docs.gitlab.com/ee/integration/elasticsearch.html#limiting-namespaces-and-projects).
+  The above instructions are not to be used for scenarios that only index a [subset of namespaces](#limiting-namespaces-and-projects).
 
   See [Elasticsearch Index Scopes](#elasticsearch-index-scopes) for more information on searching for specific types of data.
 
 - **I indexed all the repositories but then switched Elasticsearch servers and now I can't find anything**
 
-  You will need to re-run all the rake tasks to re-index the database, repositories, and wikis.
+  You will need to re-run all the Rake tasks to re-index the database, repositories, and wikis.
 
 - **The indexing process is taking a very long time**
 
@@ -551,14 +557,14 @@ Here are some common pitfalls and how to overcome them:
 
   When performing the initial indexing of blobs, we lock all projects until the project finishes indexing. It could
   happen that an error during the process causes one or multiple projects to remain locked. In order to unlock them,
-  run the `gitlab:elastic:clear_locked_projects` rake task.
+  run the `gitlab:elastic:clear_locked_projects` Rake task.
 
 - **"Can't specify parent if no parent field has been configured"**
 
   If you enabled Elasticsearch before GitLab 8.12 and have not rebuilt indexes you will get
   exception in lots of different cases:
 
-  ```text
+  ```plaintext
   Elasticsearch::Transport::Transport::Errors::BadRequest([400] {
       "error": {
           "root_cause": [{
@@ -582,7 +588,7 @@ Here are some common pitfalls and how to overcome them:
 
 - Exception `Elasticsearch::Transport::Transport::Errors::RequestEntityTooLarge`
 
-  ```text
+  ```plaintext
   [413] {"Message":"Request size exceeded 10485760 bytes"}
   ```
 
@@ -594,17 +600,17 @@ Here are some common pitfalls and how to overcome them:
   AWS has [fixed limits](https://docs.aws.amazon.com/elasticsearch-service/latest/developerguide/aes-limits.html)
   for this setting ("Maximum Size of HTTP Request Payloads"), based on the size of
   the underlying instance.
-  
+
 - **My single node Elasticsearch cluster status never goes from `yellow` to `green` even though everything seems to be running properly**
 
-  **For a single node Elasticsearch cluster the functional cluster health status will be yellow** (will never be green) because the primary shard is allocated but replicas can not be as there is no other node to which Elasticsearch can assign a replica. This also applies if you are using using the
+  **For a single node Elasticsearch cluster the functional cluster health status will be yellow** (will never be green) because the primary shard is allocated but replicas can not be as there is no other node to which Elasticsearch can assign a replica. This also applies if you are using the
 [Amazon Elasticsearch](https://docs.aws.amazon.com/elasticsearch-service/latest/developerguide/aes-handling-errors.html#aes-handling-errors-yellow-cluster-status) service.
 
   CAUTION: **Warning**: Setting the number of replicas to `0` is not something that we recommend (this is not allowed in the GitLab Elasticsearch Integration menu). If you are planning to add more Elasticsearch nodes (for a total of more than 1 Elasticsearch) the number of replicas will need to be set to an integer value larger than `0`. Failure to do so will result in lack of redundancy (losing one node will corrupt the index).
 
   If you have a **hard requirement to have a green status for your single node Elasticsearch cluster**, please make sure you understand the risks outlined in the previous paragraph and then simply run the following query to set the number of replicas to `0`(the cluster will no longer try to create any shard replicas):
 
-  ```bash
+  ```shell
   curl --request PUT localhost:9200/gitlab-production/_settings --header 'Content-Type: application/json' --data '{
   "index" : {
      "number_of_replicas" : 0
@@ -612,11 +618,32 @@ Here are some common pitfalls and how to overcome them:
   }'
   ```
 
+- **I'm getting a `health check timeout: no Elasticsearch node available` error in Sidekiq during the indexing process**
+
+   ```plaintext
+   Gitlab::Elastic::Indexer::Error: time="2020-01-23T09:13:00Z" level=fatal msg="health check timeout: no Elasticsearch node available"
+   ```
+
+   You probably have not used either `http://` or `https://` as part of your value in the **"URL"** field of the Elasticsearch Integration Menu. Please make sure you are using either `http://` or `https://` in this field as the [Elasticsearch client for Go](https://github.com/olivere/elastic) that we are using [needs the prefix for the URL to be accepted as valid](https://github.com/olivere/elastic/commit/a80af35aa41856dc2c986204e2b64eab81ccac3a).
+   Once you have corrected the formatting of the URL, delete the index (via the [dedicated Rake task](#gitlab-elasticsearch-rake-tasks)) and [reindex the content of your instance](#adding-gitlabs-data-to-the-elasticsearch-index).
+
+### Low level troubleshooting
+
+There is more [low level troubleshooting documentation](../administration/troubleshooting/elasticsearch.md) for when you experience other issues, including poor performance.
+
+### Known Issues
+
+- **[Elasticsearch `code_analyzer` doesn't account for all code cases](https://gitlab.com/gitlab-org/gitlab/-/issues/10693)**
+
+   The `code_analyzer` pattern and filter configuration is being evaluated for improvement. We have noticed [several edge cases](https://gitlab.com/gitlab-org/gitlab/-/issues/10693#note_158382332) that are not returning expected search results due to our pattern and filter configuration.
+
+   An improved strategy for the `code_analyzer` pattern and filters are being discussed in [issue 29443](https://gitlab.com/gitlab-org/gitlab/-/issues/29443).
+
 ### Reverting to basic search
 
 Sometimes there may be issues with your Elasticsearch index data and as such
 GitLab will allow you to revert to "basic search" when there are no search
 results and assuming that basic search is supported in that scope. This "basic
 search" will behave as though you don't have Elasticsearch enabled at all for
-your instance and search using other data sources (ie. Postgres data and Git
+your instance and search using other data sources (ie. PostgreSQL data and Git
 data).

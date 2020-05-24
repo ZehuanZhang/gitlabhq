@@ -6,9 +6,12 @@ module Groups
       skip_cross_project_access_check :show
       before_action :authorize_admin_group!
       before_action :authorize_update_max_artifacts_size!, only: [:update]
+      before_action do
+        push_frontend_feature_flag(:new_variables_ui, @group, default_enabled: true)
+      end
+      before_action :define_variables, only: [:show]
 
       def show
-        define_ci_variables
       end
 
       def update
@@ -39,6 +42,10 @@ module Groups
       end
 
       private
+
+      def define_variables
+        define_ci_variables
+      end
 
       def define_ci_variables
         @variable = Ci::GroupVariable.new(group: group)

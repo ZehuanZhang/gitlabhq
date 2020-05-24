@@ -4,12 +4,14 @@ module EventsHelper
   ICON_NAMES_BY_EVENT_TYPE = {
     'pushed to' => 'commit',
     'pushed new' => 'commit',
+    'updated' => 'commit',
     'created' => 'status_open',
     'opened' => 'status_open',
     'closed' => 'status_closed',
     'accepted' => 'fork',
     'commented on' => 'comment',
     'deleted' => 'remove',
+    'destroyed' => 'remove',
     'imported' => 'import',
     'joined' => 'users'
   }.freeze
@@ -68,10 +70,12 @@ module EventsHelper
   end
 
   def event_preposition(event)
-    if event.push_action? || event.commented_action? || event.target
-      "at"
+    if event.wiki_page?
+      'in the wiki for'
     elsif event.milestone?
-      "in"
+      'in'
+    elsif event.push_action? || event.commented_action? || event.target
+      'at'
     end
   end
 
@@ -165,11 +169,26 @@ module EventsHelper
       project_issue_url(event.project, id: event.note_target, anchor: dom_id(event.target))
     elsif event.merge_request_note?
       project_merge_request_url(event.project, id: event.note_target, anchor: dom_id(event.target))
+    elsif event.design_note?
+      design_url(event.note_target, anchor: dom_id(event.note))
     else
       polymorphic_url([event.project.namespace.becomes(Namespace),
                        event.project, event.note_target],
                         anchor: dom_id(event.target))
     end
+  end
+
+  def event_wiki_title_html(event)
+    capture do
+      concat content_tag(:span, _('wiki page'), class: "event-target-type append-right-4")
+      concat link_to(event.target_title, event_wiki_page_target_url(event),
+                     title: event.target_title,
+                     class: 'has-tooltip event-target-link append-right-4')
+    end
+  end
+
+  def event_wiki_page_target_url(event)
+    project_wiki_url(event.project, event.target.canonical_slug)
   end
 
   def event_note_title_html(event)
@@ -221,6 +240,16 @@ module EventsHelper
       concat "&nbsp;".html_safe
       concat content_tag(:span, event.author.to_reference, class: "username")
     end
+  end
+
+  private
+
+  def design_url(design, opts)
+    designs_project_issue_url(
+      design.project,
+      design.issue,
+      opts.merge(vueroute: design.filename)
+    )
   end
 end
 

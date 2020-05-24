@@ -1,14 +1,17 @@
 ---
+stage: Release
+group: Release Management
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://about.gitlab.com/handbook/engineering/ux/technical-writing/#designated-technical-writers
 type: concepts, howto
 ---
 
 # Protected Environments **(PREMIUM)**
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab/merge_requests/6303) in [GitLab Premium](https://about.gitlab.com/pricing/) 11.3.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/6303) in [GitLab Premium](https://about.gitlab.com/pricing/) 11.3.
 
 ## Overview
 
-[Environments](../environments.md) can be used for different reasons:
+[Environments](../environments/index.md) can be used for different reasons:
 
 - Some of them are just for testing.
 - Others are for production.

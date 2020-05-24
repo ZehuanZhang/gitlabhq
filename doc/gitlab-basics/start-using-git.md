@@ -1,80 +1,103 @@
 ---
 type: howto, tutorial
+description: "Introduction to using Git through the command line."
+last_updated: 2020-04-22
 ---
 
 # Start using Git on the command line
 
-While GitLab has a powerful user interface, if you want to use Git itself, you will
-have to do so from the command line. If you want to start using Git and GitLab together,
-make sure that you have created and/or signed into an account on GitLab.
+[Git](https://git-scm.com/) is an open-source distributed version control system designed to
+handle everything from small to very large projects with speed and efficiency. GitLab is built
+on top of Git.
 
-## Open a shell
+While GitLab has a powerful user interface from which you can do a great amount of Git operations
+directly in the browser, you’ll eventually need to use Git through the command line for advanced
+tasks.
 
-Depending on your operating system, you will need to use a shell of your preference.
-Here are some suggestions:
+For example, if you need to fix complex merge conflicts, rebase branches,
+merge manually, or undo and roll back commits, you'll need to use Git from
+the command line and then push your changes to the remote server.
 
-- [Terminal](https://blog.teamtreehouse.com/introduction-to-the-mac-os-x-command-line) on macOS
-- [GitBash](https://msysgit.github.io) on Windows
-- [Linux Terminal](https://www.howtogeek.com/140679/beginner-geek-how-to-start-using-the-linux-terminal/) on Linux
+This guide will help you get started with Git through the command line and can be your reference
+for Git commands in the future. If you're only looking for a quick reference of Git commands, you
+can download GitLab's [Git Cheat Sheet](https://about.gitlab.com/images/press/git-cheat-sheet.pdf).
 
-## Check if Git has already been installed
+TIP: **Tip:**
+To help you visualize what you're doing locally, there are
+[Git GUI apps](https://git-scm.com/download/gui/) you can install.
 
-Git is usually preinstalled on Mac and Linux, so run the following command:
+## Requirements
 
-```bash
+You don't need a GitLab account to use Git locally, but for the purpose of this guide we
+recommend registering and signing into your account before starting. Some commands need a
+connection between the files in your computer and their version on a remote server.
+
+You'll also need to open a [command shell](#command-shell) and have
+[Git installed](#install-git) in your computer.
+
+### Command shell
+
+To execute Git commands in your computer, you'll need to open a command shell (also known as command
+prompt, terminal, and command line) of your preference. Here are some suggestions:
+
+- For macOS users:
+  - Built-in: [Terminal](https://blog.teamtreehouse.com/introduction-to-the-mac-os-x-command-line). Press <kbd>⌘ command</kbd> + <kbd>space</kbd> and type "terminal" to find it.
+  - [iTerm2](https://www.iterm2.com/), which you can integrate with [zsh](https://git-scm.com/book/id/v2/Appendix-A%3A-Git-in-Other-Environments-Git-in-Zsh) and [oh my zsh](https://ohmyz.sh/) for color highlighting, among other handy features for Git users.
+- For Windows users:
+  - Built-in: **cmd**. Click the search icon on the bottom navbar on Windows and type "cmd" to find it.
+  - [PowerShell](https://docs.microsoft.com/en-us/powershell/scripting/install/installing-windows-powershell?view=powershell-7): a Windows "powered up" shell, from which you can execute a greater number of commands.
+  - Git Bash: it comes built into [Git for Windows](https://gitforwindows.org/).
+- For Linux users:
+  - Built-in: [Linux Terminal](https://www.howtogeek.com/140679/beginner-geek-how-to-start-using-the-linux-terminal/).
+
+### Install Git
+
+Open a command shell and run the following command to check if Git is already installed in your
+computer:
+
+```shell
 git --version
 ```
 
-You should receive a message that tells you which Git version you have on your computer.
-If you don’t receive a "Git version" message, it means that you need to
-[download Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git).
+If you have Git installed, the output will be:
 
-After you are finished installing Git, open a new shell and type `git --version` again
-to verify that it was correctly installed.
-
-## Add your Git username and set your email
-
-It is important to configure your Git username and email address, since every Git
-commit will use this information to identify you as the author.
-
-In your shell, type the following command to add your username:
-
-```bash
-git config --global user.name "YOUR_USERNAME"
+```shell
+git version X.Y.Z
 ```
 
-Then verify that you have the correct username:
+If your computer doesn't recognize `git` as a command, you'll need to [install Git](../topics/git/how_to_install_git/index.md).
+After that, run `git --version` again to verify whether it was correctly installed.
 
-```bash
-git config --global user.name
+## Configure Git
+
+To start using Git from your computer, you'll need to enter your credentials (user name and email)
+to identify you as the author of your work. The user name and email should match the ones you're
+using on GitLab.
+
+In your shell, add your user name:
+
+```shell
+git config --global user.name "your_username"
 ```
 
-To set your email address, type the following command:
+And your email address:
 
-```bash
+```shell
 git config --global user.email "your_email_address@example.com"
 ```
 
-To verify that you entered your email correctly, type:
+To check the configuration, run:
 
-```bash
-git config --global user.email
-```
-
-You'll need to do this only once, since you are using the `--global` option. It
-tells Git to always use this information for anything you do on that system. If
-you want to override this with a different username or email address for specific
-projects or repositories, you can run the command without the `--global` option
-when you’re in that project, and that will default to `--local`. You can read more
-on how Git manages configurations in the [Git Config](https://git-scm.com/book/en/v2/Customizing-Git-Git-Configuration) documentation.
-
-## Check your information
-
-To view the information that you entered, along with other global options, type:
-
-```bash
+```shell
 git config --global --list
 ```
+
+The `--global` option tells Git to always use this information for anything you do on your system.
+If you omit `--global` or use `--local`, the configuration will be applied only to the current
+repository.
+
+You can read more on how Git manages configurations in the
+[Git Config](https://git-scm.com/book/en/v2/Customizing-Git-Git-Configuration) documentation.
 
 ## Basic Git commands
 
@@ -85,7 +108,7 @@ Start using Git via the command line with the most basic commands as described b
 If you have an existing local directory that you want to *initialize* for version
 control, use the `init` command to instruct Git to begin tracking the directory:
 
-```bash
+```shell
 git init
 ```
 
@@ -93,7 +116,7 @@ This creates a `.git` directory that contains the Git configuration files.
 
 Once the directory has been initialized, you can [add a remote repository](#add-a-remote-repository)
 and [send changes to GitLab.com](#send-changes-to-gitlabcom). You will also need to
-[create a new project in GitLab](../gitlab-basics/create-project.html#push-to-create-a-new-project)
+[create a new project in GitLab](../gitlab-basics/create-project.md#push-to-create-a-new-project)
 for your Git repository.
 
 ### Clone a repository
@@ -103,11 +126,11 @@ To start working locally on an existing remote repository, clone it with the com
 files to your local computer, automatically preserving the Git connection with the
 remote repository.
 
-You can either clone it via HTTPS or [SSH](../ssh/README.md). If you chose to clone
-it via HTTPS, you'll have to enter your credentials every time you pull and push.
+You can either clone it via [HTTPS](#clone-via-https) or [SSH](#clone-via-ssh). If you chose to
+clone it via HTTPS, you'll have to enter your credentials every time you pull and push.
 You can read more about credential storage in the
 [Git Credentials documentation](https://git-scm.com/book/en/v2/Git-Tools-Credential-Storage).
-With SSH, you enter your credentials only once.
+With [SSH](../ssh/README.md), you enter your credentials only once.
 
 You can find both paths (HTTPS and SSH) by navigating to your project's landing page
 and clicking **Clone**. GitLab will prompt you with both paths, from which you can copy
@@ -119,23 +142,37 @@ As an example, consider this repository path:
 - SSH: `git@gitlab.com:gitlab-org/gitlab.git`
 
 To get started, open a terminal window in the directory you wish to clone the
-repository files into, and run one of the following commands.
+repository files into, and run one of the `git clone` commands as described below.
 
-Clone via HTTPS:
+Both commands will download a copy of the files in a folder named after the project's
+name. You can then navigate to the new directory and start working on it locally.
 
-```bash
+#### Clone via HTTPS
+
+To clone `https://gitlab.com/gitlab-org/gitlab.git` via HTTPS:
+
+```shell
 git clone https://gitlab.com/gitlab-org/gitlab.git
 ```
 
-Clone via SSH:
+You'll have to add your password every time you clone through HTTPS. If you have 2FA enabled
+for your account, you'll have to use a [Personal Access Token](../user/profile/personal_access_tokens.md)
+with **read_repository** or **write_repository** permissions instead of your account's password.
 
-```bash
+If you don't have 2FA enabled, use your account's password.
+
+TIP: **Troubleshooting:**
+On Windows, if you entered incorrect passwords multiple times and GitLab is responding `Access denied`,
+you may have to add your namespace (user name or group name) to clone through HTTPS:
+`git clone https://namespace@gitlab.com/gitlab-org/gitlab.git`.
+
+#### Clone via SSH
+
+To clone `git@gitlab.com:gitlab-org/gitlab.git` via SSH:
+
+```shell
 git clone git@gitlab.com:gitlab-org/gitlab.git
 ```
-
-Both commands will download a copy of the files in a folder named after the project's
-name. You can then navigate to the directory and start working
-on it locally.
 
 ### Switch to the master branch
 
@@ -143,7 +180,7 @@ You are always in a branch when working with Git. The main branch is the master
 branch, but you can use the same command to switch to a different branch by
 changing `master` to the branch name.
 
-```bash
+```shell
 git checkout master
 ```
 
@@ -155,7 +192,7 @@ since the last time you cloned or pulled the project. Use `master` for the
 `<name-of-branch>` to get the main branch code, or the branch name of the branch
 you are currently working in.
 
-```bash
+```shell
 git pull <REMOTE> <name-of-branch>
 ```
 
@@ -171,7 +208,7 @@ You can learn more on how Git manages remote repositories in the
 
 To view your remote repositories, type:
 
-```bash
+```shell
 git remote -v
 ```
 
@@ -181,7 +218,7 @@ The `-v` flag stands for verbose.
 
 To add a link to a remote repository:
 
-```bash
+```shell
 git remote add <source-name> <repository-path>
 ```
 
@@ -194,7 +231,7 @@ To create a new branch, to work from without affecting the `master` branch, type
 the following (spaces won't be recognized in the branch name, so you will need to
 use a hyphen or underscore):
 
-```bash
+```shell
 git checkout -b <name-of-branch>
 ```
 
@@ -202,7 +239,7 @@ git checkout -b <name-of-branch>
 
 To switch to an existing branch, so you can work on it:
 
-```bash
+```shell
 git checkout <name-of-branch>
 ```
 
@@ -212,7 +249,7 @@ It's important to be aware of what's happening and the status of your changes. W
 you add, change, or delete files/folders, Git knows about it. To check the status of
 your changes:
 
-```bash
+```shell
 git status
 ```
 
@@ -221,7 +258,7 @@ git status
 To view the differences between your local, unstaged changes and the repository versions
 that you cloned or pulled, type:
 
-```bash
+```shell
 git diff
 ```
 
@@ -232,7 +269,7 @@ be new, modified, or deleted files/folders. Use `git add` to first stage (prepar
 a local file/folder for committing. Then use `git commit` to commit (save) the staged
 files:
 
-```bash
+```shell
 git add <file-name OR folder-name>
 git commit -m "COMMENT TO DESCRIBE THE INTENTION OF THE COMMIT"
 ```
@@ -241,7 +278,7 @@ git commit -m "COMMENT TO DESCRIBE THE INTENTION OF THE COMMIT"
 
 To add and commit (save) all local changes quickly:
 
-```bash
+```shell
 git add .
 git commit -m "COMMENT TO DESCRIBE THE INTENTION OF THE COMMIT"
 ```
@@ -257,13 +294,13 @@ To create a merge request from a fork to an upstream repository, see the
 
 To push all local commits (saved changes) to the remote repository:
 
-```bash
+```shell
 git push <remote> <name-of-branch>
 ```
 
 For example, to push your local commits to the _`master`_ branch of the _`origin`_ remote:
 
-```bash
+```shell
 git push origin master
 ```
 
@@ -272,7 +309,7 @@ git push origin master
 To delete all local changes in the branch that have not been added to the staging
 area, and leave unstaged files/folders, type:
 
-```bash
+```shell
 git checkout .
 ```
 
@@ -282,7 +319,7 @@ Note that this removes *changes* to files, not the files themselves.
 
 To undo the most recently added, but not committed, changes to files/folders:
 
-```bash
+```shell
 git reset .
 ```
 
@@ -290,7 +327,7 @@ git reset .
 
 To undo the most recent commit, type:
 
-```bash
+```shell
 git reset HEAD~1
 ```
 
@@ -306,7 +343,7 @@ the situation altogether by working carefully.
 When you are ready to make all the changes in a branch a permanent addition to
 the master branch, you `merge` the two together:
 
-```bash
+```shell
 git checkout <name-of-branch>
 git merge master
 ```

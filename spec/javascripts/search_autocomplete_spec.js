@@ -18,11 +18,11 @@ describe('Search autocomplete dropdown', () => {
 
   const projectIssuesPath = '/gitlab-org/gitlab-foss/issues';
 
-  const projectMRsPath = '/gitlab-org/gitlab-foss/merge_requests';
+  const projectMRsPath = '/gitlab-org/gitlab-foss/-/merge_requests';
 
-  const groupIssuesPath = '/groups/gitlab-org/issues';
+  const groupIssuesPath = '/groups/gitlab-org/-/issues';
 
-  const groupMRsPath = '/groups/gitlab-org/merge_requests';
+  const groupMRsPath = '/groups/gitlab-org/-/merge_requests';
 
   const projectName = 'GitLab Community Edition';
 
@@ -187,5 +187,29 @@ describe('Search autocomplete dropdown', () => {
     // browsers will not trigger default behavior (form submit, in this
     // example) on JavaScript-created keypresses.
     expect(submitSpy).not.toHaveBeenTriggered();
+  });
+
+  describe('disableAutocomplete', function() {
+    beforeEach(function() {
+      widget.enableAutocomplete();
+    });
+
+    it('should close the Dropdown', function() {
+      const toggleSpy = spyOn(widget.dropdownToggle, 'dropdown');
+
+      widget.dropdown.addClass('show');
+      widget.disableAutocomplete();
+
+      expect(toggleSpy).toHaveBeenCalledWith('toggle');
+    });
+  });
+
+  describe('enableAutocomplete', function() {
+    it('should open the Dropdown', function() {
+      const toggleSpy = spyOn(widget.dropdownToggle, 'dropdown');
+      widget.enableAutocomplete();
+
+      expect(toggleSpy).toHaveBeenCalledWith('toggle');
+    });
   });
 });

@@ -3,9 +3,9 @@
 require 'spec_helper'
 
 describe CommitStatus do
-  set(:project) { create(:project, :repository) }
+  let_it_be(:project) { create(:project, :repository) }
 
-  set(:pipeline) do
+  let_it_be(:pipeline) do
     create(:ci_pipeline, project: project, sha: project.commit.id)
   end
 
@@ -59,6 +59,42 @@ describe CommitStatus do
         commit_status.run!
 
         expect(commit_status.started_at).to be_present
+      end
+    end
+  end
+
+  describe '#processed' do
+    subject { commit_status.processed }
+
+    context 'when ci_atomic_processing is disabled' do
+      before do
+        stub_feature_flags(ci_atomic_processing: false)
+
+        commit_status.save!
+      end
+
+      it { is_expected.to be_nil }
+    end
+
+    context 'when ci_atomic_processing is enabled' do
+      before do
+        stub_feature_flags(ci_atomic_processing: true)
+      end
+
+      context 'status is latest' do
+        before do
+          commit_status.update!(retried: false, status: :pending)
+        end
+
+        it { is_expected.to be_falsey }
+      end
+
+      context 'status is retried' do
+        before do
+          commit_status.update!(retried: true, status: :pending)
+        end
+
+        it { is_expected.to be_truthy }
       end
     end
   end
@@ -199,7 +235,7 @@ describe CommitStatus do
 
     context 'if the building process has started' do
       before do
-        commit_status.started_at = Time.now - 1.minute
+        commit_status.started_at = Time.current - 1.minute
         commit_status.finished_at = nil
       end
 
@@ -387,7 +423,7 @@ describe CommitStatus do
       end
 
       it 'returns a correct compound status' do
-        expect(described_class.all.slow_composite_status).to eq 'running'
+        expect(described_class.all.slow_composite_status(project: project)).to eq 'running'
       end
     end
 
@@ -397,7 +433,7 @@ describe CommitStatus do
       end
 
       it 'returns status that indicates success' do
-        expect(described_class.all.slow_composite_status).to eq 'success'
+        expect(described_class.all.slow_composite_status(project: project)).to eq 'success'
       end
     end
 
@@ -408,8 +444,21 @@ describe CommitStatus do
       end
 
       it 'returns status according to the scope' do
-        expect(described_class.latest.slow_composite_status).to eq 'success'
+        expect(described_class.latest.slow_composite_status(project: project)).to eq 'success'
       end
+    end
+  end
+
+  describe '.match_id_and_lock_version' do
+    let(:status_1) { create_status(lock_version: 1) }
+    let(:status_2) { create_status(lock_version: 2) }
+
+    it 'returns statuses that match the given id and lock versions' do
+      params = [
+        { id: status_1.id, lock_version: 1 },
+        { id: status_2.id, lock_version: 3 }
+      ]
+      expect(described_class.match_id_and_lock_version(params)).to contain_exactly(status_1)
     end
   end
 
@@ -659,7 +708,7 @@ describe CommitStatus do
   end
 
   describe '#enqueue' do
-    let!(:current_time) { Time.new(2018, 4, 5, 14, 0, 0) }
+    let!(:current_time) { Time.zone.local(2018, 4, 5, 14, 0, 0) }
 
     before do
       allow(Time).to receive(:now).and_return(current_time)
@@ -701,5 +750,49 @@ describe CommitStatus do
     subject { commit_status.present }
 
     it { is_expected.to be_a(CommitStatusPresenter) }
+  end
+
+  describe '#recoverable?' do
+    using RSpec::Parameterized::TableSyntax
+
+    let(:commit_status) { create(:commit_status, :pending) }
+
+    subject(:recoverable?) { commit_status.recoverable? }
+
+    context 'when commit status is failed' do
+      before do
+        commit_status.drop!
+      end
+
+      where(:failure_reason, :recoverable) do
+        :script_failure | false
+        :missing_dependency_failure | false
+        :archived_failure | false
+        :scheduler_failure | false
+        :data_integrity_failure | false
+        :unknown_failure | true
+        :api_failure | true
+        :stuck_or_timeout_failure | true
+        :runner_system_failure | true
+      end
+
+      with_them do
+        context "when failure reason is #{params[:failure_reason]}" do
+          before do
+            commit_status.update_attribute(:failure_reason, failure_reason)
+          end
+
+          it { is_expected.to eq(recoverable) }
+        end
+      end
+    end
+
+    context 'when commit status is not failed' do
+      before do
+        commit_status.success!
+      end
+
+      it { is_expected.to eq(false) }
+    end
   end
 end

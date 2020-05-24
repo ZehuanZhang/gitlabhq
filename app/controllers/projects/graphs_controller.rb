@@ -28,6 +28,7 @@ class Projects::GraphsController < Projects::ApplicationController
   def charts
     get_commits
     get_languages
+    get_daily_coverage_options
   end
 
   def ci
@@ -37,7 +38,8 @@ class Projects::GraphsController < Projects::ApplicationController
   private
 
   def get_commits
-    @commits = @project.repository.commits(@ref, limit: 2000, skip_merges: true)
+    @commits_limit = 2000
+    @commits = @project.repository.commits(@ref, limit: @commits_limit, skip_merges: true)
     @commits_graph = Gitlab::Graphs::Commits.new(@commits)
     @commits_per_week_days = @commits_graph.commits_per_week_days
     @commits_per_time = @commits_graph.commits_per_time
@@ -49,6 +51,27 @@ class Projects::GraphsController < Projects::ApplicationController
       ::Projects::RepositoryLanguagesService.new(@project, current_user).execute.map do |lang|
         { value: lang.share, label: lang.name, color: lang.color, highlight: lang.color }
       end
+  end
+
+  def get_daily_coverage_options
+    return unless Feature.enabled?(:ci_download_daily_code_coverage, default_enabled: true)
+
+    date_today = Date.current
+    report_window = Projects::Ci::DailyBuildGroupReportResultsController::REPORT_WINDOW
+
+    @daily_coverage_options = {
+      base_params: {
+        start_date: date_today - report_window,
+        end_date: date_today,
+        ref_path: @project.repository.expand_ref(@ref),
+        param_type: 'coverage'
+      },
+      download_path: namespace_project_ci_daily_build_group_report_results_path(
+        namespace_id: @project.namespace,
+        project_id: @project,
+        format: :csv
+      )
+    }
   end
 
   def fetch_graph

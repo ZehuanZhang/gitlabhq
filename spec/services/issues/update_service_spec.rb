@@ -211,6 +211,49 @@ describe Issues::UpdateService, :mailer do
           expect(note.note).to eq 'locked this issue'
         end
       end
+
+      context 'after_save callback to store_mentions' do
+        let(:issue) { create(:issue, title: 'Old title', description: "simple description", project: project, author: create(:user)) }
+        let(:labels) { create_pair(:label, project: project) }
+        let(:milestone) { create(:milestone, project: project) }
+
+        context 'when mentionable attributes change' do
+          let(:opts) { { description: "Description with #{user.to_reference}" } }
+
+          it 'saves mentions' do
+            expect(issue).to receive(:store_mentions!).and_call_original
+
+            expect { update_issue(opts) }.to change { IssueUserMention.count }.by(1)
+
+            expect(issue.referenced_users).to match_array([user])
+          end
+        end
+
+        context 'when mentionable attributes do not change' do
+          let(:opts) { { label_ids: labels.map(&:id), milestone_id: milestone.id } }
+
+          it 'does not call store_mentions' do
+            expect(issue).not_to receive(:store_mentions!).and_call_original
+
+            expect { update_issue(opts) }.not_to change { IssueUserMention.count }
+
+            expect(issue.referenced_users).to be_empty
+          end
+        end
+
+        context 'when save fails' do
+          let(:opts) { { title: '', label_ids: labels.map(&:id), milestone_id: milestone.id } }
+
+          it 'does not call store_mentions' do
+            expect(issue).not_to receive(:store_mentions!).and_call_original
+
+            expect { update_issue(opts) }.not_to change { IssueUserMention.count }
+
+            expect(issue.referenced_users).to be_empty
+            expect(issue.valid?).to be false
+          end
+        end
+      end
     end
 
     context 'when description changed' do
@@ -342,6 +385,10 @@ describe Issues::UpdateService, :mailer do
       end
 
       context 'when the milestone is removed' do
+        before do
+          stub_feature_flags(track_resource_milestone_change_events: false)
+        end
+
         let!(:non_subscriber) { create(:user) }
 
         let!(:subscriber) do
@@ -365,9 +412,28 @@ describe Issues::UpdateService, :mailer do
           should_email(subscriber)
           should_not_email(non_subscriber)
         end
+
+        it 'clears milestone issue counters cache' do
+          issue.milestone = create(:milestone, project: project)
+
+          issue.save
+
+          expect_next_instance_of(Milestones::IssuesCountService, issue.milestone) do |service|
+            expect(service).to receive(:delete_cache).and_call_original
+          end
+          expect_next_instance_of(Milestones::ClosedIssuesCountService, issue.milestone) do |service|
+            expect(service).to receive(:delete_cache).and_call_original
+          end
+
+          update_issue(milestone_id: "")
+        end
       end
 
-      context 'when the milestone is changed' do
+      context 'when the milestone is assigned' do
+        before do
+          stub_feature_flags(track_resource_milestone_change_events: false)
+        end
+
         let!(:non_subscriber) { create(:user) }
 
         let!(:subscriber) do
@@ -393,6 +459,43 @@ describe Issues::UpdateService, :mailer do
           should_email(subscriber)
           should_not_email(non_subscriber)
         end
+
+        it 'deletes issue counters cache for the milestone' do
+          milestone = create(:milestone, project: project)
+
+          expect_next_instance_of(Milestones::IssuesCountService, milestone) do |service|
+            expect(service).to receive(:delete_cache).and_call_original
+          end
+          expect_next_instance_of(Milestones::ClosedIssuesCountService, milestone) do |service|
+            expect(service).to receive(:delete_cache).and_call_original
+          end
+
+          update_issue(milestone: milestone)
+        end
+      end
+
+      context 'when the milestone is changed' do
+        it 'deletes issue counters cache for both milestones' do
+          old_milestone = create(:milestone, project: project)
+          new_milestone = create(:milestone, project: project)
+
+          issue.update!(milestone: old_milestone)
+
+          expect_next_instance_of(Milestones::IssuesCountService, old_milestone) do |service|
+            expect(service).to receive(:delete_cache).and_call_original
+          end
+          expect_next_instance_of(Milestones::ClosedIssuesCountService, old_milestone) do |service|
+            expect(service).to receive(:delete_cache).and_call_original
+          end
+          expect_next_instance_of(Milestones::IssuesCountService, new_milestone) do |service|
+            expect(service).to receive(:delete_cache).and_call_original
+          end
+          expect_next_instance_of(Milestones::ClosedIssuesCountService, new_milestone) do |service|
+            expect(service).to receive(:delete_cache).and_call_original
+          end
+
+          update_issue(milestone: new_milestone)
+        end
       end
 
       context 'when the labels change' do
@@ -407,7 +510,7 @@ describe Issues::UpdateService, :mailer do
         end
 
         it 'updates updated_at' do
-          expect(issue.reload.updated_at).to be > Time.now
+          expect(issue.reload.updated_at).to be > Time.current
         end
       end
     end
@@ -721,14 +824,14 @@ describe Issues::UpdateService, :mailer do
 
     context 'when moving an issue ' do
       it 'raises an error for invalid move ids within a project' do
-        opts = { move_between_ids: [9000, 9999] }
+        opts = { move_between_ids: [9000, non_existing_record_id] }
 
         expect { described_class.new(issue.project, user, opts).execute(issue) }
             .to raise_error(ActiveRecord::RecordNotFound)
       end
 
       it 'raises an error for invalid move ids within a group' do
-        opts = { move_between_ids: [9000, 9999], board_group_id: create(:group).id }
+        opts = { move_between_ids: [9000, non_existing_record_id], board_group_id: create(:group).id }
 
         expect { described_class.new(issue.project, user, opts).execute(issue) }
             .to raise_error(ActiveRecord::RecordNotFound)
@@ -738,6 +841,34 @@ describe Issues::UpdateService, :mailer do
     include_examples 'issuable update service' do
       let(:open_issuable) { issue }
       let(:closed_issuable) { create(:closed_issue, project: project) }
+    end
+
+    context 'real-time updates' do
+      let(:update_params) { { assignee_ids: [user2.id] } }
+
+      context 'when broadcast_issue_updates is enabled' do
+        before do
+          stub_feature_flags(broadcast_issue_updates: true)
+        end
+
+        it 'broadcasts to the issues channel' do
+          expect(IssuesChannel).to receive(:broadcast_to).with(issue, event: 'updated')
+
+          update_issue(update_params)
+        end
+      end
+
+      context 'when broadcast_issue_updates is disabled' do
+        before do
+          stub_feature_flags(broadcast_issue_updates: false)
+        end
+
+        it 'does not broadcast to the issues channel' do
+          expect(IssuesChannel).not_to receive(:broadcast_to)
+
+          update_issue(update_params)
+        end
+      end
     end
   end
 end

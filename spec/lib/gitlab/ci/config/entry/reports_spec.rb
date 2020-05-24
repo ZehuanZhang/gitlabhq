@@ -43,6 +43,12 @@ describe Gitlab::Ci::Config::Entry::Reports do
         :license_management | 'gl-license-management-report.json'
         :license_scanning | 'gl-license-scanning-report.json'
         :performance | 'performance.json'
+        :lsif | 'lsif.json'
+        :dotenv | 'build.dotenv'
+        :cobertura | 'cobertura-coverage.xml'
+        :terraform | 'tfplan.json'
+        :accessibility | 'gl-accessibility.json'
+        :cluster_applications | 'gl-cluster-applications.json'
       end
 
       with_them do

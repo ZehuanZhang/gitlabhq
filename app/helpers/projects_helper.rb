@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
 module ProjectsHelper
-  prepend_if_ee('::EE::ProjectsHelper') # rubocop: disable Cop/InjectEnterpriseEditionModule
+  def project_incident_management_setting
+    @project_incident_management_setting ||= @project.incident_management_setting ||
+      @project.build_incident_management_setting
+  end
 
   def link_to_project(project)
     link_to namespace_project_path(namespace_id: project.namespace, id: project), title: h(project.name) do
@@ -292,11 +295,11 @@ module ProjectsHelper
   end
 
   def show_merge_request_count?(disabled: false, compact_mode: false)
-    !disabled && !compact_mode && Feature.enabled?(:project_list_show_mr_count, default_enabled: true)
+    !disabled && !compact_mode
   end
 
   def show_issue_count?(disabled: false, compact_mode: false)
-    !disabled && !compact_mode && Feature.enabled?(:project_list_show_issue_count, default_enabled: true)
+    !disabled && !compact_mode
   end
 
   # overridden in EE
@@ -368,12 +371,20 @@ module ProjectsHelper
     @project.grafana_integration&.grafana_url
   end
 
-  def grafana_integration_token
-    @project.grafana_integration&.token
+  def grafana_integration_masked_token
+    @project.grafana_integration&.masked_token
   end
 
   def grafana_integration_enabled?
     @project.grafana_integration&.enabled?
+  end
+
+  def project_license_name(project)
+    project.repository.license&.name
+  rescue GRPC::Unavailable, GRPC::DeadlineExceeded, Gitlab::Git::CommandError => e
+    Gitlab::ErrorTracking.track_exception(e)
+
+    nil
   end
 
   private
@@ -399,8 +410,12 @@ module ProjectsHelper
       nav_tabs << :pipelines
     end
 
-    if can?(current_user, :read_environment, project) || can?(current_user, :read_cluster, project)
+    if can_view_operations_tab?(current_user, project)
       nav_tabs << :operations
+    end
+
+    if can?(current_user, :read_cycle_analytics, project)
+      nav_tabs << :cycle_analytics
     end
 
     tab_ability_map.each do |tab, ability|
@@ -423,19 +438,27 @@ module ProjectsHelper
 
   def tab_ability_map
     {
-      environments:     :read_environment,
-      milestones:       :read_milestone,
-      snippets:         :read_project_snippet,
-      settings:         :admin_project,
-      builds:           :read_build,
-      clusters:         :read_cluster,
-      serverless:       :read_cluster,
-      error_tracking:   :read_sentry_issue,
-      labels:           :read_label,
-      issues:           :read_issue,
-      project_members:  :read_project_member,
-      wiki:             :read_wiki
+      environments:       :read_environment,
+      metrics_dashboards: :metrics_dashboard,
+      milestones:         :read_milestone,
+      snippets:           :read_snippet,
+      settings:           :admin_project,
+      builds:             :read_build,
+      clusters:           :read_cluster,
+      serverless:         :read_cluster,
+      error_tracking:     :read_sentry_issue,
+      alert_management:   :read_alert_management_alert,
+      labels:             :read_label,
+      issues:             :read_issue,
+      project_members:    :read_project_member,
+      wiki:               :read_wiki
     }
+  end
+
+  def can_view_operations_tab?(current_user, project)
+    [:read_environment, :read_cluster, :metrics_dashboard].any? do |ability|
+      can?(current_user, ability, project)
+    end
   end
 
   def search_tab_ability_map
@@ -443,7 +466,7 @@ module ProjectsHelper
       blobs:          :download_code,
       commits:        :download_code,
       merge_requests: :read_merge_request,
-      notes:          [:read_merge_request, :download_code, :read_issue, :read_project_snippet],
+      notes:          [:read_merge_request, :download_code, :read_issue, :read_snippet],
       members:        :read_project_member
     )
   end
@@ -563,6 +586,7 @@ module ProjectsHelper
       requestAccessEnabled: !!project.request_access_enabled,
       issuesAccessLevel: feature.issues_access_level,
       repositoryAccessLevel: feature.repository_access_level,
+      forkingAccessLevel: feature.forking_access_level,
       mergeRequestsAccessLevel: feature.merge_requests_access_level,
       buildsAccessLevel: feature.builds_access_level,
       wikiAccessLevel: feature.wiki_access_level,
@@ -570,7 +594,9 @@ module ProjectsHelper
       pagesAccessLevel: feature.pages_access_level,
       containerRegistryEnabled: !!project.container_registry_enabled,
       lfsEnabled: !!project.lfs_enabled,
-      emailsDisabled: project.emails_disabled?
+      emailsDisabled: project.emails_disabled?,
+      metricsDashboardAccessLevel: feature.metrics_dashboard_access_level,
+      showDefaultAwardEmojis: project.show_default_award_emojis?
     }
   end
 
@@ -584,9 +610,12 @@ module ProjectsHelper
       registryAvailable: Gitlab.config.registry.enabled,
       registryHelpPath: help_page_path('user/packages/container_registry/index'),
       lfsAvailable: Gitlab.config.lfs.enabled,
-      lfsHelpPath: help_page_path('workflow/lfs/manage_large_binaries_with_git_lfs'),
+      lfsHelpPath: help_page_path('topics/git/lfs/index'),
+      lfsObjectsExist: project.lfs_objects.exists?,
+      lfsObjectsRemovalHelpPath: help_page_path('topics/git/lfs/index', anchor: 'removing-objects-from-lfs'),
       pagesAvailable: Gitlab.config.pages.enabled,
       pagesAccessControlEnabled: Gitlab.config.pages.access_control,
+      pagesAccessControlForced: ::Gitlab::Pages.access_control_is_forced?,
       pagesHelpPath: help_page_path('user/project/pages/introduction', anchor: 'gitlab-pages-access-control-core')
     }
   end
@@ -603,6 +632,7 @@ module ProjectsHelper
 
   def find_file_path
     return unless @project && !@project.empty_repo?
+    return unless can?(current_user, :download_code, @project)
 
     ref = @ref || @project.repository.root_ref
 
@@ -641,7 +671,6 @@ module ProjectsHelper
       projects#show
       projects#activity
       releases#index
-      cycle_analytics#show
     ]
   end
 
@@ -651,6 +680,10 @@ module ProjectsHelper
       project_members#index
       integrations#show
       services#edit
+      hooks#index
+      hooks#edit
+      access_tokens#index
+      hook_logs#show
       repository#show
       ci_cd#show
       operations#show
@@ -684,6 +717,7 @@ module ProjectsHelper
       clusters
       functions
       error_tracking
+      alert_management
       user
       gcp
       logs
@@ -698,10 +732,27 @@ module ProjectsHelper
   end
 
   def vue_file_list_enabled?
-    Feature.enabled?(:vue_file_list, @project)
+    Feature.enabled?(:vue_file_list, @project, default_enabled: true)
+  end
+
+  def native_code_navigation_enabled?(project)
+    Feature.enabled?(:code_navigation, project)
   end
 
   def show_visibility_confirm_modal?(project)
     project.unlink_forks_upon_visibility_decrease_enabled? && project.visibility_level > Gitlab::VisibilityLevel::PRIVATE && project.forks_count > 0
   end
+
+  def settings_container_registry_expiration_policy_available?(project)
+    Gitlab.config.registry.enabled &&
+      can?(current_user, :destroy_container_image, project)
+  end
+
+  def project_access_token_available?(project)
+    return false if ::Gitlab.com?
+
+    ::Feature.enabled?(:resource_access_token, project)
+  end
 end
+
+ProjectsHelper.prepend_if_ee('EE::ProjectsHelper')

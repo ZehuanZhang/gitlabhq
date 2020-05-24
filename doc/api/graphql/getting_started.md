@@ -2,7 +2,7 @@
 
 This guide demonstrates basic usage of GitLab's GraphQL API.
 
-See the [GraphQL API StyleGuide](../../development/api_graphql_styleguide.md) for implementation details
+See the [GraphQL API style guide](../../development/api_graphql_styleguide.md) for implementation details
 aimed at developers who wish to work on developing the API itself.
 
 ## Running examples
@@ -21,7 +21,7 @@ to use as a bearer token.
 
 Example:
 
-```sh
+```shell
 GRAPHQL_TOKEN=<your-token>
 curl 'https://gitlab.com/api/graphql' --header "Authorization: Bearer $GRAPHQL_TOKEN" --header "Content-Type: application/json" --request POST --data "{\"query\": \"query {currentUser {name}}\"}"
 ```
@@ -36,7 +36,7 @@ The examples below:
 - Can be run directly against GitLab 11.0 or later, though some of the types and fields
 may not be supported in older versions.
 - Will work against GitLab.com without any further setup. Make sure you are signed in and
-navigate to the [GraphiQL Explorer](https://www.gitlab.com/-/graphql-explorer).
+navigate to the [GraphiQL Explorer](https://gitlab.com/-/graphql-explorer).
 
 If you want to run the queries locally, or on a self-managed instance,
 you will need to either:

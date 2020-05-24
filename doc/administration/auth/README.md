@@ -10,6 +10,7 @@ providers:
 
 - [Auth0](../../integration/auth0.md)
 - [Authentiq](authentiq.md)
+- [AWS Cognito](cognito.md)
 - [Azure](../../integration/azure.md)
 - [Bitbucket Cloud](../../integration/bitbucket.md)
 - [CAS](../../integration/cas.md)
@@ -31,4 +32,6 @@ providers:
 - [Shibboleth](../../integration/shibboleth.md)
 - [Smartcard](smartcard.md) **(PREMIUM ONLY)**
 - [Twitter](../../integration/twitter.md)
-- [UltraAuth](../../integration/ultra_auth.md)
+
+NOTE: **Note:**
+UltraAuth has removed their software which supports OmniAuth integration. We have therefore removed all references to UltraAuth integration.

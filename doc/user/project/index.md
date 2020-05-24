@@ -63,18 +63,18 @@ When you create a project in GitLab, you'll have access to a large number of
 - [GitLab CI/CD](../../ci/README.md): GitLab's built-in [Continuous Integration, Delivery, and Deployment](https://about.gitlab.com/blog/2016/08/05/continuous-integration-delivery-and-deployment-with-gitlab/) tool
   - [Container Registry](../packages/container_registry/index.md): Build and push Docker
   images out-of-the-box
-  - [Auto Deploy](../../topics/autodevops/index.md#auto-deploy): Configure GitLab CI/CD
+  - [Auto Deploy](../../topics/autodevops/stages.md#auto-deploy): Configure GitLab CI/CD
   to automatically set up your app's deployment
-  - [Enable and disable GitLab CI](../../ci/enable_or_disable_ci.md)
-  - [Pipelines](../../ci/pipelines.md): Configure and visualize
+  - [Enable and disable GitLab CI/CD](../../ci/enable_or_disable_ci.md)
+  - [Pipelines](../../ci/pipelines/index.md): Configure and visualize
     your GitLab CI/CD pipelines from the UI
-    - [Scheduled Pipelines](pipelines/schedules.md): Schedule a pipeline
+    - [Scheduled Pipelines](../../ci/pipelines/schedules.md): Schedule a pipeline
       to start at a chosen time
-    - [Pipeline Graphs](../../ci/pipelines.md#visualizing-pipelines): View your
+    - [Pipeline Graphs](../../ci/pipelines/index.md#visualize-pipelines): View your
       entire pipeline from the UI
-    - [Job artifacts](pipelines/job_artifacts.md): Define,
+    - [Job artifacts](../../ci/pipelines/job_artifacts.md): Define,
       browse, and download job artifacts
-    - [Pipeline settings](pipelines/settings.md): Set up Git strategy (choose the default way your repository is fetched from GitLab in a job),
+    - [Pipeline settings](../../ci/pipelines/settings.md): Set up Git strategy (choose the default way your repository is fetched from GitLab in a job),
       timeout (defines the maximum amount of time in minutes that a job is able run), custom path for `.gitlab-ci.yml`, test coverage parsing, pipeline's visibility, and much more
   - [Kubernetes cluster integration](clusters/index.md): Connecting your GitLab project
     with a Kubernetes cluster
@@ -87,21 +87,23 @@ When you create a project in GitLab, you'll have access to a large number of
 
 - [Wiki](wiki/index.md): document your GitLab project in an integrated Wiki.
 - [Snippets](../snippets.md): store, share and collaborate on code snippets.
-- [Cycle Analytics](cycle_analytics.md): review your development lifecycle.
+- [Value Stream Analytics](cycle_analytics.md): review your development lifecycle.
 - [Insights](insights/index.md): configure the Insights that matter for your projects. **(ULTIMATE)**
 - [Security Dashboard](security_dashboard.md): Security Dashboard. **(ULTIMATE)**
 - [Syntax highlighting](highlighting.md): an alternative to customize
   your code blocks, overriding GitLab's default choice of language.
 - [Badges](badges.md): badges for the project overview.
 - [Releases](releases/index.md): a way to track deliverables in your project as snapshot in time of
-  the source, build output, and other metadata or artifacts
+  the source, build output, other metadata, and other artifacts
   associated with a released version of your code.
 - [Conan packages](../packages/conan_repository/index.md): your private Conan repository in GitLab. **(PREMIUM)**
 - [Maven packages](../packages/maven_repository/index.md): your private Maven repository in GitLab. **(PREMIUM)**
 - [NPM packages](../packages/npm_registry/index.md): your private NPM package registry in GitLab. **(PREMIUM)**
 - [Code owners](code_owners.md): specify code owners for certain files **(STARTER)**
-- [License Compliance](../application_security/license_compliance/index.md): approve and blacklist licenses for projects. **(ULTIMATE)**
+- [License Compliance](../compliance/license_compliance/index.md): approve and blacklist licenses for projects. **(ULTIMATE)**
 - [Dependency List](../application_security/dependency_list/index.md): view project dependencies. **(ULTIMATE)**
+- [Requirements](requirements/index.md): Requirements allow you to create criteria to check your products against. **(ULTIMATE)**
+- [Static Site Editor](static_site_editor/index.md): quickly edit content on static websites without prior knowledge of the codebase or Git commands.
 
 ### Project integrations
 
@@ -114,15 +116,37 @@ Learn how to [create a new project](../../gitlab-basics/create-project.md) in Gi
 
 ### Fork a project
 
-You can [fork a project](../../gitlab-basics/fork-project.md) in order to:
+You can [fork a project](repository/forking_workflow.md) in order to:
 
 - Collaborate on code by forking a project and creating a merge request
   from your fork to the upstream project
 - Fork a sample project to work on the top of that
 
+### Star a project
+
+You can star a project to make it easier to find projects you frequently use.
+The number of stars a project has can indicate its popularity.
+
+To star a project:
+
+1. Go to the home page of the project you want to star.
+1. In the upper right corner of the page, click **Star**.
+
+To view your starred projects:
+
+1. Click **Projects** in the navigation bar.
+1. Click **Starred Projects**.
+1. GitLab displays information about your starred projects, including:
+
+   - Project description, including name, description, and icon
+   - Number of times this project has been starred
+   - Number of times this project has been forked
+   - Number of open merge requests
+   - Number of open issues
+
 ## Project settings
 
-Set the project's visibility level and  the access levels to its various pages
+Set the project's visibility level and the access levels to its various pages
 and perform actions like archiving, renaming or transferring a project.
 
 Read through the documentation on [project settings](settings/index.md).
@@ -147,6 +171,13 @@ Read through the documentation on [CI/CD for external repositories](../../ci/ci_
 ## Project members
 
 Learn how to [add members to your projects](members/index.md).
+
+## Project activity
+
+To view the activity of a project, navigate to **Project overview > Activity**.
+From there, you can click on the tabs to see **All** the activity, or see it
+filtered by **Push events**, **Merge events**, **Issue events**, **Comments**,
+**Team**, and **Wiki**.
 
 ### Leave a project
 
@@ -211,7 +242,7 @@ field.
 
 For example:
 
-```text
+```plaintext
 machine example.gitlab.com
 login <gitlab_user_name>
 password <personal_access_token>
@@ -219,14 +250,14 @@ password <personal_access_token>
 
 ## Access project page with project ID
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/issues/53671) in GitLab 11.8.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/53671) in GitLab 11.8.
 
 To quickly access a project from the GitLab UI using the project ID,
 visit the `/projects/:id` URL in your browser or other tool accessing the project.
 
 ## Project aliases **(PREMIUM ONLY)**
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab/issues/3264) in [GitLab Premium](https://about.gitlab.com/pricing/) 12.1.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/3264) in [GitLab Premium](https://about.gitlab.com/pricing/) 12.1.
 
 When migrating repositories to GitLab and they are being accessed by other systems,
 it's very useful to be able to access them using the same name especially when

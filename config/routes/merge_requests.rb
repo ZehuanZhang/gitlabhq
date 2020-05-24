@@ -14,10 +14,14 @@ resources :merge_requests, concerns: :awardable, except: [:new, :create, :show],
     post :rebase
     get :test_reports
     get :exposed_artifacts
+    get :accessibility_reports
+    get :coverage_reports
+    get :terraform_reports
 
     scope constraints: ->(req) { req.format == :json }, as: :json do
       get :commits
       get :pipelines
+      get :context_commits
       get :diffs, to: 'merge_requests/diffs#show'
       get :diffs_batch, to: 'merge_requests/diffs#diffs_batch'
       get :diffs_metadata, to: 'merge_requests/diffs#diffs_metadata'

@@ -161,6 +161,7 @@ module API
 
       def self.services
         {
+          'alerts' => [],
           'asana' => [
             {
               required: true,
@@ -675,6 +676,12 @@ module API
               type: String,
               desc: 'The Microsoft Teams webhook. e.g. https://outlook.office.com/webhook/…'
             },
+            {
+              required: false,
+              name: :branches_to_be_notified,
+              type: String,
+              desc: 'Branches for which notifications are to be sent'
+            },
             chat_notification_flags
           ].flatten,
           'mattermost' => [
@@ -717,12 +724,22 @@ module API
               desc: 'The Unify Circuit webhook. e.g. https://circuit.com/rest/v2/webhooks/incoming/…'
             },
             chat_notification_events
+          ].flatten,
+          'webex-teams' => [
+            {
+              required: true,
+              name: :webhook,
+              type: String,
+              desc: 'The Webex Teams webhook. e.g. https://api.ciscospark.com/v1/webhooks/incoming/…'
+            },
+            chat_notification_events
           ].flatten
         }
       end
 
       def self.service_classes
         [
+          ::AlertsService,
           ::AsanaService,
           ::AssemblaService,
           ::BambooService,

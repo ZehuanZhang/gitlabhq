@@ -18,7 +18,7 @@ describe API::MergeRequestDiffs, 'MergeRequestDiffs' do
       get api("/projects/#{project.id}/merge_requests/#{merge_request.iid}/versions", user)
       merge_request_diff = merge_request.merge_request_diffs.last
 
-      expect(response.status).to eq 200
+      expect(response).to have_gitlab_http_status(:ok)
       expect(response).to include_pagination_headers
       expect(json_response).to be_an Array
       expect(json_response.size).to eq(merge_request.merge_request_diffs.size)
@@ -28,12 +28,12 @@ describe API::MergeRequestDiffs, 'MergeRequestDiffs' do
 
     it 'returns a 404 when merge_request id is used instead of the iid' do
       get api("/projects/#{project.id}/merge_requests/#{merge_request.id}/versions", user)
-      expect(response).to have_gitlab_http_status(404)
+      expect(response).to have_gitlab_http_status(:not_found)
     end
 
     it 'returns a 404 when merge_request_iid not found' do
       get api("/projects/#{project.id}/merge_requests/0/versions", user)
-      expect(response).to have_gitlab_http_status(404)
+      expect(response).to have_gitlab_http_status(:not_found)
     end
   end
 
@@ -43,7 +43,7 @@ describe API::MergeRequestDiffs, 'MergeRequestDiffs' do
     it 'returns a 200 for a valid merge request' do
       get api("/projects/#{project.id}/merge_requests/#{merge_request.iid}/versions/#{merge_request_diff.id}", user)
 
-      expect(response.status).to eq 200
+      expect(response).to have_gitlab_http_status(:ok)
       expect(json_response['id']).to eq(merge_request_diff.id)
       expect(json_response['head_commit_sha']).to eq(merge_request_diff.head_commit_sha)
       expect(json_response['diffs'].size).to eq(merge_request_diff.diffs.size)
@@ -51,17 +51,17 @@ describe API::MergeRequestDiffs, 'MergeRequestDiffs' do
 
     it 'returns a 404 when merge_request id is used instead of the iid' do
       get api("/projects/#{project.id}/merge_requests/#{merge_request.id}/versions/#{merge_request_diff.id}", user)
-      expect(response).to have_gitlab_http_status(404)
+      expect(response).to have_gitlab_http_status(:not_found)
     end
 
     it 'returns a 404 when merge_request version_id is not found' do
       get api("/projects/#{project.id}/merge_requests/#{merge_request.iid}/versions/0", user)
-      expect(response).to have_gitlab_http_status(404)
+      expect(response).to have_gitlab_http_status(:not_found)
     end
 
     it 'returns a 404 when merge_request_iid is not found' do
-      get api("/projects/#{project.id}/merge_requests/12345/versions/#{merge_request_diff.id}", user)
-      expect(response).to have_gitlab_http_status(404)
+      get api("/projects/#{project.id}/merge_requests/#{non_existing_record_iid}/versions/#{merge_request_diff.id}", user)
+      expect(response).to have_gitlab_http_status(:not_found)
     end
   end
 end

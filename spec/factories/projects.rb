@@ -25,6 +25,7 @@ FactoryBot.define do
       builds_access_level { ProjectFeature::ENABLED }
       snippets_access_level { ProjectFeature::ENABLED }
       issues_access_level { ProjectFeature::ENABLED }
+      forking_access_level { ProjectFeature::ENABLED }
       merge_requests_access_level { ProjectFeature::ENABLED }
       repository_access_level { ProjectFeature::ENABLED }
       pages_access_level do
@@ -36,6 +37,9 @@ FactoryBot.define do
       group_runners_enabled { nil }
       import_status { nil }
       import_jid { nil }
+      import_correlation_id { nil }
+      import_last_error { nil }
+      forward_deployment_enabled { nil }
     end
 
     after(:create) do |project, evaluator|
@@ -48,6 +52,7 @@ FactoryBot.define do
         builds_access_level: builds_access_level,
         snippets_access_level: evaluator.snippets_access_level,
         issues_access_level: evaluator.issues_access_level,
+        forking_access_level: evaluator.forking_access_level,
         merge_requests_access_level: merge_requests_access_level,
         repository_access_level: evaluator.repository_access_level
       }
@@ -75,6 +80,8 @@ FactoryBot.define do
         import_state = project.import_state || project.build_import_state
         import_state.status = evaluator.import_status
         import_state.jid = evaluator.import_jid
+        import_state.correlation_id_value = evaluator.import_correlation_id
+        import_state.last_error = evaluator.import_last_error
         import_state.save
       end
     end
@@ -111,6 +118,10 @@ FactoryBot.define do
       archived { true }
     end
 
+    trait :last_repository_check_failed do
+      last_repository_check_failed { true }
+    end
+
     storage_version { Project::LATEST_STORAGE_VERSION }
 
     trait :legacy_storage do
@@ -134,12 +145,6 @@ FactoryBot.define do
     trait :broken_storage do
       after(:create) do |project|
         project.update_column(:repository_storage, 'broken')
-      end
-    end
-
-    trait :without_container_expiration_policy do
-      after(:build) do |project|
-        project.class.skip_callback(:create, :after, :create_container_expiration_policy, raise: false)
       end
     end
 
@@ -210,6 +215,12 @@ FactoryBot.define do
       end
     end
 
+    trait :design_repo do
+      after(:create) do |project|
+        raise 'Failed to create design repository!' unless project.design_repository.create_if_not_exists
+      end
+    end
+
     trait :remote_mirror do
       transient do
         remote_name { "remote_mirror_#{SecureRandom.hex}" }
@@ -264,6 +275,9 @@ FactoryBot.define do
     trait(:issues_disabled)         { issues_access_level { ProjectFeature::DISABLED } }
     trait(:issues_enabled)          { issues_access_level { ProjectFeature::ENABLED } }
     trait(:issues_private)          { issues_access_level { ProjectFeature::PRIVATE } }
+    trait(:forking_disabled)         { forking_access_level { ProjectFeature::DISABLED } }
+    trait(:forking_enabled)          { forking_access_level { ProjectFeature::ENABLED } }
+    trait(:forking_private)          { forking_access_level { ProjectFeature::PRIVATE } }
     trait(:merge_requests_enabled)  { merge_requests_access_level { ProjectFeature::ENABLED } }
     trait(:merge_requests_disabled) { merge_requests_access_level { ProjectFeature::DISABLED } }
     trait(:merge_requests_private)  { merge_requests_access_level { ProjectFeature::PRIVATE } }

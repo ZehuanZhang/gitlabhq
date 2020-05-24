@@ -30,7 +30,7 @@ To install a Camo server as an asset proxy:
 1. Make sure your instance of GitLab is running, and that you have created a private API token.
    Using the API, configure the asset proxy settings on your GitLab instance. For example:
 
-   ```sh
+   ```shell
    curl --request "PUT" "https://gitlab.example.com/api/v4/application/settings?\
    asset_proxy_enabled=true&\
    asset_proxy_url=https://proxy.gitlab.example.com&\
@@ -63,6 +63,6 @@ For example, the following is a link to an image in Markdown:
 
 The following is an example of a source link that could result:
 
-```text
+```plaintext
 http://proxy.gitlab.example.com/f9dd2b40157757eb82afeedbf1290ffb67a3aeeb/68747470733a2f2f61626f75742e6769746c61622e636f6d2f696d616765732f70726573732f6c6f676f2f6a70672f6769746c61622d69636f6e2d7267622e6a7067
 ```

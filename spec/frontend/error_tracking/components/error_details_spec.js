@@ -1,9 +1,25 @@
 import { createLocalVue, shallowMount } from '@vue/test-utils';
 import Vuex from 'vuex';
-import { GlLoadingIcon, GlLink, GlBadge, GlFormInput } from '@gitlab/ui';
-import LoadingButton from '~/vue_shared/components/loading_button.vue';
+import { __ } from '~/locale';
+import createFlash from '~/flash';
+import {
+  GlDeprecatedButton,
+  GlLoadingIcon,
+  GlLink,
+  GlBadge,
+  GlFormInput,
+  GlAlert,
+  GlSprintf,
+} from '@gitlab/ui';
 import Stacktrace from '~/error_tracking/components/stacktrace.vue';
 import ErrorDetails from '~/error_tracking/components/error_details.vue';
+import {
+  severityLevel,
+  severityLevelVariant,
+  errorStatus,
+} from '~/error_tracking/components/constants';
+
+jest.mock('~/flash');
 
 const localVue = createLocalVue();
 localVue.use(Vuex);
@@ -13,6 +29,7 @@ describe('ErrorDetails', () => {
   let wrapper;
   let actions;
   let getters;
+  let mocks;
 
   const findInput = name => {
     const inputs = wrapper.findAll(GlFormInput).filter(c => c.attributes('name') === name);
@@ -21,11 +38,15 @@ describe('ErrorDetails', () => {
 
   function mountComponent() {
     wrapper = shallowMount(ErrorDetails, {
-      stubs: { LoadingButton },
+      stubs: { GlDeprecatedButton, GlSprintf },
       localVue,
       store,
+      mocks,
       propsData: {
-        issueDetailsPath: '/123/details',
+        issueId: '123',
+        projectPath: '/root/gitlab-test',
+        listPath: '/error_tracking',
+        issueUpdatePath: '/123',
         issueStackTracePath: '/stacktrace',
         projectIssuesPath: '/test-project/issues/',
         csrfToken: 'fakeToken',
@@ -35,8 +56,9 @@ describe('ErrorDetails', () => {
 
   beforeEach(() => {
     actions = {
-      startPollingDetails: () => {},
       startPollingStacktrace: () => {},
+      updateIgnoreStatus: jest.fn(),
+      updateResolveStatus: jest.fn().mockResolvedValue({ closed_issue_iid: 1 }),
     };
 
     getters = {
@@ -45,10 +67,9 @@ describe('ErrorDetails', () => {
     };
 
     const state = {
-      error: {},
-      loading: true,
       stacktraceData: {},
       loadingStacktrace: true,
+      errorStatus: '',
     };
 
     store = new Vuex.Store({
@@ -61,6 +82,20 @@ describe('ErrorDetails', () => {
         },
       },
     });
+
+    const query = jest.fn();
+    mocks = {
+      $apollo: {
+        query,
+        queries: {
+          error: {
+            loading: true,
+            stopPolling: jest.fn(),
+            setOptions: jest.fn(),
+          },
+        },
+      },
+    };
   });
 
   afterEach(() => {
@@ -81,65 +116,166 @@ describe('ErrorDetails', () => {
     });
   });
 
+  describe('sentry response timeout', () => {
+    const initTime = 300000;
+    const endTime = initTime + 10000;
+
+    beforeEach(() => {
+      mocks.$apollo.queries.error.loading = false;
+      jest.spyOn(Date, 'now').mockReturnValue(initTime);
+      mountComponent();
+    });
+
+    it('when before timeout, still shows loading', () => {
+      Date.now.mockReturnValue(endTime - 1);
+
+      wrapper.vm.onNoApolloResult();
+
+      return wrapper.vm.$nextTick().then(() => {
+        expect(wrapper.find(GlLoadingIcon).exists()).toBe(true);
+        expect(createFlash).not.toHaveBeenCalled();
+        expect(mocks.$apollo.queries.error.stopPolling).not.toHaveBeenCalled();
+      });
+    });
+
+    it('when timeout is hit and no apollo result, stops loading and shows flash', () => {
+      Date.now.mockReturnValue(endTime + 1);
+
+      wrapper.vm.onNoApolloResult();
+
+      return wrapper.vm.$nextTick().then(() => {
+        expect(wrapper.find(GlLoadingIcon).exists()).toBe(false);
+        expect(wrapper.find(GlLink).exists()).toBe(false);
+        expect(createFlash).toHaveBeenCalledWith(
+          'Could not connect to Sentry. Refresh the page to try again.',
+          'warning',
+        );
+        expect(mocks.$apollo.queries.error.stopPolling).toHaveBeenCalled();
+      });
+    });
+  });
+
   describe('Error details', () => {
     beforeEach(() => {
-      store.state.details.loading = false;
-      store.state.details.error.id = 1;
+      mocks.$apollo.queries.error.loading = false;
+      mountComponent();
+      wrapper.setData({
+        error: {
+          id: 'gid://gitlab/Gitlab::ErrorTracking::DetailedError/129381',
+          sentryId: 129381,
+          title: 'Issue title',
+          externalUrl: 'http://sentry.gitlab.net/gitlab',
+          firstSeen: '2017-05-26T13:32:48Z',
+          lastSeen: '2018-05-26T13:32:48Z',
+          count: 12,
+          userCount: 2,
+        },
+      });
     });
 
     it('should show Sentry error details without stacktrace', () => {
-      mountComponent();
       expect(wrapper.find(GlLink).exists()).toBe(true);
       expect(wrapper.find(GlLoadingIcon).exists()).toBe(true);
       expect(wrapper.find(Stacktrace).exists()).toBe(false);
       expect(wrapper.find(GlBadge).exists()).toBe(false);
+      expect(wrapper.findAll(GlDeprecatedButton).length).toBe(3);
+    });
+
+    describe('unsafe chars for culprit field', () => {
+      const findReportedText = () => wrapper.find('[data-qa-selector="reported_text"]');
+      const culprit = '<script>console.log("surprise!")</script>';
+      beforeEach(() => {
+        store.state.details.loadingStacktrace = false;
+        wrapper.setData({
+          error: {
+            culprit,
+          },
+        });
+      });
+
+      it('should not convert interpolated text to html entities', () => {
+        expect(findReportedText().findAll('script').length).toEqual(0);
+        expect(findReportedText().findAll('strong').length).toEqual(1);
+      });
+
+      it('should render text instead of converting to html entities', () => {
+        expect(findReportedText().text()).toContain(culprit);
+      });
     });
 
     describe('Badges', () => {
       it('should show language and error level badges', () => {
-        store.state.details.error.tags = { level: 'error', logger: 'ruby' };
-        mountComponent();
-        expect(wrapper.findAll(GlBadge).length).toBe(2);
+        wrapper.setData({
+          error: {
+            tags: { level: 'error', logger: 'ruby' },
+          },
+        });
+        return wrapper.vm.$nextTick().then(() => {
+          expect(wrapper.findAll(GlBadge).length).toBe(2);
+        });
       });
 
       it('should NOT show the badge if the tag is not present', () => {
-        store.state.details.error.tags = { level: 'error' };
-        mountComponent();
-        expect(wrapper.findAll(GlBadge).length).toBe(1);
+        wrapper.setData({
+          error: {
+            tags: { level: 'error' },
+          },
+        });
+        return wrapper.vm.$nextTick().then(() => {
+          expect(wrapper.findAll(GlBadge).length).toBe(1);
+        });
+      });
+
+      it.each(Object.keys(severityLevel))(
+        'should set correct severity level variant for %s badge',
+        level => {
+          wrapper.setData({
+            error: {
+              tags: { level: severityLevel[level] },
+            },
+          });
+          return wrapper.vm.$nextTick().then(() => {
+            expect(wrapper.find(GlBadge).attributes('variant')).toEqual(
+              severityLevelVariant[severityLevel[level]],
+            );
+          });
+        },
+      );
+
+      it('should fallback for ERROR severityLevelVariant when severityLevel is unknown', () => {
+        wrapper.setData({
+          error: {
+            tags: { level: 'someNewErrorLevel' },
+          },
+        });
+        return wrapper.vm.$nextTick().then(() => {
+          expect(wrapper.find(GlBadge).attributes('variant')).toEqual(
+            severityLevelVariant[severityLevel.ERROR],
+          );
+        });
       });
     });
 
     describe('Stacktrace', () => {
       it('should show stacktrace', () => {
         store.state.details.loadingStacktrace = false;
-        mountComponent();
-        expect(wrapper.find(GlLoadingIcon).exists()).toBe(false);
-        expect(wrapper.find(Stacktrace).exists()).toBe(true);
+        return wrapper.vm.$nextTick().then(() => {
+          expect(wrapper.find(GlLoadingIcon).exists()).toBe(false);
+          expect(wrapper.find(Stacktrace).exists()).toBe(true);
+        });
       });
 
       it('should NOT show stacktrace if no entries', () => {
         store.state.details.loadingStacktrace = false;
         store.getters = { 'details/sentryUrl': () => 'sentry.io', 'details/stacktrace': () => [] };
-        mountComponent();
-        expect(wrapper.find(GlLoadingIcon).exists()).toBe(false);
-        expect(wrapper.find(Stacktrace).exists()).toBe(false);
+        return wrapper.vm.$nextTick().then(() => {
+          expect(wrapper.find(GlLoadingIcon).exists()).toBe(false);
+          expect(wrapper.find(Stacktrace).exists()).toBe(false);
+        });
       });
     });
 
     describe('When a user clicks the create issue button', () => {
-      beforeEach(() => {
-        store.state.details.error = {
-          id: 129381,
-          title: 'Issue title',
-          external_url: 'http://sentry.gitlab.net/gitlab',
-          first_seen: '2017-05-26T13:32:48Z',
-          last_seen: '2018-05-26T13:32:48Z',
-          count: 12,
-          user_count: 2,
-        };
-        mountComponent();
-      });
-
       it('should send sentry_issue_identifier', () => {
         const sentryErrorIdInput = findInput(
           'issue[sentry_issue_attributes][sentry_issue_identifier]',
@@ -159,25 +295,136 @@ describe('ErrorDetails', () => {
       it('should submit the form', () => {
         window.HTMLFormElement.prototype.submit = () => {};
         const submitSpy = jest.spyOn(wrapper.vm.$refs.sentryIssueForm, 'submit');
-        wrapper.find('button').trigger('click');
+        wrapper.find('[data-qa-selector="create_issue_button"]').vm.$emit('click');
         expect(submitSpy).toHaveBeenCalled();
         submitSpy.mockRestore();
       });
     });
 
+    describe('Status update', () => {
+      const findUpdateIgnoreStatusButton = () =>
+        wrapper.find('[data-qa-selector="update_ignore_status_button"]');
+      const findUpdateResolveStatusButton = () =>
+        wrapper.find('[data-qa-selector="update_resolve_status_button"]');
+
+      afterEach(() => {
+        actions.updateIgnoreStatus.mockClear();
+        actions.updateResolveStatus.mockClear();
+      });
+
+      describe('when error is unresolved', () => {
+        beforeEach(() => {
+          store.state.details.errorStatus = errorStatus.UNRESOLVED;
+
+          return wrapper.vm.$nextTick();
+        });
+
+        it('displays Ignore and Resolve buttons', () => {
+          expect(findUpdateIgnoreStatusButton().text()).toBe(__('Ignore'));
+          expect(findUpdateResolveStatusButton().text()).toBe(__('Resolve'));
+        });
+
+        it('marks error as ignored when ignore button is clicked', () => {
+          findUpdateIgnoreStatusButton().vm.$emit('click');
+          expect(actions.updateIgnoreStatus.mock.calls[0][1]).toEqual(
+            expect.objectContaining({ status: errorStatus.IGNORED }),
+          );
+        });
+
+        it('marks error as resolved when resolve button is clicked', () => {
+          findUpdateResolveStatusButton().vm.$emit('click');
+          expect(actions.updateResolveStatus.mock.calls[0][1]).toEqual(
+            expect.objectContaining({ status: errorStatus.RESOLVED }),
+          );
+        });
+      });
+
+      describe('when error is ignored', () => {
+        beforeEach(() => {
+          store.state.details.errorStatus = errorStatus.IGNORED;
+
+          return wrapper.vm.$nextTick();
+        });
+
+        it('displays Undo Ignore and Resolve buttons', () => {
+          expect(findUpdateIgnoreStatusButton().text()).toBe(__('Undo ignore'));
+          expect(findUpdateResolveStatusButton().text()).toBe(__('Resolve'));
+        });
+
+        it('marks error as unresolved when ignore button is clicked', () => {
+          findUpdateIgnoreStatusButton().vm.$emit('click');
+          expect(actions.updateIgnoreStatus.mock.calls[0][1]).toEqual(
+            expect.objectContaining({ status: errorStatus.UNRESOLVED }),
+          );
+        });
+
+        it('marks error as resolved when resolve button is clicked', () => {
+          findUpdateResolveStatusButton().vm.$emit('click');
+          expect(actions.updateResolveStatus.mock.calls[0][1]).toEqual(
+            expect.objectContaining({ status: errorStatus.RESOLVED }),
+          );
+        });
+      });
+
+      describe('when error is resolved', () => {
+        beforeEach(() => {
+          store.state.details.errorStatus = errorStatus.RESOLVED;
+
+          return wrapper.vm.$nextTick();
+        });
+
+        it('displays Ignore and Unresolve buttons', () => {
+          expect(findUpdateIgnoreStatusButton().text()).toBe(__('Ignore'));
+          expect(findUpdateResolveStatusButton().text()).toBe(__('Unresolve'));
+        });
+
+        it('marks error as ignored when ignore button is clicked', () => {
+          findUpdateIgnoreStatusButton().vm.$emit('click');
+          expect(actions.updateIgnoreStatus.mock.calls[0][1]).toEqual(
+            expect.objectContaining({ status: errorStatus.IGNORED }),
+          );
+        });
+
+        it('marks error as unresolved when unresolve button is clicked', () => {
+          findUpdateResolveStatusButton().vm.$emit('click');
+          expect(actions.updateResolveStatus.mock.calls[0][1]).toEqual(
+            expect.objectContaining({ status: errorStatus.UNRESOLVED }),
+          );
+        });
+
+        it('should show alert with closed issueId', () => {
+          const findAlert = () => wrapper.find(GlAlert);
+          const closedIssueId = 123;
+          wrapper.setData({
+            isAlertVisible: true,
+            closedIssueId,
+          });
+
+          return wrapper.vm.$nextTick().then(() => {
+            expect(findAlert().exists()).toBe(true);
+            expect(findAlert().text()).toContain(`#${closedIssueId}`);
+          });
+        });
+      });
+    });
+
     describe('GitLab issue link', () => {
-      const gitlabIssue = 'https://gitlab.example.com/issues/1';
-      const findGitLabLink = () => wrapper.find(`[href="${gitlabIssue}"]`);
+      const gitlabIssuePath = 'https://gitlab.example.com/issues/1';
+      const findGitLabLink = () => wrapper.find(`[href="${gitlabIssuePath}"]`);
       const findCreateIssueButton = () => wrapper.find('[data-qa-selector="create_issue_button"]');
+      const findViewIssueButton = () => wrapper.find('[data-qa-selector="view_issue_button"]');
 
       describe('is present', () => {
         beforeEach(() => {
-          store.state.details.loading = false;
-          store.state.details.error = {
-            id: 1,
-            gitlab_issue: gitlabIssue,
-          };
-          mountComponent();
+          wrapper.setData({
+            error: {
+              gitlabIssuePath,
+            },
+          });
+        });
+
+        it('should display the View issue button', () => {
+          expect(findViewIssueButton().exists()).toBe(true);
         });
 
         it('should display the issue link', () => {
@@ -191,19 +438,55 @@ describe('ErrorDetails', () => {
 
       describe('is not present', () => {
         beforeEach(() => {
-          store.state.details.loading = false;
-          store.state.details.error = {
-            id: 1,
-            gitlab_issue: null,
-          };
-          mountComponent();
+          wrapper.setData({
+            error: {
+              gitlabIssuePath: null,
+            },
+          });
+        });
+
+        it('should not display the View issue button', () => {
+          expect(findViewIssueButton().exists()).toBe(false);
         });
 
         it('should not display an issue link', () => {
           expect(findGitLabLink().exists()).toBe(false);
         });
+
         it('should display the create issue button', () => {
           expect(findCreateIssueButton().exists()).toBe(true);
+        });
+      });
+    });
+
+    describe('GitLab commit link', () => {
+      const gitlabCommit = '7975be0116940bf2ad4321f79d02a55c5f7779aa';
+      const gitlabCommitPath =
+        '/gitlab-org/gitlab-test/commit/7975be0116940bf2ad4321f79d02a55c5f7779aa';
+      const findGitLabCommitLink = () => wrapper.find(`[href$="${gitlabCommitPath}"]`);
+
+      it('should display a link', () => {
+        mocks.$apollo.queries.error.loading = false;
+        wrapper.setData({
+          error: {
+            gitlabCommit,
+            gitlabCommitPath,
+          },
+        });
+        return wrapper.vm.$nextTick().then(() => {
+          expect(findGitLabCommitLink().exists()).toBe(true);
+        });
+      });
+
+      it('should not display a link', () => {
+        mocks.$apollo.queries.error.loading = false;
+        wrapper.setData({
+          error: {
+            gitlabCommit: null,
+          },
+        });
+        return wrapper.vm.$nextTick().then(() => {
+          expect(findGitLabCommitLink().exists()).toBe(false);
         });
       });
     });

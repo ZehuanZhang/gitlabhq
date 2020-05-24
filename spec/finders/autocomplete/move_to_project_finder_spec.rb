@@ -3,8 +3,8 @@
 require 'spec_helper'
 
 describe Autocomplete::MoveToProjectFinder do
-  let(:user) { create(:user) }
-  let(:project) { create(:project) }
+  let_it_be(:user) { create(:user) }
+  let_it_be(:project) { create(:project) }
 
   let(:no_access_project) { create(:project) }
   let(:guest_project) { create(:project) }
@@ -62,19 +62,20 @@ describe Autocomplete::MoveToProjectFinder do
         expect(finder.execute.to_a).to eq([other_reporter_project])
       end
 
-      it 'returns a page of projects ordered by name' do
+      it 'returns a page of projects ordered by star count' do
         stub_const('Autocomplete::MoveToProjectFinder::LIMIT', 2)
 
-        projects = create_list(:project, 3) do |project|
-          project.add_developer(user)
-        end
+        projects = [
+          create(:project, namespace: user.namespace, star_count: 1),
+          create(:project, namespace: user.namespace, star_count: 5),
+          create(:project, namespace: user.namespace)
+        ]
 
         finder = described_class.new(user, project_id: project.id)
         page = finder.execute.to_a
 
-        expected_projects = projects.sort_by(&:name).first(2)
         expect(page.length).to eq(2)
-        expect(page).to eq(expected_projects)
+        expect(page).to eq([projects[1], projects[0]])
       end
     end
 
@@ -91,6 +92,15 @@ describe Autocomplete::MoveToProjectFinder do
 
         expect(described_class.new(user, project_id: project.id, search: 'wadus').execute.to_a)
           .to eq([wadus_project])
+      end
+
+      it 'allows searching by parent namespace' do
+        group = create(:group)
+        other_project = create(:project, group: group)
+        other_project.add_maintainer(user)
+
+        expect(described_class.new(user, project_id: project.id, search: group.name).execute.to_a)
+          .to contain_exactly(other_project)
       end
     end
   end

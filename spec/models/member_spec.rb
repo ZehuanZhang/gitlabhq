@@ -3,6 +3,10 @@
 require 'spec_helper'
 
 describe Member do
+  include ExclusiveLeaseHelpers
+
+  using RSpec::Parameterized::TableSyntax
+
   describe "Associations" do
     it { is_expected.to belong_to(:user) }
   end
@@ -35,10 +39,6 @@ describe Member do
         create(:project_member, source: member.source, invite_email: member.invite_email)
 
         expect(member).not_to be_valid
-      end
-
-      it "is valid otherwise" do
-        expect(member).to be_valid
       end
     end
 
@@ -241,10 +241,22 @@ describe Member do
           expect(member).to be_persisted
         end
 
-        it 'sets members.created_by to the given current_user' do
-          member = described_class.add_user(source, user, :maintainer, current_user: admin)
+        context 'when admin mode is enabled', :enable_admin_mode do
+          it 'sets members.created_by to the given admin current_user' do
+            member = described_class.add_user(source, user, :maintainer, current_user: admin)
 
-          expect(member.created_by).to eq(admin)
+            expect(member.created_by).to eq(admin)
+          end
+        end
+
+        context 'when admin mode is disabled' do
+          # Skipped because `Group#max_member_access_for_user` needs to be migrated to use admin mode
+          # https://gitlab.com/gitlab-org/gitlab/-/issues/207950
+          xit 'rejects setting members.created_by to the given admin current_user' do
+            member = described_class.add_user(source, user, :maintainer, current_user: admin)
+
+            expect(member.created_by).not_to be_persisted
+          end
         end
 
         it 'sets members.expires_at to the given expires_at' do
@@ -340,9 +352,20 @@ describe Member do
               expect(source.members.invite.pluck(:invite_email)).to include('user@example.com')
             end
           end
+
+          context 'when called with an unknown user email starting with a number' do
+            it 'creates an invited member', :aggregate_failures do
+              email_starting_with_number = "#{user.id}_email@example.com"
+
+              described_class.add_user(source, email_starting_with_number, :maintainer)
+
+              expect(source.members.invite.pluck(:invite_email)).to include(email_starting_with_number)
+              expect(source.users.reload).not_to include(user)
+            end
+          end
         end
 
-        context 'when current_user can update member' do
+        context 'when current_user can update member', :enable_admin_mode do
           it 'creates the member' do
             expect(source.users).not_to include(user)
 
@@ -410,7 +433,7 @@ describe Member do
             end
           end
 
-          context 'when current_user can update member' do
+          context 'when current_user can update member', :enable_admin_mode do
             it 'updates the member' do
               expect(source.users).to include(user)
 
@@ -471,7 +494,7 @@ describe Member do
   end
 
   describe '#accept_request' do
-    let(:member) { create(:project_member, requested_at: Time.now.utc) }
+    let(:member) { create(:project_member, requested_at: Time.current.utc) }
 
     it { expect(member.accept_request).to be_truthy }
 
@@ -495,14 +518,14 @@ describe Member do
   end
 
   describe '#request?' do
-    subject { create(:project_member, requested_at: Time.now.utc) }
+    subject { create(:project_member, requested_at: Time.current.utc) }
 
     it { is_expected.to be_request }
   end
 
   describe '#pending?' do
     let(:invited_member) { create(:project_member, invite_email: "user@example.com", user: nil) }
-    let(:requester) { create(:project_member, requested_at: Time.now.utc) }
+    let(:requester) { create(:project_member, requested_at: Time.current.utc) }
 
     it { expect(invited_member).to be_invite }
     it { expect(requester).to be_pending }
@@ -580,6 +603,50 @@ describe Member do
       member.destroy
 
       expect(user.authorized_projects).not_to include(project)
+    end
+  end
+
+  context 'when after_commit :update_highest_role' do
+    let!(:user) { create(:user) }
+    let(:user_id) { user.id }
+
+    where(:member_type, :source_type) do
+      :project_member | :project
+      :group_member   | :group
+    end
+
+    with_them do
+      describe 'create member' do
+        let!(:source) { create(source_type) }
+
+        subject { create(member_type, :guest, user: user, source_type => source) }
+
+        include_examples 'update highest role with exclusive lease'
+      end
+
+      context 'when member exists' do
+        let!(:member) { create(member_type, user: user) }
+
+        describe 'update member' do
+          context 'when access level was changed' do
+            subject { member.update(access_level: Gitlab::Access::GUEST) }
+
+            include_examples 'update highest role with exclusive lease'
+          end
+
+          context 'when access level was not changed' do
+            subject { member.update(notification_level: NotificationSetting.levels[:disabled]) }
+
+            include_examples 'does not update the highest role'
+          end
+        end
+
+        describe 'destroy member' do
+          subject { member.destroy }
+
+          include_examples 'update highest role with exclusive lease'
+        end
+      end
     end
   end
 end

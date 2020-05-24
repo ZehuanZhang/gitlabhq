@@ -2,7 +2,7 @@
 
 require 'spec_helper'
 
-describe 'Cycle Analytics', :js do
+describe 'Value Stream Analytics', :js do
   let(:user) { create(:user) }
   let(:guest) { create(:user) }
   let(:project) { create(:project, :repository) }
@@ -23,13 +23,14 @@ describe 'Cycle Analytics', :js do
       end
 
       it 'shows introductory message' do
-        expect(page).to have_content('Introducing Cycle Analytics')
+        expect(page).to have_content('Introducing Value Stream Analytics')
       end
 
       it 'shows pipeline summary' do
         expect(new_issues_counter).to have_content('-')
         expect(commits_counter).to have_content('-')
         expect(deploys_counter).to have_content('-')
+        expect(deployment_frequency_counter).to have_content('-')
       end
 
       it 'shows active stage with empty message' do
@@ -38,11 +39,8 @@ describe 'Cycle Analytics', :js do
       end
     end
 
-    context "when there's cycle analytics data" do
+    context "when there's value stream analytics data" do
       before do
-        allow_next_instance_of(Gitlab::ReferenceExtractor) do |instance|
-          allow(instance).to receive(:issues).and_return([issue])
-        end
         project.add_maintainer(user)
 
         @build = create_cycle(user, project, issue, mr, milestone, pipeline)
@@ -56,6 +54,7 @@ describe 'Cycle Analytics', :js do
         expect(new_issues_counter).to have_content('1')
         expect(commits_counter).to have_content('2')
         expect(deploys_counter).to have_content('1')
+        expect(deployment_frequency_counter).to have_content('0')
       end
 
       it 'shows data on each stage', :sidekiq_might_not_need_inline do
@@ -101,9 +100,6 @@ describe 'Cycle Analytics', :js do
       project.add_developer(user)
       project.add_guest(guest)
 
-      allow_next_instance_of(Gitlab::ReferenceExtractor) do |instance|
-        allow(instance).to receive(:issues).and_return([issue])
-      end
       create_cycle(user, project, issue, mr, milestone, pipeline)
       deploy_master(user, project)
 
@@ -140,7 +136,15 @@ describe 'Cycle Analytics', :js do
   end
 
   def deploys_counter
-    find(:xpath, "//p[contains(text(),'Deploy')]/preceding-sibling::h3")
+    find(:xpath, "//p[contains(text(),'Deploy')]/preceding-sibling::h3", match: :first)
+  end
+
+  def deployment_frequency_counter_selector
+    "//p[contains(text(),'Deployment Frequency')]/preceding-sibling::h3"
+  end
+
+  def deployment_frequency_counter
+    find(:xpath, deployment_frequency_counter_selector)
   end
 
   def expect_issue_to_be_present

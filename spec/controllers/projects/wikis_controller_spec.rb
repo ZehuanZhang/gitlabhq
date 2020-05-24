@@ -25,7 +25,7 @@ describe Projects::WikisController do
     it 'redirects to #show and appends a `random_title` param' do
       subject
 
-      expect(response).to have_http_status(302)
+      expect(response).to have_gitlab_http_status(:found)
       expect(Rails.application.routes.recognize_path(response.redirect_url)).to include(
         controller: 'projects/wikis',
         action: 'show'
@@ -70,7 +70,7 @@ describe Projects::WikisController do
       end
 
       it "returns status #{expected_status}" do
-        expect(response).to have_http_status(expected_status)
+        expect(response).to have_gitlab_http_status(expected_status)
       end
     end
 
@@ -98,13 +98,12 @@ describe Projects::WikisController do
       let(:id) { wiki_title }
 
       it 'limits the retrieved pages for the sidebar' do
-        expect(controller).to receive(:load_wiki).and_return(project_wiki)
-        expect(project_wiki).to receive(:list_pages).with(limit: 15).and_call_original
-
         subject
 
-        expect(response).to have_http_status(:ok)
+        expect(response).to have_gitlab_http_status(:ok)
         expect(assigns(:page).title).to eq(wiki_title)
+        expect(assigns(:sidebar_wiki_entries)).to contain_exactly(an_instance_of(WikiPage))
+        expect(assigns(:sidebar_limited)).to be(false)
       end
 
       context 'when page content encoding is invalid' do
@@ -113,7 +112,7 @@ describe Projects::WikisController do
 
           subject
 
-          expect(response).to have_http_status(:ok)
+          expect(response).to have_gitlab_http_status(:ok)
           expect(flash[:notice]).to eq(_('The content of this page is not encoded in UTF-8. Edits can only be made via the Git repository.'))
         end
       end
@@ -144,14 +143,12 @@ describe Projects::WikisController do
 
       let(:id) { upload_file_to_wiki(project, user, file_name) }
 
-      before do
-        subject
-      end
-
       context 'when file is an image' do
         let(:file_name) { 'dk.png' }
 
         it 'delivers the image' do
+          subject
+
           expect(response.headers['Content-Disposition']).to match(/^inline/)
           expect(response.headers[Gitlab::Workhorse::DETECT_HEADER]).to eq "true"
         end
@@ -160,19 +157,27 @@ describe Projects::WikisController do
           let(:file_name) { 'unsanitized.svg' }
 
           it 'delivers the image' do
+            subject
+
             expect(response.headers['Content-Disposition']).to match(/^inline/)
             expect(response.headers[Gitlab::Workhorse::DETECT_HEADER]).to eq "true"
           end
         end
+
+        it_behaves_like 'project cache control headers'
       end
 
       context 'when file is a pdf' do
         let(:file_name) { 'git-cheat-sheet.pdf' }
 
         it 'sets the content type to sets the content response headers' do
+          subject
+
           expect(response.headers['Content-Disposition']).to match(/^inline/)
           expect(response.headers[Gitlab::Workhorse::DETECT_HEADER]).to eq "true"
         end
+
+        it_behaves_like 'project cache control headers'
       end
     end
   end
@@ -194,7 +199,20 @@ describe Projects::WikisController do
 
         subject
 
-        expect(response).to redirect_to(project_wiki_path(project, project_wiki.list_pages.first))
+        expect(response).to redirect_to_wiki(project, project_wiki.list_pages.first)
+      end
+    end
+
+    context 'when the page has nil content' do
+      let(:page) { create(:wiki_page) }
+
+      it 'redirects to show' do
+        allow(page).to receive(:content).and_return(nil)
+        allow(controller).to receive(:find_page).and_return(page)
+
+        subject
+
+        expect(response).to redirect_to_wiki(project, page)
       end
     end
 
@@ -204,7 +222,7 @@ describe Projects::WikisController do
       it 'shows the edit page' do
         subject
 
-        expect(response).to have_http_status(:ok)
+        expect(response).to have_gitlab_http_status(:ok)
         expect(response.body).to include(s_('Wiki|Edit Page'))
       end
     end
@@ -229,7 +247,7 @@ describe Projects::WikisController do
         allow(controller).to receive(:valid_encoding?).and_return(false)
 
         subject
-        expect(response).to redirect_to(project_wiki_path(project, project_wiki.list_pages.first))
+        expect(response).to redirect_to_wiki(project, project_wiki.list_pages.first)
       end
     end
 
@@ -258,5 +276,9 @@ describe Projects::WikisController do
   def destroy_page(title, dir = '')
     page = wiki.page(title: title, dir: dir)
     project_wiki.delete_page(page, "test commit")
+  end
+
+  def redirect_to_wiki(project, page)
+    redirect_to(controller.project_wiki_path(project, page))
   end
 end

@@ -10,7 +10,7 @@ describe Sentry::Client::Projects do
   let(:client) { Sentry::Client.new(sentry_url, token) }
   let(:projects_sample_response) do
     Gitlab::Utils.deep_indifferent_access(
-      JSON.parse(fixture_file('sentry/list_projects_sample_response.json'))
+      Gitlab::Json.parse(fixture_file('sentry/list_projects_sample_response.json'))
     )
   end
 
@@ -89,25 +89,6 @@ describe Sentry::Client::Projects do
       let(:sentry_api_url) { sentry_list_projects_url }
 
       it_behaves_like 'no Sentry redirects'
-    end
-
-    # Sentry API returns 404 if there are extra slashes in the URL!
-    context 'extra slashes in URL' do
-      let(:sentry_url) { 'https://sentrytest.gitlab.com/api//0/projects//' }
-      let!(:valid_req_stub) do
-        stub_sentry_request(sentry_list_projects_url)
-      end
-
-      it 'removes extra slashes in api url' do
-        expect(Gitlab::HTTP).to receive(:get).with(
-          URI(sentry_list_projects_url),
-          anything
-        ).and_call_original
-
-        subject
-
-        expect(valid_req_stub).to have_been_requested
-      end
     end
 
     context 'when exception is raised' do

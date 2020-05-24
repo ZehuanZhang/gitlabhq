@@ -1,6 +1,7 @@
 const path = require('path');
 const webpack = require('webpack');
 const vendorDllHash = require('./helpers/vendor_dll_hash');
+const { YarnCheck } = require('yarn-check-webpack-plugin');
 
 const ROOT_PATH = path.resolve(__dirname, '..');
 
@@ -14,6 +15,9 @@ module.exports = {
     extensions: ['.js'],
   },
 
+  // ensure output is not generated when errors are encountered
+  bail: true,
+
   context: ROOT_PATH,
 
   entry: {
@@ -25,11 +29,10 @@ module.exports = {
       'core-js',
       'echarts',
       'lodash',
-      'underscore',
       'vuex',
       'pikaday',
       'vue/dist/vue.esm.js',
-      'at.js',
+      '@gitlab/at.js',
       'jed',
       'mermaid',
       'katex',
@@ -59,6 +62,11 @@ module.exports = {
     new webpack.DllPlugin({
       path: path.join(dllCachePath, '[name].dll.manifest.json'),
       name: '[name]_[hash]',
+    }),
+    new YarnCheck({
+      rootDirectory: ROOT_PATH,
+      exclude: /ts-jest/,
+      forceKill: true,
     }),
   ],
 

@@ -4,6 +4,7 @@ module API
   class Issues < Grape::API
     include PaginationParams
     helpers Helpers::IssuesHelpers
+    helpers Helpers::RateLimiter
     helpers ::Gitlab::IssuableMetadata
 
     before { authenticate_non_get! }
@@ -23,7 +24,7 @@ module API
         optional :assignee_id, types: [Integer, String], integer_none_any: true,
                  desc: 'Return issues which are assigned to the user with the given ID'
         optional :assignee_username, type: Array[String], check_assignees_count: true,
-                 coerce_with: Validations::CheckAssigneesCount.coerce,
+                 coerce_with: Validations::Validators::CheckAssigneesCount.coerce,
                  desc: 'Return issues which are assigned to the user with the given username'
         mutually_exclusive :assignee_id, :assignee_username
       end
@@ -66,6 +67,8 @@ module API
         optional :assignee_id,  type: Integer, desc: '[Deprecated] The ID of a user to assign issue'
         optional :milestone_id, type: Integer, desc: 'The ID of a milestone to assign issue'
         optional :labels, type: Array[String], coerce_with: Validations::Types::LabelsList.coerce, desc: 'Comma-separated list of label names'
+        optional :add_labels, type: Array[String], coerce_with: Validations::Types::LabelsList.coerce, desc: 'Comma-separated list of label names'
+        optional :remove_labels, type: Array[String], coerce_with: Validations::Types::LabelsList.coerce, desc: 'Comma-separated list of label names'
         optional :due_date, type: String, desc: 'Date string in the format YEAR-MONTH-DAY'
         optional :confidential, type: Boolean, desc: 'Boolean parameter if the issue should be confidential'
         optional :discussion_locked, type: Boolean, desc: " Boolean parameter indicating if the issue's discussion is locked"
@@ -94,6 +97,8 @@ module API
         use :issues_params
         optional :scope, type: String, values: %w[created-by-me assigned-to-me created_by_me assigned_to_me all], default: 'created_by_me',
                          desc: 'Return issues for the given scope: `created_by_me`, `assigned_to_me` or `all`'
+        optional :non_archived, type: Boolean, default: true,
+                                desc: 'Return issues from non archived projects'
       end
       get do
         authenticate! unless params[:scope] == 'all'
@@ -120,6 +125,7 @@ module API
       end
       params do
         use :issues_params
+        optional :non_archived, type: Boolean, desc: 'Return issues from non archived projects', default: true
       end
       get ":id/issues" do
         issues = paginate(find_issues(group_id: user_group.id, include_subgroups: true))
@@ -210,6 +216,8 @@ module API
       post ':id/issues' do
         Gitlab::QueryLimiting.whitelist('https://gitlab.com/gitlab-org/gitlab-foss/issues/42320')
 
+        check_rate_limit! :issues_create, [current_user, :issues_create]
+
         authorize! :create_issue, user_project
 
         params.delete(:created_at) unless current_user.can?(:set_issue_created_at, user_project)
@@ -220,18 +228,22 @@ module API
 
         issue_params = convert_parameters_from_legacy_format(issue_params)
 
-        issue = ::Issues::CreateService.new(user_project,
-                                            current_user,
-                                            issue_params.merge(request: request, api: true)).execute
+        begin
+          issue = ::Issues::CreateService.new(user_project,
+                                              current_user,
+                                              issue_params.merge(request: request, api: true)).execute
 
-        if issue.spam?
-          render_api_error!({ error: 'Spam detected' }, 400)
-        end
+          if issue.spam?
+            render_api_error!({ error: 'Spam detected' }, 400)
+          end
 
-        if issue.valid?
-          present issue, with: Entities::Issue, current_user: current_user, project: user_project
-        else
-          render_validation_error!(issue)
+          if issue.valid?
+            present issue, with: Entities::Issue, current_user: current_user, project: user_project
+          else
+            render_validation_error!(issue)
+          end
+        rescue ::ActiveRecord::RecordNotUnique
+          render_api_error!('Duplicated issue', 409)
         end
       end
 
@@ -242,6 +254,7 @@ module API
         requires :issue_iid, type: Integer, desc: 'The internal ID of a project issue'
         optional :title, type: String, desc: 'The title of an issue'
         optional :updated_at, type: DateTime,
+                              allow_blank: false,
                               desc: 'Date time when the issue was updated. Available only for admins and project owners.'
         optional :state_event, type: String, values: %w[reopen close], desc: 'State of the issue'
         use :issue_params

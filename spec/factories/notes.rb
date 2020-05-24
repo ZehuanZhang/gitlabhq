@@ -16,6 +16,7 @@ FactoryBot.define do
     factory :note_on_merge_request,      traits: [:on_merge_request]
     factory :note_on_project_snippet,    traits: [:on_project_snippet]
     factory :note_on_personal_snippet,   traits: [:on_personal_snippet]
+    factory :note_on_design,             traits: [:on_design]
     factory :system_note,                traits: [:system]
 
     factory :discussion_note, class: 'DiscussionNote'
@@ -29,13 +30,18 @@ FactoryBot.define do
       end
     end
 
+    factory :track_mr_picking_note, traits: [:on_merge_request, :system] do
+      association :system_note_metadata, action: 'cherry_pick'
+      commit_id { RepoHelpers.sample_commit.id }
+    end
+
     factory :discussion_note_on_issue, traits: [:on_issue], class: 'DiscussionNote'
 
     factory :discussion_note_on_commit, traits: [:on_commit], class: 'DiscussionNote'
 
     factory :discussion_note_on_personal_snippet, traits: [:on_personal_snippet], class: 'DiscussionNote'
 
-    factory :discussion_note_on_snippet, traits: [:on_snippet], class: 'DiscussionNote'
+    factory :discussion_note_on_project_snippet, traits: [:on_project_snippet], class: 'DiscussionNote'
 
     factory :legacy_diff_note_on_commit, traits: [:on_commit, :legacy_diff_note], class: 'LegacyDiffNote'
 
@@ -53,24 +59,20 @@ FactoryBot.define do
       end
 
       position do
-        Gitlab::Diff::Position.new(
-          old_path: "files/ruby/popen.rb",
-          new_path: "files/ruby/popen.rb",
-          old_line: nil,
-          new_line: line_number,
-          diff_refs: diff_refs
-        )
+        build(:text_diff_position,
+              file: "files/ruby/popen.rb",
+              old_line: nil,
+              new_line: line_number,
+              diff_refs: diff_refs)
       end
 
       trait :folded_position do
         position do
-          Gitlab::Diff::Position.new(
-            old_path: "files/ruby/popen.rb",
-            new_path: "files/ruby/popen.rb",
-            old_line: 1,
-            new_line: 1,
-            diff_refs: diff_refs
-          )
+          build(:text_diff_position,
+                file: "files/ruby/popen.rb",
+                old_line: 1,
+                new_line: 1,
+                diff_refs: diff_refs)
         end
       end
 
@@ -81,16 +83,9 @@ FactoryBot.define do
 
       factory :image_diff_note_on_merge_request do
         position do
-          Gitlab::Diff::Position.new(
-            old_path: "files/images/any_image.png",
-            new_path: "files/images/any_image.png",
-            width: 10,
-            height: 10,
-            x: 1,
-            y: 1,
-            diff_refs: diff_refs,
-            position_type: "image"
-          )
+          build(:image_diff_position,
+                file: "files/images/any_image.png",
+                diff_refs: diff_refs)
         end
       end
     end
@@ -104,14 +99,17 @@ FactoryBot.define do
       end
 
       position do
-        Gitlab::Diff::Position.new(
-          old_path: "files/ruby/popen.rb",
-          new_path: "files/ruby/popen.rb",
+        build(:text_diff_position,
+          file: "files/ruby/popen.rb",
           old_line: nil,
           new_line: line_number,
           diff_refs: diff_refs
         )
       end
+    end
+
+    factory :diff_note_on_design, parent: :note, traits: [:on_design], class: 'DiffNote' do
+      position { build(:image_diff_position, file: noteable.full_path, diff_refs: noteable.diff_refs) }
     end
 
     trait :on_commit do
@@ -127,24 +125,34 @@ FactoryBot.define do
     end
 
     trait :on_issue do
-      noteable { create(:issue, project: project) }
-    end
-
-    trait :on_snippet do
-      noteable { create(:snippet, project: project) }
+      noteable { association(:issue, project: project) }
     end
 
     trait :on_merge_request do
-      noteable { create(:merge_request, source_project: project) }
+      noteable { association(:merge_request, source_project: project) }
     end
 
     trait :on_project_snippet do
-      noteable { create(:project_snippet, project: project) }
+      noteable { association(:project_snippet, project: project) }
     end
 
     trait :on_personal_snippet do
-      noteable { create(:personal_snippet) }
+      noteable { association(:personal_snippet) }
       project { nil }
+    end
+
+    trait :on_design do
+      transient do
+        issue { association(:issue, project: project) }
+      end
+      noteable { association(:design, :with_file, issue: issue) }
+
+      after(:build) do |note|
+        next if note.project == note.noteable.project
+
+        # note validations require consistency between these two objects
+        note.project = note.noteable.project
+      end
     end
 
     trait :system do
@@ -169,6 +177,10 @@ FactoryBot.define do
 
     trait :with_pdf_attachment do
       attachment { fixture_file_upload("spec/fixtures/git-cheat-sheet.pdf", "application/pdf") }
+    end
+
+    trait :confidential do
+      confidential { true }
     end
 
     transient do

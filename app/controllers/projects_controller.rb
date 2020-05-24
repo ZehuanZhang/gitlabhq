@@ -50,15 +50,15 @@ class ProjectsController < Projects::ApplicationController
   # rubocop: enable CodeReuse/ActiveRecord
 
   def edit
-    @badge_api_endpoint = expose_url(api_v4_projects_badges_path(id: @project.id))
-    render 'edit'
+    @badge_api_endpoint = expose_path(api_v4_projects_badges_path(id: @project.id))
+    render_edit
   end
 
   def create
     @project = ::Projects::CreateService.new(current_user, project_params(attributes: project_params_create_attributes)).execute
 
     if @project.saved?
-      cookies[:issue_board_welcome_hidden] = { path: project_path(@project), value: nil, expires: Time.at(0) }
+      cookies[:issue_board_welcome_hidden] = { path: project_path(@project), value: nil, expires: Time.zone.at(0) }
 
       redirect_to(
         project_path(@project, custom_import_params),
@@ -85,7 +85,7 @@ class ProjectsController < Projects::ApplicationController
       else
         flash.now[:alert] = result[:message]
 
-        format.html { render 'edit' }
+        format.html { render_edit }
       end
 
       format.js
@@ -118,7 +118,7 @@ class ProjectsController < Projects::ApplicationController
       format.html
       format.json do
         load_events
-        pager_json('events/_events', @events.count)
+        pager_json('events/_events', @events.count { |event| event.visible_to_user?(current_user) })
       end
     end
   end
@@ -201,7 +201,7 @@ class ProjectsController < Projects::ApplicationController
 
     redirect_to(
       edit_project_path(@project, anchor: 'js-export-project'),
-      notice: _("Project export started. A download link will be sent by email.")
+      notice: _("Project export started. A download link will be sent by email and made available on this page.")
     )
   end
 
@@ -296,7 +296,7 @@ class ProjectsController < Projects::ApplicationController
   private
 
   def show_blob_ids?
-    repo_exists? && project_view_files? && Feature.disabled?(:vue_file_list, @project)
+    repo_exists? && project_view_files? && Feature.disabled?(:vue_file_list, @project, default_enabled: true)
   end
 
   # Render project landing depending of which features are available
@@ -343,6 +343,7 @@ class ProjectsController < Projects::ApplicationController
     @events = EventCollection
       .new(projects, offset: params[:offset].to_i, filter: event_filter)
       .to_a
+      .map(&:present)
 
     Events::RenderService.new(current_user).execute(@events, atom_request: request.format.atom?)
   end
@@ -387,15 +388,21 @@ class ProjectsController < Projects::ApplicationController
       :merge_method,
       :initialize_with_readme,
       :autoclose_referenced_issues,
+      :suggestion_commit_message,
 
       project_feature_attributes: %i[
         builds_access_level
         issues_access_level
+        forking_access_level
         merge_requests_access_level
         repository_access_level
         snippets_access_level
         wiki_access_level
         pages_access_level
+        metrics_dashboard_access_level
+      ],
+      project_setting_attributes: %i[
+        show_default_award_emojis
       ]
     ]
   end
@@ -476,16 +483,21 @@ class ProjectsController < Projects::ApplicationController
   def export_rate_limit
     prefixed_action = "project_#{params[:action]}".to_sym
 
-    if rate_limiter.throttled?(prefixed_action, scope: [current_user, prefixed_action, @project])
+    project_scope = params[:action] == :download_export ? @project : nil
+
+    if rate_limiter.throttled?(prefixed_action, scope: [current_user, prefixed_action, project_scope].compact)
       rate_limiter.log_request(request, "#{prefixed_action}_request_limit".to_sym, current_user)
 
-      flash[:alert] = _('This endpoint has been requested too many times. Try again later.')
-      redirect_to edit_project_path(@project)
+      render plain: _('This endpoint has been requested too many times. Try again later.'), status: :too_many_requests
     end
   end
 
   def rate_limiter
     ::Gitlab::ApplicationRateLimiter
+  end
+
+  def render_edit
+    render 'edit'
   end
 end
 

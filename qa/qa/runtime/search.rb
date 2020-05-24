@@ -35,9 +35,27 @@ module QA
             )
           end
 
+          verify_search_engine_ok(search_term)
+
           find_commit(commit, "commit*#{search_term}")
           find_project(project, "to-search*#{search_term}")
         end
+      end
+
+      def elasticsearch_on?(api_client)
+        elasticsearch_state_request = Runtime::API::Request.new(api_client, '/application/settings')
+        response = get elasticsearch_state_request.url
+
+        parse_body(response)[:elasticsearch_search] && parse_body(response)[:elasticsearch_indexing]
+      end
+
+      def disable_elasticsearch(api_client)
+        disable_elasticsearch_request = Runtime::API::Request.new(api_client, '/application/settings')
+        put disable_elasticsearch_request.url, elasticsearch_search: false, elasticsearch_indexing: false
+      end
+
+      def create_search_request(api_client, scope, search_term)
+        Runtime::API::Request.new(api_client, '/search', scope: scope, search: search_term)
       end
 
       def find_code(file_name, search_term)
@@ -74,9 +92,7 @@ module QA
       end
 
       def search(scope, term)
-        QA::Runtime::Logger.debug("Search scope '#{scope}' for '#{term}'...")
-        request = Runtime::API::Request.new(api_client, "/search?scope=#{scope}&search=#{term}")
-        response = get(request.url)
+        response = get_response(scope, term)
 
         unless response.code == singleton_class::HTTP_STATUS_OK
           msg = "Search attempt failed. Request returned (#{response.code}): `#{response}`."
@@ -85,6 +101,19 @@ module QA
         end
 
         parse_body(response)
+      end
+
+      def get_response(scope, term)
+        QA::Runtime::Logger.debug("Search scope '#{scope}' for '#{term}'...")
+        request = Runtime::API::Request.new(api_client, "/search?scope=#{scope}&search=#{term}")
+        get(request.url)
+      end
+
+      def verify_search_engine_ok(search_term)
+        response = get_response('commits', search_term)
+        if response.code.to_s =~ /5[0-9][0-9]/
+          raise ElasticSearchServerError, "elasticsearch attempt returned code #{response.code}. Check that search was conducted on the appropriate url and port."
+        end
       end
 
       def api_client

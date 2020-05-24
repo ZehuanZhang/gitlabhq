@@ -4,14 +4,14 @@ type: reference
 
 # Configuring a Monitoring node for Scaling and High Availability
 
-> [Introduced](https://gitlab.com/gitlab-org/omnibus-gitlab/issues/3786) in GitLab 12.0.
+> [Introduced](https://gitlab.com/gitlab-org/omnibus-gitlab/-/issues/3786) in GitLab 12.0.
 
 You can configure a Prometheus node to monitor GitLab.
 
-## Standalone Monitoring node using GitLab Omnibus
+## Standalone Monitoring node using Omnibus GitLab
 
-The GitLab Omnibus package can be used to configure a standalone Monitoring node running [Prometheus](../monitoring/prometheus/index.md) and [Grafana](../monitoring/performance/grafana_configuration.md).
-The monitoring node is not highly available. See [Scaling and High Availability](README.md)
+The Omnibus GitLab package can be used to configure a standalone Monitoring node running [Prometheus](../monitoring/prometheus/index.md) and [Grafana](../monitoring/performance/grafana_configuration.md).
+The monitoring node is not highly available. See [Scaling and High Availability](../reference_architectures/index.md)
 for an overview of GitLab scaling and high availability options.
 
 The steps below are the minimum necessary to configure a Monitoring node running Prometheus and Grafana with
@@ -64,7 +64,7 @@ Omnibus:
    redis['enable'] = false
    redis_exporter['enable'] = false
    sidekiq['enable'] = false
-   unicorn['enable'] = false
+   puma['enable'] = false
    node_exporter['enable'] = false
    gitlab_exporter['enable'] = false
    ```
@@ -74,8 +74,8 @@ Omnibus:
 ## Migrating to Service Discovery
 
 Once monitoring using Service Discovery is enabled with `consul['monitoring_service_discovery'] =  true`,
-ensure that `prometheus['scrape_configs']` is not set  in `/etc/gitlab/gitlab.rb`. Setting both
-`consul['monitoring_service_discovery'] =  true` and `prometheus['scrape_configs']` in `/etc/gitlab/gitlab.rb`
+ensure that `prometheus['scrape_configs']` is not set in `/etc/gitlab/gitlab.rb`. Setting both
+`consul['monitoring_service_discovery'] = true` and `prometheus['scrape_configs']` in `/etc/gitlab/gitlab.rb`
 will result in errors.
 
 <!-- ## Troubleshooting

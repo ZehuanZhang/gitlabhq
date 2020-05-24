@@ -7,8 +7,8 @@ Please check this [rules](https://github.com/vuejs/eslint-plugin-vue#bulb-rules)
 
 ## Basic Rules
 
-1. The service has it's own file
-1. The store has it's own file
+1. The service has its own file
+1. The store has its own file
 1. Use a function in the bundle file to instantiate the Vue component:
 
    ```javascript
@@ -53,7 +53,7 @@ Please check this [rules](https://github.com/vuejs/eslint-plugin-vue#bulb-rules)
 
 ## Naming
 
-1. **Extensions**: Use `.vue` extension for Vue components. Do not use `.js` as file extension ([#34371]).
+1. **Extensions**: Use `.vue` extension for Vue components. Do not use `.js` as file extension ([#34371](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/34371)).
 1. **Reference Naming**: Use PascalCase for their instances:
 
    ```javascript
@@ -75,7 +75,7 @@ Please check this [rules](https://github.com/vuejs/eslint-plugin-vue#bulb-rules)
 1. **Props Naming:**  Avoid using DOM component prop names.
 1. **Props Naming:** Use kebab-case instead of camelCase to provide props in templates.
 
-   ```javascript
+   ```html
    // bad
    <component class="btn">
 
@@ -89,15 +89,13 @@ Please check this [rules](https://github.com/vuejs/eslint-plugin-vue#bulb-rules)
    <component my-prop="prop" />
    ```
 
-[#34371]: https://gitlab.com/gitlab-org/gitlab-foss/issues/34371
-
 ## Alignment
 
 1. Follow these alignment styles for the template method:
 
    1. With more than one attribute, all attributes should be on a new line:
 
-      ```javascript
+      ```html
       // bad
       <component v-if="bar"
           param="baz" />
@@ -117,7 +115,7 @@ Please check this [rules](https://github.com/vuejs/eslint-plugin-vue#bulb-rules)
 
    1. The tag can be inline if there is only one attribute:
 
-      ```javascript
+      ```html
       // good
         <component bar="bar" />
 
@@ -238,7 +236,7 @@ Please check this [rules](https://github.com/vuejs/eslint-plugin-vue#bulb-rules)
 
 1. Shorthand `@` is preferable over `v-on`
 
-   ```javascript
+   ```html
    // bad
    <component v-on:click="eventHandler"/>
 
@@ -248,7 +246,7 @@ Please check this [rules](https://github.com/vuejs/eslint-plugin-vue#bulb-rules)
 
 1. Shorthand `:` is preferable over `v-bind`
 
-   ```javascript
+   ```html
    // bad
    <component v-bind:class="btn"/>
 
@@ -258,7 +256,7 @@ Please check this [rules](https://github.com/vuejs/eslint-plugin-vue#bulb-rules)
 
 1. Shorthand `#` is preferable over `v-slot`
 
-   ```javascript
+   ```html
    // bad
    <template v-slot:header></template>
 
@@ -268,9 +266,9 @@ Please check this [rules](https://github.com/vuejs/eslint-plugin-vue#bulb-rules)
 
 ## Closing tags
 
-1. Prefer self closing component tags
+1. Prefer self-closing component tags
 
-   ```javascript
+   ```html
    // bad
    <component></component>
 
@@ -282,7 +280,7 @@ Please check this [rules](https://github.com/vuejs/eslint-plugin-vue#bulb-rules)
 
 1. Prefer a component's kebab-cased name over other styles when using it in a template
 
-   ```javascript
+   ```html
    // bad
    <MyComponent />
 
@@ -294,7 +292,7 @@ Please check this [rules](https://github.com/vuejs/eslint-plugin-vue#bulb-rules)
 
 1. Tag order in `.vue` file
 
-   ```
+   ```html
    <script>
      // ...
    </script>
@@ -327,7 +325,7 @@ When using `v-for` you need to provide a *unique* `:key` attribute for each item
    </div>
    ```
 
-1. When the elements being iterated don't have a unique id, you can use the array index as the `:key` attribute
+1. When the elements being iterated don't have a unique ID, you can use the array index as the `:key` attribute
 
    ```html
    <div
@@ -372,7 +370,7 @@ Useful links:
 
 1. Tooltips: Do not rely on `has-tooltip` class name for Vue components
 
-   ```javascript
+   ```html
    // bad
    <span
      class="has-tooltip"
@@ -392,7 +390,7 @@ Useful links:
 
 1. Don't change `data-original-title`.
 
-   ```javascript
+   ```html
    // bad
    <span data-original-title="tooltip text">Foo</span>
 
@@ -411,8 +409,8 @@ The goal of this accord is to make sure we are all on the same page.
    1. You may use a jQuery dependency in Vue.js following [this example from the docs](https://vuejs.org/v2/examples/select2.html).
    1. If an outside jQuery Event needs to be listen to inside the Vue application, you may use jQuery event listeners.
    1. We will avoid adding new jQuery events when they are not required. Instead of adding new jQuery events take a look at [different methods to do the same task](https://vuejs.org/v2/api/#vm-emit).
-1. You may query the `window` object 1 time, while bootstrapping your application for application specific data (e.g. `scrollTo` is ok to access anytime). Do this access during the bootstrapping of your application.
-1. You may have a temporary but immediate need to create technical debt by writing code that does not follow our standards, to be refactored later. Maintainers need to be ok with the tech debt in the first place. An issue should be created for that tech debt to evaluate it further and discuss. In the coming months you should fix that tech debt, with it's priority to be determined by maintainers.
+1. You may query the `window` object one time, while bootstrapping your application for application specific data (e.g. `scrollTo` is ok to access anytime). Do this access during the bootstrapping of your application.
+1. You may have a temporary but immediate need to create technical debt by writing code that does not follow our standards, to be refactored later. Maintainers need to be ok with the tech debt in the first place. An issue should be created for that tech debt to evaluate it further and discuss. In the coming months you should fix that tech debt, with its priority to be determined by maintainers.
 1. When creating tech debt you must write the tests for that code before hand and those tests may not be rewritten. e.g. jQuery tests rewritten to Vue tests.
 1. You may choose to use VueX as a centralized state management. If you choose not to use VueX, you must use the *store pattern* which can be found in the [Vue.js documentation](https://vuejs.org/v2/guide/state-management.html#Simple-State-Management-from-Scratch).
-1. Once you have chosen a centralized state management solution you must use it for your entire application. i.e. Don't mix and match your state management solutions.
+1. Once you have chosen a centralized state-management solution you must use it for your entire application. i.e. Don't mix and match your state-management solutions.

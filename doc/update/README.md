@@ -13,7 +13,7 @@ Based on your installation, choose a section below that fits your needs.
 
 ## Omnibus Packages
 
-- The [Omnibus update guide][omni-update]
+- The [Omnibus update guide](https://docs.gitlab.com/omnibus/update/README.html)
   contains the steps needed to update an Omnibus GitLab package.
 
 ## Installation from source
@@ -29,14 +29,14 @@ In the past we used separate documents for the upgrading instructions, but we
 have since switched to using a single document. The old upgrading guidelines
 can still be found in the Git repository:
 
-- [Old upgrading guidelines for Community Edition][old-ce-upgrade-docs]
-- [Old upgrading guidelines for Enterprise Edition][old-ee-upgrade-docs]
+- [Old upgrading guidelines for Community Edition](https://gitlab.com/gitlab-org/gitlab-foss/tree/11-8-stable/doc/update)
+- [Old upgrading guidelines for Enterprise Edition](https://gitlab.com/gitlab-org/gitlab/tree/11-8-stable-ee/doc/update)
 
 ## Installation using Docker
 
 GitLab provides official Docker images for both Community and Enterprise
 editions. They are based on the Omnibus package and instructions on how to
-update them are in [a separate document][omni-docker].
+update them are in [a separate document](https://docs.gitlab.com/omnibus/docker/README.html).
 
 ## Upgrading without downtime
 
@@ -50,6 +50,7 @@ However, for this to work there are the following requirements:
    migrations](../development/post_deployment_migrations.md) (included in
    zero downtime update steps below).
 - You are using PostgreSQL. Starting from GitLab 12.1, MySQL is not supported.
+- Multi-node GitLab instance. Single-node instances may experience brief interruptions as services restart.
 
 Most of the time you can safely upgrade from a patch release to the next minor
 release if the patch release is not the latest. For example, upgrading from
@@ -105,7 +106,7 @@ meet the other online upgrade requirements mentioned above.
 
 ### Steps
 
-Steps to [upgrade without downtime][omni-zero-downtime].
+Steps to [upgrade without downtime](https://docs.gitlab.com/omnibus/update/README.html#zero-downtime-updates).
 
 ## Checking for background migrations before upgrading
 
@@ -115,32 +116,55 @@ following command:
 
 **For Omnibus installations**
 
-```bash
-sudo gitlab-rails runner -e production 'puts Sidekiq::Queue.new("background_migration").size'
+If using GitLab 12.9 and newer, run:
+
+```shell
+sudo gitlab-rails runner -e production 'puts Gitlab::BackgroundMigration.remaining'
 ```
+
+If using GitLab 12.8 and older, run the following using a [Rails console](../administration/troubleshooting/debug.md#starting-a-rails-console-session):
+
+```ruby
+puts Sidekiq::Queue.new("background_migration").size
+Sidekiq::ScheduledSet.new.select { |r| r.klass == 'BackgroundMigrationWorker' }.size
+```
+
+---
 
 **For installations from source**
 
-```
+If using GitLab 12.9 and newer, run:
+
+```shell
 cd /home/git/gitlab
-sudo -u git -H bundle exec rails runner -e production 'puts Sidekiq::Queue.new("background_migration").size'
+sudo -u git -H bundle exec rails runner -e production 'puts Gitlab::BackgroundMigration.remaining'
 ```
+
+If using GitLab 12.8 and older, run the following using a [Rails console](../administration/troubleshooting/debug.md#starting-a-rails-console-session):
+
+```ruby
+puts Sidekiq::Queue.new("background_migration").size
+Sidekiq::ScheduledSet.new.select { |r| r.klass == 'BackgroundMigrationWorker' }.size
+```
+
+There is also a [Rake task](../administration/raketasks/maintenance.md#display-status-of-database-migrations)
+for displaying the status of each database migration.
 
 ## Upgrading to a new major version
 
 Major versions are reserved for backwards incompatible changes. We recommend that
 you first upgrade to the latest available minor version within your major version.
 Please follow the [Upgrade Recommendations](../policy/maintenance.md#upgrade-recommendations)
-to identify the ideal upgrade path.
+to identify a supported upgrade path.
 
 Before upgrading to a new major version, you should ensure that any background
-migration jobs from previous releases have been completed. The number of remaining
-migrations jobs can be found by running the following command:
+migration jobs from previous releases have been completed. To see the current size
+of the `background_migration` queue, [check for background migrations before upgrading](#checking-for-background-migrations-before-upgrading).
 
 ## Upgrading between editions
 
-GitLab comes in two flavors: [Community Edition][ce] which is MIT licensed,
-and [Enterprise Edition][ee] which builds on top of the Community Edition and
+GitLab comes in two flavors: [Community Edition](https://about.gitlab.com/features/#community) which is MIT licensed,
+and [Enterprise Edition](https://about.gitlab.com/features/#enterprise) which builds on top of the Community Edition and
 includes extra features mainly aimed at organizations with more than 100 users.
 
 Below you can find some guides to help you change editions easily.
@@ -153,17 +177,17 @@ The following guides are for subscribers of the Enterprise Edition only.
 If you wish to upgrade your GitLab installation from Community to Enterprise
 Edition, follow the guides below based on the installation method:
 
-- [Source CE to EE update guides][source-ce-to-ee] - The steps are very similar
+- [Source CE to EE update guides](upgrading_from_ce_to_ee.md) - The steps are very similar
   to a version upgrade: stop the server, get the code, update config files for
   the new functionality, install libraries and do migrations, update the init
   script, start the application and check its status.
-- [Omnibus CE to EE][omni-ce-ee] - Follow this guide to update your Omnibus
+- [Omnibus CE to EE](https://docs.gitlab.com/omnibus/update/README.html#updating-community-edition-to-enterprise-edition) - Follow this guide to update your Omnibus
   GitLab Community Edition to the Enterprise Edition.
 
 ### Enterprise to Community Edition
 
 If you need to downgrade your Enterprise Edition installation back to Community
-Edition, you can follow [this guide][ee-ce] to make the process as smooth as
+Edition, you can follow [this guide](../downgrade_ee_to_ce/README.md) to make the process as smooth as
 possible.
 
 ## Version specific upgrading instructions
@@ -180,15 +204,21 @@ any downgrades would result to all sessions being invalidated and users are logg
 
 In 12.0.0 we made various database related changes. These changes require that
 users first upgrade to the latest 11.11 patch release. Once upgraded to 11.11.x,
-users can upgrade to 12.x. Failure to do so may result in database migrations
+users can upgrade to 12.0.x. Failure to do so may result in database migrations
 not being applied, which could lead to application errors.
 
-Example 1: you are currently using GitLab 11.11.3, which is the latest patch
-release for 11.11.x. You can upgrade as usual to 12.0.0, 12.1.0, etc.
+It is also required that you upgrade to 12.0.x before moving to a later version
+of 12.x.
+
+Example 1: you are currently using GitLab 11.11.8, which is the latest patch
+release for 11.11.x. You can upgrade as usual to 12.0.x.
 
 Example 2: you are currently using a version of GitLab 10.x. To upgrade, first
-upgrade to 11.11.3. Once upgraded to 11.11.3 you can safely upgrade to 12.0.0
-or future versions.
+upgrade to the last 10.x release (10.8.7) then the last 11.x release (11.11.8).
+Once upgraded to 11.11.8 you can safely upgrade to 12.0.x.
+
+See our [documentation on upgrade paths](../policy/maintenance.md#upgrade-recommendations)
+for more information.
 
 ## Miscellaneous
 
@@ -197,15 +227,3 @@ or future versions.
 - [Restoring from backup after a failed upgrade](restore_after_failure.md)
 - [Upgrading PostgreSQL Using Slony](upgrading_postgresql_using_slony.md), for
   upgrading a PostgreSQL database with minimal downtime.
-
-[omnidocker]: https://docs.gitlab.com/omnibus/docker/README.html
-[old-ee-upgrade-docs]: https://gitlab.com/gitlab-org/gitlab/tree/11-8-stable-ee/doc/update
-[old-ce-upgrade-docs]: https://gitlab.com/gitlab-org/gitlab-foss/tree/11-8-stable/doc/update
-[source-ce-to-ee]: upgrading_from_ce_to_ee.md
-[ee-ce]: ../downgrade_ee_to_ce/README.md
-[ce]: https://about.gitlab.com/features/#community
-[ee]: https://about.gitlab.com/features/#enterprise
-[omni-ce-ee]: https://docs.gitlab.com/omnibus/update/README.html#updating-community-edition-to-enterprise-edition
-[omni-docker]: https://docs.gitlab.com/omnibus/docker/README.html
-[omni-update]: https://docs.gitlab.com/omnibus/update/README.html
-[omni-zero-downtime]: https://docs.gitlab.com/omnibus/update/README.html#zero-downtime-updates

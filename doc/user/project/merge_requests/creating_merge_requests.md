@@ -12,12 +12,12 @@ to familiarize yourself with the concept, the terminology,
 and to learn what you can do with them.
 
 Every merge request starts by creating a branch. You can either
-do it locally through the command line, via a Git CLI application,
-or through the GitLab UI.
+do it locally through the [command line](#new-merge-request-from-your-local-environment), via a Git CLI application,
+or through the [GitLab UI](#new-merge-request-from-a-new-branch-created-through-the-ui).
 
 This document describes the several ways to create a merge request.
 
-When you start a new merge request, regarless of the method,
+When you start a new merge request, regardless of the method,
 you'll be taken to the [**New Merge Request** page](#new-merge-request-page)
 to fill it with information about the merge request.
 
@@ -28,10 +28,10 @@ button and start a merge request from there.
 ## New Merge Request page
 
 On the **New Merge Request** page, start by filling in the title
-and description for the merge request. If there are are already
-commits on the branch, the title will be pre-filled with the first
+and description for the merge request. If there are already
+commits on the branch, the title will be prefilled with the first
 line of the first commit message, and the description will be
-pre-filled with any additional lines in the commit message.
+prefilled with any additional lines in the commit message.
 The title is the only field that is mandatory in all cases.
 
 From there, you can fill it with information (title, description,
@@ -100,33 +100,33 @@ button to open the [**New Merge Request** page](#new-merge-request-page).
 A new merge request will be started using the current branch as the source,
 and the default branch in the current project as the target.
 
-## New merge request from you local environment
+## New merge request from your local environment
 
 Assuming you have your repository cloned into your computer and you'd
 like to start working on changes to files, start by creating and
 checking out a new branch:
 
-```bash
+```shell
 git checkout -b my-new-branch
 ```
 
 Work on your file changes, stage, and commit them:
 
-```bash
+```shell
 git add .
 git commit -m "My commit message"
 ```
 
 Once you're done, [push your branch to GitLab](../../../gitlab-basics/start-using-git.md#send-changes-to-gitlabcom):
 
-```bash
+```shell
 git push origin my-new-branch
 ```
 
 In the output, GitLab will prompt you with a direct link for creating
 a merge request:
 
-```bash
+```shell
 ...
 remote: To create a merge request for docs-new-merge-request, visit:
 remote:   https://gitlab-instance.com/my-group/my-project/merge_requests/new?merge_request%5Bsource_branch%5D=my-new-branch
@@ -154,6 +154,26 @@ Then choose the source project and branch that contain your changes,
 and the target project and branch where you want to merge the changes into.
 Click on **Compare branches and continue** to go to the
 [**New Merge Request** page](#new-merge-request-page) and fill in the details.
+
+## New merge request from a fork
+
+After forking a project and applying your local changes, complete the following steps to
+create a merge request from your fork to contribute back to the main project:
+
+1. Go to **Projects > Your Projects** and select your fork of the repository.
+1. In the left menu, go to **Merge Requests**, and click **New Merge Request**.
+1. In the **Source branch** drop-down list box, select your branch in your forked repository as the source branch.
+1. In the **Target branch** drop-down list box, select the branch from the upstream repository as the target branch.
+1. After entering the credentials, click **Compare branches and continue** to compare your local changes to the upstream repository.
+1. Assign a user to review your changes, and click **Submit merge request**.
+
+When the changes are merged, your changes are added to the upstream repository and
+the branch as per specification. After your work is merged, if you don't intend to
+make any other contributions to the upstream project, you can unlink your
+fork from its upstream project in the **Settings > Advanced Settings** section by
+[removing the forking relationship](../settings/index.md#removing-a-fork-relationship).
+
+For further details, [see the forking workflow documentation](../repository/forking_workflow.md).
 
 ## New merge request by email **(CORE ONLY)**
 
@@ -183,7 +203,7 @@ or contacts to continue working._
 
 ### Adding patches when creating a merge request via e-mail
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/22723) in GitLab 11.5.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/22723) in GitLab 11.5.
 
 You can add commits to the merge request being created by adding
 patches as attachments to the email. All attachments with a filename

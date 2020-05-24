@@ -1,10 +1,10 @@
 # Danger bot
 
-The GitLab CI pipeline includes a `danger-review` job that uses [Danger](https://github.com/danger/danger)
+The GitLab CI/CD pipeline includes a `danger-review` job that uses [Danger](https://github.com/danger/danger)
 to perform a variety of automated checks on the code under test.
 
 Danger is a gem that runs in the CI environment, like any other analysis tool.
-What sets it apart from, e.g., Rubocop, is that it's designed to allow you to
+What sets it apart from, e.g., RuboCop, is that it's designed to allow you to
 easily write arbitrary code to test properties of your code or changes. To this
 end, it provides a set of common helpers and access to information about what
 has actually changed in your environment, then simply runs your code!
@@ -12,6 +12,30 @@ has actually changed in your environment, then simply runs your code!
 If Danger is asking you to change something about your merge request, it's best
 just to make the change. If you want to learn how Danger works, or make changes
 to the existing rules, then this is the document for you.
+
+## Danger comments in merge requests
+
+Danger only posts one comment and updates its content on subsequent
+`danger-review` runs. Given this, it's usually one of the first few comments
+in a merge request if not the first. If you didn't see it, try to look
+from the start of the merge request.
+
+### Advantages
+
+- You don't get email notifications each time `danger-review` runs.
+
+### Disadvantages
+
+- It's not obvious Danger will update the old comment, thus you need to
+  pay attention to it if it is updated or not.
+
+## Run Danger locally
+
+A subset of the current checks can be run locally with the following Rake task:
+
+```shell
+bin/rake danger_local
+```
 
 ## Operation
 
@@ -41,7 +65,7 @@ First, be aware of GitLab's [commitment to dogfooding](https://about.gitlab.com/
 The code we write for Danger is GitLab-specific, and it **may not** be most
 appropriate place to implement functionality that addresses a need we encounter.
 Our users, customers, and even our own satellite projects, such as [Gitaly](https://gitlab.com/gitlab-org/gitaly),
-often face similar challenges, after all. Think about how you could fulfil the
+often face similar challenges, after all. Think about how you could fulfill the
 same need while ensuring everyone can benefit from the work, and do that instead
 if you can.
 
@@ -62,12 +86,6 @@ the need as part of the product in a future version of GitLab!
 
 Implement each task as an isolated piece of functionality and place it in its
 own directory under `danger` as `danger/<task-name>/Dangerfile`.
-
-Add a line to the top-level `Dangerfile` to ensure it is loaded like:
-
-```ruby
-danger.import_dangerfile('danger/<task-name>')
-```
 
 Each task should be isolated from the others, and able to function in isolation.
 If there is code that should be shared between multiple tasks, add a plugin to
@@ -118,7 +136,6 @@ at GitLab so far:
 
 ## Limitations
 
-- [`danger local` does not work on GitLab](https://github.com/danger/danger/issues/458)
 - Danger output is not added to a merge request comment if working on
   a fork. This happens because the secret variable from the canonical
   project is not shared to forks.
@@ -128,7 +145,7 @@ at GitLab so far:
   fork. That way the danger comments will be made from CI using that
   API token instead.
   Making the variable
-  [masked](../ci/variables/README.md#masked-variables) will make sure
+  [masked](../ci/variables/README.md#mask-a-custom-variable) will make sure
   it doesn't show up in the job logs. The variable cannot be
-  [protected](../ci/variables/README.md#protected-environment-variables),
+  [protected](../ci/variables/README.md#protect-a-custom-variable),
   as it needs to be present for all feature branches.

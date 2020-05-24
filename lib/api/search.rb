@@ -17,8 +17,12 @@ module API
         blobs: Entities::Blob,
         wiki_blobs: Entities::Blob,
         snippet_titles: Entities::Snippet,
-        snippet_blobs: Entities::Snippet,
         users: Entities::UserBasic
+      }.freeze
+
+      SCOPE_PRELOAD_METHOD = {
+          merge_requests: :with_api_entity_associations,
+          projects: :with_api_entity_associations
       }.freeze
 
       def search(additional_params = {})
@@ -30,24 +34,24 @@ module API
           per_page: params[:per_page]
         }.merge(additional_params)
 
-        results = SearchService.new(current_user, search_params).search_objects
+        results = SearchService.new(current_user, search_params).search_objects(preload_method)
 
-        process_results(results)
-      end
-
-      def process_results(results)
         paginate(results)
       end
 
       def snippets?
-        %w(snippet_blobs snippet_titles).include?(params[:scope]).to_s
+        %w(snippet_titles).include?(params[:scope]).to_s
       end
 
       def entity
         SCOPE_ENTITY[params[:scope].to_sym]
       end
 
-      def verify_search_scope!
+      def preload_method
+        SCOPE_PRELOAD_METHOD[params[:scope].to_sym]
+      end
+
+      def verify_search_scope!(resource:)
         # In EE we have additional validation requirements for searches.
         # Defining this method here as a noop allows us to easily extend it in
         # EE, without having to modify this file directly.
@@ -73,7 +77,7 @@ module API
         use :pagination
       end
       get do
-        verify_search_scope!
+        verify_search_scope!(resource: nil)
         check_users_search_allowed!
 
         present search, with: entity
@@ -94,7 +98,7 @@ module API
         use :pagination
       end
       get ':id/(-/)search' do
-        verify_search_scope!
+        verify_search_scope!(resource: user_group)
         check_users_search_allowed!
 
         present search(group_id: user_group.id), with: entity

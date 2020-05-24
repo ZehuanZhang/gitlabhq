@@ -92,6 +92,7 @@ const alias = {
   vendor: path.join(ROOT_PATH, 'vendor/assets/javascripts'),
   vue$: 'vue/dist/vue.esm.js',
   spec: path.join(ROOT_PATH, 'spec/javascripts'),
+  jest: path.join(ROOT_PATH, 'spec/frontend'),
 
   // the following resolves files which are different between CE and EE
   ee_else_ce: path.join(ROOT_PATH, 'app/assets/javascripts'),
@@ -111,27 +112,23 @@ if (IS_EE) {
     ee_icons: path.join(ROOT_PATH, 'ee/app/views/shared/icons'),
     ee_images: path.join(ROOT_PATH, 'ee/app/assets/images'),
     ee_spec: path.join(ROOT_PATH, 'ee/spec/javascripts'),
+    ee_jest: path.join(ROOT_PATH, 'ee/spec/frontend'),
     ee_else_ce: path.join(ROOT_PATH, 'ee/app/assets/javascripts'),
   });
 }
 
-// if there is a compiled DLL with a matching hash string, use it
 let dll;
 
 if (VENDOR_DLL && !IS_PRODUCTION) {
   const dllHash = vendorDllHash();
   const dllCachePath = path.join(ROOT_PATH, `tmp/cache/webpack-dlls/${dllHash}`);
-  if (fs.existsSync(dllCachePath)) {
-    console.log(`Using vendor DLL found at: ${dllCachePath}`);
-    dll = {
-      manifestPath: path.join(dllCachePath, 'vendor.dll.manifest.json'),
-      cacheFrom: dllCachePath,
-      cacheTo: path.join(ROOT_PATH, `public/assets/webpack/dll.${dllHash}/`),
-      publicPath: `dll.${dllHash}/vendor.dll.bundle.js`,
-    };
-  } else {
-    console.log(`Warning: No vendor DLL found at: ${dllCachePath}. DllPlugin disabled.`);
-  }
+  dll = {
+    manifestPath: path.join(dllCachePath, 'vendor.dll.manifest.json'),
+    cacheFrom: dllCachePath,
+    cacheTo: path.join(ROOT_PATH, `public/assets/webpack/dll.${dllHash}/`),
+    publicPath: `dll.${dllHash}/vendor.dll.bundle.js`,
+    exists: null,
+  };
 }
 
 module.exports = {
@@ -144,8 +141,8 @@ module.exports = {
   output: {
     path: path.join(ROOT_PATH, 'public/assets/webpack'),
     publicPath: '/assets/webpack/',
-    filename: IS_PRODUCTION ? '[name].[chunkhash:8].bundle.js' : '[name].bundle.js',
-    chunkFilename: IS_PRODUCTION ? '[name].[chunkhash:8].chunk.js' : '[name].chunk.js',
+    filename: IS_PRODUCTION ? '[name].[contenthash:8].bundle.js' : '[name].bundle.js',
+    chunkFilename: IS_PRODUCTION ? '[name].[contenthash:8].chunk.js' : '[name].chunk.js',
     globalObject: 'this', // allow HMR and web workers to play nice
   },
 
@@ -164,7 +161,9 @@ module.exports = {
       },
       {
         test: /\.js$/,
-        exclude: path => /node_modules|vendor[\\/]assets/.test(path) && !/\.vue\.js/.test(path),
+        exclude: path =>
+          /node_modules\/(?!tributejs)|node_modules|vendor[\\/]assets/.test(path) &&
+          !/\.vue\.js/.test(path),
         loader: 'babel-loader',
         options: {
           cacheDirectory: path.join(CACHE_PATH, 'babel-loader'),
@@ -192,7 +191,7 @@ module.exports = {
         test: /icons\.svg$/,
         loader: 'file-loader',
         options: {
-          name: '[name].[hash:8].[ext]',
+          name: '[name].[contenthash:8].[ext]',
         },
       },
       {
@@ -211,7 +210,7 @@ module.exports = {
           {
             loader: 'worker-loader',
             options: {
-              name: '[name].[hash:8].worker.js',
+              name: '[name].[contenthash:8].worker.js',
               inline: IS_DEV_SERVER,
             },
           },
@@ -223,7 +222,7 @@ module.exports = {
         exclude: /node_modules/,
         loader: 'file-loader',
         options: {
-          name: '[name].[hash:8].[ext]',
+          name: '[name].[contenthash:8].[ext]',
         },
       },
       {
@@ -233,7 +232,8 @@ module.exports = {
           {
             loader: 'css-loader',
             options: {
-              name: '[name].[hash:8].[ext]',
+              modules: 'global',
+              localIdentName: '[name].[contenthash:8].[ext]',
             },
           },
         ],
@@ -243,13 +243,15 @@ module.exports = {
         include: /node_modules\/katex\/dist\/fonts/,
         loader: 'file-loader',
         options: {
-          name: '[name].[hash:8].[ext]',
+          name: '[name].[contenthash:8].[ext]',
         },
       },
     ],
   },
 
   optimization: {
+    // Replace 'hashed' with 'deterministic' in webpack 5
+    moduleIds: 'hashed',
     runtimeChunk: 'single',
     splitChunks: {
       maxInitialRequests: 4,
@@ -261,6 +263,30 @@ module.exports = {
           chunks: 'initial',
           minChunks: autoEntriesCount * 0.9,
         }),
+        monaco: {
+          priority: 15,
+          name: 'monaco',
+          chunks: 'initial',
+          test: /[\\/]node_modules[\\/]monaco-editor[\\/]/,
+          minChunks: 2,
+          reuseExistingChunk: true,
+        },
+        echarts: {
+          priority: 14,
+          name: 'echarts',
+          chunks: 'all',
+          test: /[\\/]node_modules[\\/](echarts|zrender)[\\/]/,
+          minChunks: 2,
+          reuseExistingChunk: true,
+        },
+        security_reports: {
+          priority: 13,
+          name: 'security_reports',
+          chunks: 'initial',
+          test: /[\\/](vue_shared[\\/](security_reports|license_compliance)|security_dashboard)[\\/]/,
+          minChunks: 2,
+          reuseExistingChunk: true,
+        },
         vendors: {
           priority: 10,
           chunks: 'async',
@@ -311,6 +337,51 @@ module.exports = {
       $: 'jquery',
       jQuery: 'jquery',
     }),
+
+    // if DLLs are enabled, detect whether the DLL exists and create it automatically if necessary
+    dll && {
+      apply(compiler) {
+        compiler.hooks.beforeCompile.tapAsync('DllAutoCompilePlugin', (params, callback) => {
+          if (dll.exists) {
+            callback();
+          } else if (fs.existsSync(dll.manifestPath)) {
+            console.log(`Using vendor DLL found at: ${dll.cacheFrom}`);
+            dll.exists = true;
+            callback();
+          } else {
+            console.log(
+              `Warning: No vendor DLL found at: ${dll.cacheFrom}. Compiling DLL automatically.`,
+            );
+
+            const dllConfig = require('./webpack.vendor.config.js');
+            const dllCompiler = webpack(dllConfig);
+
+            dllCompiler.run((err, stats) => {
+              if (err) {
+                return callback(err);
+              }
+
+              const info = stats.toJson();
+
+              if (stats.hasErrors()) {
+                console.error(info.errors.join('\n\n'));
+                return callback('DLL not compiled successfully.');
+              }
+
+              if (stats.hasWarnings()) {
+                console.warn(info.warnings.join('\n\n'));
+                console.warn('DLL compiled with warnings.');
+              } else {
+                console.log('DLL compiled successfully.');
+              }
+
+              dll.exists = true;
+              callback();
+            });
+          }
+        });
+      },
+    },
 
     // reference our compiled DLL modules
     dll &&

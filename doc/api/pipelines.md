@@ -1,10 +1,17 @@
 # Pipelines API
 
+## Pipelines pagination
+
+By default, `GET` requests return 20 results at a time because the API results
+are paginated.
+
+Read more on [pagination](README.md#pagination).
+
 ## List project pipelines
 
-> [Introduced][ce-5837] in GitLab 8.11
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/5837) in GitLab 8.11
 
-```
+```plaintext
 GET /projects/:id/pipelines
 ```
 
@@ -12,9 +19,9 @@ GET /projects/:id/pipelines
 |-----------|---------|----------|---------------------|
 | `id`      | integer/string | yes      | The ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user |
 | `scope`   | string  | no       | The scope of pipelines, one of: `running`, `pending`, `finished`, `branches`, `tags` |
-| `status`  | string  | no       | The status of pipelines, one of: `running`, `pending`, `success`, `failed`, `canceled`, `skipped` |
+| `status`  | string  | no       | The status of pipelines, one of: `running`, `pending`, `success`, `failed`, `canceled`, `skipped`, `created`, `manual` |
 | `ref`     | string  | no       | The ref of pipelines |
-| `sha`     | string  | no       | The sha of pipelines |
+| `sha`     | string  | no       | The SHA of pipelines |
 | `yaml_errors`| boolean  | no       | Returns pipelines with invalid configurations |
 | `name`| string  | no       | The name of the user who triggered pipelines |
 | `username`| string  | no       | The username of the user who triggered pipelines |
@@ -23,7 +30,7 @@ GET /projects/:id/pipelines
 | `order_by`| string  | no       | Order pipelines by `id`, `status`, `ref`, `updated_at` or `user_id` (default: `id`) |
 | `sort`    | string  | no       | Sort pipelines in `asc` or `desc` order (default: `desc`) |
 
-```
+```shell
 curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/pipelines"
 ```
 
@@ -54,9 +61,9 @@ Example of response
 
 ## Get a single pipeline
 
-> [Introduced][ce-5837] in GitLab 8.11
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/5837) in GitLab 8.11
 
-```
+```plaintext
 GET /projects/:id/pipelines/:pipeline_id
 ```
 
@@ -65,7 +72,7 @@ GET /projects/:id/pipelines/:pipeline_id
 | `id`       | integer/string | yes      | The ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user |
 | `pipeline_id` | integer | yes      | The ID of a pipeline   |
 
-```
+```shell
 curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/pipelines/46"
 ```
 
@@ -101,7 +108,7 @@ Example of response
 
 ### Get variables of a pipeline
 
-```
+```plaintext
 GET /projects/:id/pipelines/:pipeline_id/variables
 ```
 
@@ -110,7 +117,7 @@ GET /projects/:id/pipelines/:pipeline_id/variables
 | `id`       | integer/string | yes      | The ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user |
 | `pipeline_id` | integer | yes      | The ID of a pipeline   |
 
-```
+```shell
 curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/pipelines/46/variables"
 ```
 
@@ -130,11 +137,67 @@ Example of response
 ]
 ```
 
+### Get a pipeline's test report
+
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/202525) in GitLab 13.0.
+
+CAUTION: **Caution:**
+This API route is part of the [JUnit test report](../ci/junit_test_reports.md) feature. It is protected by a [feature flag](../development/feature_flags/index.md) that is **disabled** due to performance issues with very large data sets. See [the documentation for the feature](../ci/junit_test_reports.md#enabling-the-feature) for further details.
+
+```plaintext
+GET /projects/:id/pipelines/:pipeline_id/test_report
+```
+
+| Attribute  | Type    | Required | Description         |
+|------------|---------|----------|---------------------|
+| `id`       | integer/string | yes      | The ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user |
+| `pipeline_id` | integer | yes      | The ID of a pipeline   |
+
+Sample request:
+
+```shell
+curl --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/pipelines/46/test_report"
+```
+
+Sample response:
+
+```json
+{
+  "total_time": 5,
+  "total_count": 1,
+  "success_count": 1,
+  "failed_count": 0,
+  "skipped_count": 0,
+  "error_count": 0,
+  "test_suites": [
+    {
+      "name": "Secure",
+      "total_time": 5,
+      "total_count": 1,
+      "success_count": 1,
+      "failed_count": 0,
+      "skipped_count": 0,
+      "error_count": 0,
+      "test_cases": [
+        {
+          "status": "success",
+          "name": "Security Reports can create an auto-remediation MR",
+          "classname": "vulnerability_management_spec",
+          "execution_time": 5,
+          "system_output": null,
+          "stack_trace": null
+        }
+      ]
+    }
+  ]
+}
+```
+
 ## Create a new pipeline
 
-> [Introduced][ce-7209] in GitLab 8.14
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/7209) in GitLab 8.14
 
-```
+```plaintext
 POST /projects/:id/pipeline
 ```
 
@@ -144,7 +207,7 @@ POST /projects/:id/pipeline
 | `ref`       | string  | yes      | Reference to commit |
 | `variables` | array   | no       | An array containing the variables available in the pipeline, matching the structure `[{ 'key' => 'UPLOAD_TO_S3', 'variable_type' => 'file', 'value' => 'true' }]` |
 
-```
+```shell
 curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/pipeline?ref=master"
 ```
 
@@ -180,9 +243,9 @@ Example of response
 
 ## Retry jobs in a pipeline
 
-> [Introduced][ce-5837] in GitLab 8.11
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/5837) in GitLab 8.11
 
-```
+```plaintext
 POST /projects/:id/pipelines/:pipeline_id/retry
 ```
 
@@ -191,7 +254,7 @@ POST /projects/:id/pipelines/:pipeline_id/retry
 | `id`       | integer/string | yes      | The ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user |
 | `pipeline_id` | integer | yes   | The ID of a pipeline |
 
-```
+```shell
 curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/pipelines/46/retry"
 ```
 
@@ -225,11 +288,11 @@ Response:
 }
 ```
 
-## Cancel a pipelines jobs
+## Cancel a pipeline's jobs
 
-> [Introduced][ce-5837] in GitLab 8.11
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/5837) in GitLab 8.11
 
-```
+```plaintext
 POST /projects/:id/pipelines/:pipeline_id/cancel
 ```
 
@@ -238,7 +301,7 @@ POST /projects/:id/pipelines/:pipeline_id/cancel
 | `id`       | integer/string | yes      | The ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user |
 | `pipeline_id` | integer | yes   | The ID of a pipeline |
 
-```
+```shell
 curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/pipelines/46/cancel"
 ```
 
@@ -274,9 +337,9 @@ Response:
 
 ## Delete a pipeline
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/22988) in GitLab 11.6.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/22988) in GitLab 11.6.
 
-```
+```plaintext
 DELETE /projects/:id/pipelines/:pipeline_id
 ```
 
@@ -285,9 +348,6 @@ DELETE /projects/:id/pipelines/:pipeline_id
 | `id`       | integer/string | yes      | The ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user |
 | `pipeline_id` | integer | yes      | The ID of a pipeline   |
 
-```
+```shell
 curl --header "PRIVATE-TOKEN: <your_access_token>" --request "DELETE" "https://gitlab.example.com/api/v4/projects/1/pipelines/46"
 ```
-
-[ce-5837]: https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/5837
-[ce-7209]: https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/7209

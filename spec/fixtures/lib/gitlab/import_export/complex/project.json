@@ -2002,7 +2002,7 @@
     },
     {
       "id": 31,
-      "title": "Libero nam magnam incidunt eaque placeat error et.",
+      "title": "issue_with_timelogs",
       "author_id": 16,
       "project_id": 5,
       "created_at": "2016-06-14T15:02:07.280Z",
@@ -2016,6 +2016,16 @@
       "confidential": false,
       "due_date": null,
       "moved_to_id": null,
+      "timelogs": [
+        {
+          "id": 1,
+          "time_spent": 72000,
+          "user_id": 1,
+          "created_at": "2019-12-27T09:15:22.302Z",
+          "updated_at": "2019-12-27T09:15:22.302Z",
+          "spent_at": "2019-12-27T00:00:00.000Z"
+        }
+      ],
       "notes": [
         {
           "id": 423,
@@ -2347,7 +2357,30 @@
       ]
     }
   ],
-  "releases": [],
+  "releases": [
+    {
+      "id": 1,
+      "tag": "release-1.1",
+      "description": "Some release notes",
+      "project_id": 5,
+      "created_at": "2019-12-26T10:17:14.621Z",
+      "updated_at": "2019-12-26T10:17:14.621Z",
+      "author_id": 1,
+      "name": "release-1.1",
+      "sha": "901de3a8bd5573f4a049b1457d28bc1592ba6bf9",
+      "released_at": "2019-12-26T10:17:14.615Z",
+      "links": [
+        {
+          "id": 1,
+          "release_id" : 1,
+          "url": "http://localhost/namespace6/project6/-/jobs/140463678/artifacts/download",
+          "name": "release-1.1.dmg",
+          "created_at": "2019-12-26T10:17:14.621Z",
+          "updated_at": "2019-12-26T10:17:14.621Z"
+        }
+      ]
+    }
+  ],
   "project_members": [
     {
       "id": 36,
@@ -2365,7 +2398,7 @@
       "requested_at": null,
       "user": {
         "id": 16,
-        "email": "maritza_schoen@block.ca",
+        "email": "bernard_willms@gitlabexample.com",
         "username": "bernard_willms"
       }
     },
@@ -2385,7 +2418,7 @@
       "requested_at": null,
       "user": {
         "id": 6,
-        "email": "shaina@koelpindenesik.com",
+        "email": "saul_will@gitlabexample.com",
         "username": "saul_will"
       }
     },
@@ -2435,7 +2468,7 @@
       "id": 27,
       "target_branch": "feature",
       "source_branch": "feature_conflict",
-      "source_project_id": 999,
+      "source_project_id": 2147483547,
       "author_id": 1,
       "assignee_id": null,
       "title": "MR1",
@@ -2459,6 +2492,84 @@
       "merge_user_id": null,
       "merge_commit_sha": null,
       "notes": [
+        {
+          "id": 669,
+          "note": "added 3 commits\n\n<ul><li>16ea4e20...074a2a32 - 2 commits from branch <code>master</code></li><li>ca223a02 - readme: fix typos</li></ul>\n\n[Compare with previous version](/group/project/merge_requests/1/diffs?diff_id=1189&start_sha=16ea4e207fb258fe4e9c73185a725207c9a4f3e1)",
+          "noteable_type": "MergeRequest",
+          "author_id": 26,
+          "created_at": "2020-03-28T12:47:33.461Z",
+          "updated_at": "2020-03-28T12:47:33.461Z",
+          "project_id": 5,
+          "attachment": {
+            "url": null
+          },
+          "line_code": null,
+          "commit_id": null,
+          "system": true,
+          "st_diff": null,
+          "updated_by_id": null,
+          "position": null,
+          "original_position": null,
+          "resolved_at": null,
+          "resolved_by_id": null,
+          "discussion_id": null,
+          "change_position": null,
+          "resolved_by_push": null,
+          "confidential": null,
+          "type": null,
+          "author": {
+            "name": "User 4"
+          },
+          "award_emoji": [],
+          "system_note_metadata": {
+            "id": 4789,
+            "commit_count": 3,
+            "action": "commit",
+            "created_at": "2020-03-28T12:47:33.461Z",
+            "updated_at": "2020-03-28T12:47:33.461Z"
+          },
+          "events": [],
+          "suggestions": []
+        },
+        {
+          "id": 670,
+          "note": "unmarked as a **Work In Progress**",
+          "noteable_type": "MergeRequest",
+          "author_id": 26,
+          "created_at": "2020-03-28T12:48:36.951Z",
+          "updated_at": "2020-03-28T12:48:36.951Z",
+          "project_id": 5,
+          "attachment": {
+            "url": null
+          },
+          "line_code": null,
+          "commit_id": null,
+          "system": true,
+          "st_diff": null,
+          "updated_by_id": null,
+          "position": null,
+          "original_position": null,
+          "resolved_at": null,
+          "resolved_by_id": null,
+          "discussion_id": null,
+          "change_position": null,
+          "resolved_by_push": null,
+          "confidential": null,
+          "type": null,
+          "author": {
+            "name": "User 4"
+          },
+          "award_emoji": [],
+          "system_note_metadata": {
+            "id": 4790,
+            "commit_count": null,
+            "action": "title",
+            "created_at": "2020-03-28T12:48:36.951Z",
+            "updated_at": "2020-03-28T12:48:36.951Z"
+          },
+          "events": [],
+          "suggestions": []
+        },
         {
           "id": 671,
           "note": "Sit voluptatibus eveniet architecto quidem.",
@@ -6285,7 +6396,7 @@
       ]
     }
   ],
-  "pipelines": [
+  "ci_pipelines": [
     {
       "id": 36,
       "project_id": 5,
@@ -6301,13 +6412,13 @@
       "status": "failed",
       "started_at": null,
       "finished_at": null,
-      "user_id": 9999,
+      "user_id": 2147483547,
       "duration": null,
       "source": "push",
       "merge_request_id": null,
       "notes": [
         {
-          "id": 999,
+          "id": 2147483547,
           "note": "Natus rerum qui dolorem dolorum voluptas.",
           "noteable_type": "Commit",
           "author_id": 1,
@@ -6419,7 +6530,7 @@
       ]
     },
     {
-      "id": 37,
+      "id": 26,
       "project_id": 5,
       "ref": "master",
       "sha": "048721d90c449b244b7b4c53a9186b04330174ec",
@@ -6511,7 +6622,7 @@
         "id": 27,
         "target_branch": "feature",
         "source_branch": "feature_conflict",
-        "source_project_id": 999,
+        "source_project_id": 2147483547,
         "author_id": 1,
         "assignee_id": null,
         "title": "MR1",
@@ -6711,7 +6822,7 @@
       ]
     },
     {
-      "id": 40,
+      "id": 19,
       "project_id": 5,
       "ref": "master",
       "sha": "2ea1f3dec713d940208fb5ce4a38765ecb5d3f73",
@@ -6816,6 +6927,40 @@
       "duration": null,
       "stages": [
       ]
+    },
+    {
+      "id": 20,
+      "project_id": 5,
+      "ref": "master",
+      "sha": "ce84140e8b878ce6e7c4d298c7202ff38170e3ac",
+      "before_sha": null,
+      "push_data": null,
+      "created_at": "2016-03-22T15:20:35.763Z",
+      "updated_at": "2016-03-22T15:20:35.763Z",
+      "tag": false,
+      "yaml_errors": null,
+      "committed_at": null,
+      "status": "failed",
+      "started_at": null,
+      "finished_at": null,
+      "duration": null,
+      "stages": [
+      ],
+      "source": "external_pull_request_event",
+      "external_pull_request":
+      {
+        "id": 3,
+        "pull_request_iid": 4,
+        "source_branch": "feature",
+        "target_branch": "master",
+        "source_repository": "the-repository",
+        "target_repository": "the-repository",
+        "source_sha": "ce84140e8b878ce6e7c4d298c7202ff38170e3ac",
+        "target_sha": "a09386439ca39abe575675ffd4b89ae824fec22f",
+        "status": "open",
+	"created_at": "2016-03-22T15:20:35.763Z",
+	"updated_at": "2016-03-22T15:20:35.763Z"
+      }
     }
   ],
   "triggers": [
@@ -6833,6 +6978,21 @@
       "project_id": 5,
       "created_at": "2017-01-16T15:25:29.637Z",
       "updated_at": "2017-01-16T15:25:29.637Z"
+    }
+  ],
+  "pipeline_schedules": [
+    {
+      "id": 1,
+      "description": "Schedule Description",
+      "ref": "master",
+      "cron": "0 4 * * 0",
+      "cron_timezone": "UTC",
+      "next_run_at": "2019-12-29T04:19:00.000Z",
+      "project_id": 5,
+      "owner_id": 1,
+      "active": true,
+      "created_at": "2019-12-26T10:14:57.778Z",
+      "updated_at": "2019-12-26T10:14:57.778Z"
     }
   ],
   "container_expiration_policy": {
@@ -7230,30 +7390,10 @@
       "tag_push_events": true,
       "note_events": true,
       "job_events": true,
-      "type": "AssemblaService",
+      "type": "AsanaService",
       "category": "common",
       "default": false,
       "wiki_page_events": true
-    },
-    {
-      "id": 101,
-      "title": "JenkinsDeprecated",
-      "project_id": 5,
-      "created_at": "2016-06-14T15:01:51.031Z",
-      "updated_at": "2016-06-14T15:01:51.031Z",
-      "active": false,
-      "properties": {},
-      "template": false,
-      "push_events": true,
-      "issues_events": true,
-      "merge_requests_events": true,
-      "tag_push_events": true,
-      "note_events": true,
-      "job_events": true,
-      "category": "common",
-      "default": false,
-      "wiki_page_events": true,
-      "type": "JenkinsDeprecatedService"
     }
   ],
   "hooks": [],
@@ -7280,6 +7420,26 @@
           "access_level": 40,
           "created_at": "2016-08-30T07:32:52.490Z",
           "updated_at": "2016-08-30T07:32:52.490Z"
+        }
+      ]
+    }
+  ],
+  "protected_environments": [
+    {
+      "id": 1,
+      "project_id": 9,
+      "created_at": "2017-10-19T15:36:23.466Z",
+      "updated_at": "2017-10-19T15:36:23.466Z",
+      "name": "production",
+      "deploy_access_levels": [
+        {
+          "id": 1,
+          "protected_environment_id": 1,
+          "created_at": "2017-10-19T15:36:23.466Z",
+          "updated_at": "2017-10-19T15:36:23.466Z",
+          "access_level": 40,
+          "user_id": 1,
+          "group_id": null
         }
       ]
     }
@@ -7354,6 +7514,33 @@
   "ci_cd_settings": {
     "group_runners_enabled": false
   },
+  "auto_devops": {
+    "id": 1,
+    "created_at": "2017-10-19T15:36:23.466Z",
+    "updated_at": "2017-10-19T15:36:23.466Z",
+    "enabled": null,
+    "deploy_strategy": "continuous"
+  },
+  "error_tracking_setting": {
+    "api_url": "https://gitlab.example.com/api/0/projects/sentry-org/sentry-project",
+    "project_name": "Sentry Project",
+    "organization_name": "Sentry Org"
+  },
+  "external_pull_requests": [
+    {
+       "id": 3,
+       "pull_request_iid": 4,
+       "source_branch": "feature",
+       "target_branch": "master",
+       "source_repository": "the-repository",
+       "target_repository": "the-repository",
+       "source_sha": "ce84140e8b878ce6e7c4d298c7202ff38170e3ac",
+       "target_sha": "a09386439ca39abe575675ffd4b89ae824fec22f",
+       "status": "open",
+       "created_at": "2019-12-24T14:04:50.053Z",
+       "updated_at": "2019-12-24T14:05:18.138Z"
+    }
+  ],
   "boards": [
     {
       "id": 29,

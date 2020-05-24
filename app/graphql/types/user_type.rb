@@ -10,11 +10,15 @@ module Types
 
     expose_permissions Types::PermissionTypes::User
 
+    field :id, GraphQL::ID_TYPE, null: false,
+          description: 'ID of the user'
     field :name, GraphQL::STRING_TYPE, null: false,
           description: 'Human-readable name of the user'
+    field :state, GraphQL::STRING_TYPE, null: false,
+          description: 'State of the issue'
     field :username, GraphQL::STRING_TYPE, null: false,
           description: 'Username of the user. Unique within this instance of GitLab'
-    field :avatar_url, GraphQL::STRING_TYPE, null: false,
+    field :avatar_url, GraphQL::STRING_TYPE, null: true,
           description: "URL of the user's avatar"
     field :web_url, GraphQL::STRING_TYPE, null: false,
           description: 'Web URL of the user'

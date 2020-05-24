@@ -1,5 +1,5 @@
 <script>
-import _ from 'underscore';
+import { debounce } from 'lodash';
 import { GlLoadingIcon, GlSearchBoxByType, GlInfiniteScroll } from '@gitlab/ui';
 import ProjectListItem from './project_list_item.vue';
 
@@ -61,9 +61,9 @@ export default {
       this.$emit('bottomReached');
     },
     isSelected(project) {
-      return Boolean(_.find(this.selectedProjects, { id: project.id }));
+      return this.selectedProjects.some(({ id }) => project.id === id);
     },
-    onInput: _.debounce(function debouncedOnInput() {
+    onInput: debounce(function debouncedOnInput() {
       this.$emit('searched', this.searchQuery);
     }, SEARCH_INPUT_TIMEOUT_MS),
   },
@@ -80,7 +80,7 @@ export default {
       @input="onInput"
     />
     <div class="d-flex flex-column">
-      <gl-loading-icon v-if="showLoadingIndicator" :size="1" class="py-2 px-4" />
+      <gl-loading-icon v-if="showLoadingIndicator" size="sm" class="py-2 px-4" />
       <gl-infinite-scroll
         :max-list-height="402"
         :fetched-items="projectSearchResults.length"

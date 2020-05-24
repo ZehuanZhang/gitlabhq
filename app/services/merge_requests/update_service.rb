@@ -43,11 +43,7 @@ module MergeRequests
         abort_auto_merge(merge_request, 'target branch was changed')
       end
 
-      if merge_request.assignees != old_assignees
-        create_assignee_note(merge_request, old_assignees)
-        notification_service.async.reassigned_merge_request(merge_request, current_user, old_assignees)
-        todo_service.reassigned_issuable(merge_request, current_user, old_assignees)
-      end
+      handle_assignees_change(merge_request, old_assignees) if merge_request.assignees != old_assignees
 
       if merge_request.previous_changes.include?('target_branch') ||
           merge_request.previous_changes.include?('source_branch')
@@ -83,14 +79,21 @@ module MergeRequests
 
     def merge_from_quick_action(merge_request)
       last_diff_sha = params.delete(:merge)
-      return unless merge_request.mergeable_with_quick_action?(current_user, last_diff_sha: last_diff_sha)
 
-      merge_request.update(merge_error: nil)
-
-      if merge_request.head_pipeline_active?
-        AutoMergeService.new(project, current_user, { sha: last_diff_sha }).execute(merge_request, AutoMergeService::STRATEGY_MERGE_WHEN_PIPELINE_SUCCEEDS)
+      if Feature.enabled?(:merge_orchestration_service, merge_request.project, default_enabled: true)
+        MergeRequests::MergeOrchestrationService
+          .new(project, current_user, { sha: last_diff_sha })
+          .execute(merge_request)
       else
-        merge_request.merge_async(current_user.id, { sha: last_diff_sha })
+        return unless merge_request.mergeable_with_quick_action?(current_user, last_diff_sha: last_diff_sha)
+
+        merge_request.update(merge_error: nil)
+
+        if merge_request.head_pipeline_active?
+          AutoMergeService.new(project, current_user, { sha: last_diff_sha }).execute(merge_request, AutoMergeService::STRATEGY_MERGE_WHEN_PIPELINE_SUCCEEDS)
+        else
+          merge_request.merge_async(current_user.id, { sha: last_diff_sha })
+        end
       end
     end
 
@@ -118,6 +121,12 @@ module MergeRequests
       else
         notification_service.async.changed_milestone_merge_request(merge_request, merge_request.milestone, current_user)
       end
+    end
+
+    def handle_assignees_change(merge_request, old_assignees)
+      create_assignee_note(merge_request, old_assignees)
+      notification_service.async.reassigned_merge_request(merge_request, current_user, old_assignees)
+      todo_service.reassigned_issuable(merge_request, current_user, old_assignees)
     end
 
     def create_branch_change_note(issuable, branch_type, old_branch, new_branch)

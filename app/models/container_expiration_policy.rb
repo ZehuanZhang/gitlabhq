@@ -2,6 +2,7 @@
 
 class ContainerExpirationPolicy < ApplicationRecord
   include Schedulable
+  include UsageStatistics
 
   belongs_to :project, inverse_of: :container_expiration_policy
 
@@ -14,7 +15,7 @@ class ContainerExpirationPolicy < ApplicationRecord
   validates :keep_n, inclusion: { in: ->(_) { self.keep_n_options.keys } }, allow_nil: true
 
   scope :active, -> { where(enabled: true) }
-  scope :preloaded, -> { preload(:project) }
+  scope :preloaded, -> { preload(project: [:route]) }
 
   def self.keep_n_options
     {

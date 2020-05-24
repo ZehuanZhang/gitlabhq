@@ -16,8 +16,8 @@ class Timelog < ApplicationRecord
     )
   end
 
-  scope :between_dates, -> (start_date, end_date) do
-    where('spent_at BETWEEN ? AND ?', start_date, end_date)
+  scope :between_times, -> (start_time, end_time) do
+    where('spent_at BETWEEN ? AND ?', start_time, end_time)
   end
 
   def issuable
@@ -28,9 +28,9 @@ class Timelog < ApplicationRecord
 
   def issuable_id_is_present
     if issue_id && merge_request_id
-      errors.add(:base, 'Only Issue ID or Merge Request ID is required')
+      errors.add(:base, _('Only Issue ID or Merge Request ID is required'))
     elsif issuable.nil?
-      errors.add(:base, 'Issue or Merge Request ID is required')
+      errors.add(:base, _('Issue or Merge Request ID is required'))
     end
   end
 

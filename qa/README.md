@@ -44,6 +44,14 @@ Note: GitLab QA uses [Selenium WebDriver](https://www.seleniumhq.org/) via
 the browser to use. You will need to have Chrome (or Chromium) and
 [chromedriver](https://chromedriver.chromium.org/) installed / in your `$PATH`.
 
+### Writing tests
+
+- [Writing tests from scratch tutorial](../doc/development/testing_guide/end_to_end/beginners_guide.md)
+    - [Best practices](../doc/development/testing_guide/best_practices.md)
+    - [Using page objects](../doc/development/testing_guide/end_to_end/page_objects.md)
+    - [Guidelines](../doc/development/testing_guide/index.md)
+    - [Tests with special setup for local environemnts](../doc/development/testing_guide/end_to_end/running_tests_that_require_special_setup.md)
+
 ### Run the end-to-end tests in a local development environment
 
 Follow the GDK instructions to [prepare](https://gitlab.com/gitlab-org/gitlab-development-kit/blob/master/doc/prepare.md)
@@ -67,12 +75,15 @@ bundle exec bin/qa Test::Instance::All http://localhost:3000
 Note: If you want to run tests requiring SSH against GDK, you
 will need to [modify your GDK setup](https://gitlab.com/gitlab-org/gitlab-qa/blob/master/docs/run_qa_against_gdk.md).
 
-### Writing tests
+#### Running EE tests
 
-- [Writing tests from scratch tutorial](../doc/development/testing_guide/end_to_end/quick_start_guide.md)
-    - [Best practices](../doc/development/testing_guide/best_practices.md)
-    - [Using page objects](../doc/development/testing_guide/end_to_end/page_objects.md)
-    - [Guidelines](../doc/development/testing_guide/index.md)
+When running EE tests you'll need to have a license available. GitLab engineers can [request a license](https://about.gitlab.com/handbook/developer-onboarding/#working-on-gitlab-ee).
+
+Once you have the license file you can export it as an environment variable and then the framework can use it. If you do so it will be installed automatically.
+
+```
+export EE_LICENSE=$(cat /path/to/gitlab_license)
+```
 
 ### Running specific tests
 

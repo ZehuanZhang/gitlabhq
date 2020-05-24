@@ -16,6 +16,17 @@ const dummyPackageJson = () => ({
     main: 'index.js',
   }),
 });
+const expectedSandpackOptions = () => ({
+  files: {},
+  entry: '/index.js',
+  showOpenInCodeSandbox: true,
+});
+const expectedSandpackSettings = () => ({
+  fileResolver: {
+    isFile: expect.any(Function),
+    readFile: expect.any(Function),
+  },
+});
 
 describe('IDE clientside preview', () => {
   let wrapper;
@@ -59,14 +70,6 @@ describe('IDE clientside preview', () => {
     });
   };
 
-  beforeAll(() => {
-    jest.useFakeTimers();
-  });
-
-  afterAll(() => {
-    jest.useRealTimers();
-  });
-
   afterEach(() => {
     wrapper.destroy();
   });
@@ -78,6 +81,46 @@ describe('IDE clientside preview', () => {
     });
   });
   describe('with main entry', () => {
+    beforeEach(() => {
+      createComponent({ getters: { packageJson: dummyPackageJson } });
+
+      return waitForCalls();
+    });
+
+    it('creates sandpack manager', () => {
+      expect(smooshpack.Manager).toHaveBeenCalledWith(
+        '#ide-preview',
+        expectedSandpackOptions(),
+        expectedSandpackSettings(),
+      );
+    });
+
+    it('pings usage', () => {
+      expect(storeClientsideActions.pingUsage).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('with codesandboxBundlerUrl', () => {
+    const TEST_BUNDLER_URL = 'https://test.gitlab-static.test';
+
+    beforeEach(() => {
+      createComponent({
+        getters: { packageJson: dummyPackageJson },
+        state: { codesandboxBundlerUrl: TEST_BUNDLER_URL },
+      });
+
+      return waitForCalls();
+    });
+
+    it('creates sandpack manager with bundlerURL', () => {
+      expect(smooshpack.Manager).toHaveBeenCalledWith('#ide-preview', expectedSandpackOptions(), {
+        ...expectedSandpackSettings(),
+        bundlerURL: TEST_BUNDLER_URL,
+      });
+    });
+  });
+
+  describe('with codesandboxBundlerURL', () => {
     beforeEach(() => {
       createComponent({ getters: { packageJson: dummyPackageJson } });
 
@@ -99,10 +142,6 @@ describe('IDE clientside preview', () => {
           },
         },
       );
-    });
-
-    it('pings usage', () => {
-      expect(storeClientsideActions.pingUsage).toHaveBeenCalledTimes(1);
     });
   });
 

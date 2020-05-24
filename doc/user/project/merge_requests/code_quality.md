@@ -4,9 +4,9 @@ type: reference, howto
 
 # Code Quality **(STARTER)**
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab/merge_requests/1984) in [GitLab Starter](https://about.gitlab.com/pricing/) 9.3.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/1984) in [GitLab Starter](https://about.gitlab.com/pricing/) 9.3.
 
-With the help of [GitLab CI/CD](../../../ci/README.md), you can analyze your
+Ensuring your project's code stays simple, readable and easy to contribute to can be problematic. With the help of [GitLab CI/CD](../../../ci/README.md), you can analyze your
 source code quality using GitLab Code Quality.
 
 Code Quality:
@@ -14,17 +14,32 @@ Code Quality:
 - Uses [Code Climate Engines](https://codeclimate.com), which are
   free and open source. Code Quality doesn't require a Code Climate
   subscription.
-- Runs in [pipelines](../../../ci/pipelines.md) using an Docker image built in
+- Runs in [pipelines](../../../ci/pipelines/index.md) using a Docker image built in the
   [GitLab Code
-  Quality](https://gitlab.com/gitlab-org/security-products/codequality) project.
+  Quality](https://gitlab.com/gitlab-org/ci-cd/codequality) project using [default Code Climate configurations](https://gitlab.com/gitlab-org/ci-cd/codequality/-/tree/master/codeclimate_defaults).
 - Can make use of a [template](#example-configuration).
 - Is available with [Auto
-  DevOps](../../../topics/autodevops/index.md#auto-code-quality-starter).
+  DevOps](../../../topics/autodevops/stages.md#auto-code-quality-starter).
+- Can be extended through [Analysis Plugins](https://docs.codeclimate.com/docs/list-of-engines) or a [custom tool](#implementing-a-custom-tool).
 
 Going a step further, GitLab can show the Code Quality report right
 in the merge request widget area:
 
 ![Code Quality Widget](img/code_quality.png)
+
+Watch a quick walkthrough of Code Quality in action:
+
+<div class="video-fallback">
+  See the video: <a href="https://www.youtube.com/watch?v=B32LxtJKo9M">Code Quality: Speed Run</a>.
+</div>
+<figure class="video-container">
+  <iframe src="https://www.youtube.com/embed/B32LxtJKo9M" frameborder="0" allowfullscreen="true"> </iframe>
+</figure>
+
+NOTE: **Note:**
+For one customer, the auditor found that having Code Quality, SAST, and Container Scanning all automated in GitLab CI/CD was almost better than a manual review! [Read more](https://about.gitlab.com/customers/bi_worldwide/).
+
+See also the Code Climate list of [Supported Languages for Maintainability](https://docs.codeclimate.com/docs/supported-languages-for-maintainability).
 
 ## Use cases
 
@@ -34,7 +49,7 @@ For instance, consider the following workflow:
    feature in your app faster.
 1. With Code Quality reports, they analyze how their implementation is impacting
    the code quality.
-1. The metrics show that their code degrade the quality in 10 points.
+1. The metrics show that their code degrades the quality by 10 points.
 1. You ask a co-worker to help them with this modification.
 1. They both work on the changes until Code Quality report displays no
    degradations, only improvements.
@@ -50,8 +65,10 @@ also requires the GitLab Runner 11.5 or later. For earlier versions, use the
 
 This example shows how to run Code Quality on your code by using GitLab CI/CD and Docker.
 
-First, you need GitLab Runner with
-[docker-in-docker executor](../../../ci/docker/using_docker_build.md#use-docker-in-docker-workflow-with-docker-executor).
+First, you need GitLab Runner configured:
+
+- For the [docker-in-docker workflow](../../../ci/docker/using_docker_build.md#use-docker-in-docker-workflow-with-docker-executor).
+- With enough disk space to handle generated Code Quality files. For example on the [GitLab project](https://gitlab.com/gitlab-org/gitlab) the files are approximately 7 GB.
 
 Once you set up the Runner, include the CodeQuality template in your CI config:
 
@@ -62,7 +79,7 @@ include:
 
 The above example will create a `code_quality` job in your CI/CD pipeline which
 will scan your source code for code quality issues. The report will be saved as a
-[Code Quality report artifact](../../../ci/yaml/README.md#artifactsreportscodequality-starter)
+[Code Quality report artifact](../../../ci/pipelines/job_artifacts.md#artifactsreportscodequality-starter)
 that you can later download and analyze. Due to implementation limitations we always
 take the latest Code Quality artifact available.
 
@@ -132,14 +149,14 @@ code_quality:
         --env SOURCE_CODE="$PWD"
         --volume "$PWD":/code
         --volume /var/run/docker.sock:/var/run/docker.sock
-        "registry.gitlab.com/gitlab-org/security-products/codequality:$SP_VERSION" /code
+        "registry.gitlab.com/gitlab-org/ci-cd/codequality:$SP_VERSION" /code
   artifacts:
     reports:
       codequality: gl-code-quality-report.json
 ```
 
 In GitLab 12.6, Code Quality switched to the
-[new versioning scheme](https://gitlab.com/gitlab-org/security-products/codequality/merge_requests/38).
+[new versioning scheme](https://gitlab.com/gitlab-org/ci-cd/codequality#versioning-and-release-cycle).
 It is highly recommended to include the Code Quality template as shown in the
 [example configuration](#example-configuration), which uses the new versioning scheme.
 If not using the template, the `SP_VERSION` variable can be hardcoded to use the
@@ -159,7 +176,7 @@ code_quality:
         --env SOURCE_CODE="$PWD"
         --volume "$PWD":/code
         --volume /var/run/docker.sock:/var/run/docker.sock
-        "registry.gitlab.com/gitlab-org/security-products/codequality:$SP_VERSION" /code
+        "registry.gitlab.com/gitlab-org/ci-cd/codequality:$SP_VERSION" /code
   artifacts:
     reports:
       codequality: gl-code-quality-report.json
@@ -181,7 +198,7 @@ code_quality:
         --env SOURCE_CODE="$PWD"
         --volume "$PWD":/code
         --volume /var/run/docker.sock:/var/run/docker.sock
-        "registry.gitlab.com/gitlab-org/security-products/codequality:$SP_VERSION" /code
+        "registry.gitlab.com/gitlab-org/ci-cd/codequality:$SP_VERSION" /code
   artifacts:
       paths: [gl-code-quality-report.json]
 ```
@@ -213,7 +230,7 @@ The Code Quality job supports environment variables that users can set to
 configure job execution at runtime.
 
 For a list of available environment variables, see
-[Environment variables](https://gitlab.com/gitlab-org/security-products/codequality/blob/master/README.md#environment-variables).
+[Environment variables](https://gitlab.com/gitlab-org/ci-cd/codequality#environment-variables).
 
 ## Implementing a custom tool
 
@@ -222,10 +239,10 @@ do this:
 
 1. Define a job in your `.gitlab-ci.yml` file that generates the
    [Code Quality report
-   artifact](../../../ci/yaml/README.md#artifactsreportscodequality-starter).
+   artifact](../../../ci/pipelines/job_artifacts.md#artifactsreportscodequality-starter).
 1. Configure your tool to generate the Code Quality report artifact as a JSON
    file that implements subset of the [Code Climate
-   spec](https://github.com/codeclimate/spec/blob/master/SPEC.md#data-types).
+   spec](https://github.com/codeclimate/platform/blob/master/spec/analyzers/SPEC.md#data-types).
 
 The Code Quality report artifact JSON file must contain an array of objects
 with the following properties:
@@ -260,11 +277,16 @@ GitLab.
 
 ## Code Quality reports
 
-Once the Code Quality job has completed, GitLab:
+Once the Code Quality job has completed:
 
-- Checks the generated report.
-- Compares the metrics between the source and target branches.
-- Shows the information right on the merge request.
+- The full list of code quality violations generated by a pipeline is available in the
+  Code Quality tab of the Pipeline Details page.
+- Potential changes to code quality are shown directly in the merge request.
+  The Code Quality widget in the merge request compares the reports from the base and head of the branch,
+  then lists any violations that will be resolved or created when the branch is merged.
+- The full JSON report is available as a
+  [downloadable artifact](../../../ci/pipelines/job_artifacts.md#downloading-artifacts)
+  for the `code_quality` job.
 
 If multiple jobs in a pipeline generate a code quality artifact, only the artifact from
 the last created job (the job with the largest job ID) is used. To avoid confusion,
@@ -275,6 +297,10 @@ will be displayed in the merge request area. That is the case when you add the
 Code Quality job in your `.gitlab-ci.yml` for the very first time.
 Consecutive merge requests will have something to compare to and the Code Quality
 report will be shown properly.
+
+These reports will only be available as long as the Code Quality artifact(s) required to generate
+them are also available. See
+[`artifacts:expire_in`](../../../ci/yaml/README.md#artifactsexpire_in) for more details.
 
 <!-- ## Troubleshooting
 

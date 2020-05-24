@@ -4,8 +4,8 @@ module Gitlab
   class GroupSearchResults < SearchResults
     attr_reader :group
 
-    def initialize(current_user, limit_projects, group, query, default_project_filter: false, per_page: 20)
-      super(current_user, limit_projects, query, default_project_filter: default_project_filter, per_page: per_page)
+    def initialize(current_user, limit_projects, group, query, default_project_filter: false)
+      super(current_user, limit_projects, query, default_project_filter: default_project_filter)
 
       @group = group
     end
@@ -30,7 +30,7 @@ module Gitlab
     # rubocop:enable CodeReuse/ActiveRecord
 
     def issuable_params
-      super.merge(group_id: group.id)
+      super.merge(group_id: group.id, include_subgroups: true)
     end
   end
 end

@@ -14,7 +14,7 @@ describe ProfilesController, :request_store do
              params: { user: { password: 'hello12345', password_confirmation: 'hello12345' } }
       end.not_to change { user.reload.encrypted_password }
 
-      expect(response.status).to eq(302)
+      expect(response).to have_gitlab_http_status(:found)
     end
   end
 
@@ -27,7 +27,7 @@ describe ProfilesController, :request_store do
 
       user.reload
 
-      expect(response.status).to eq(302)
+      expect(response).to have_gitlab_http_status(:found)
       expect(user.unconfirmed_email).to eq('john@gmail.com')
     end
 
@@ -41,7 +41,7 @@ describe ProfilesController, :request_store do
 
       user.reload
 
-      expect(response.status).to eq(302)
+      expect(response).to have_gitlab_http_status(:found)
       expect(user.unconfirmed_email).to eq nil
     end
 
@@ -58,7 +58,7 @@ describe ProfilesController, :request_store do
 
       ldap_user.reload
 
-      expect(response.status).to eq(302)
+      expect(response).to have_gitlab_http_status(:found)
       expect(ldap_user.unconfirmed_email).not_to eq('john@gmail.com')
     end
 
@@ -75,58 +75,10 @@ describe ProfilesController, :request_store do
 
       ldap_user.reload
 
-      expect(response.status).to eq(302)
+      expect(response).to have_gitlab_http_status(:found)
       expect(ldap_user.unconfirmed_email).not_to eq('john@gmail.com')
       expect(ldap_user.name).not_to eq('John')
       expect(ldap_user.location).to eq('City, Country')
-    end
-
-    context 'updating name' do
-      subject { put :update, params: { user: { name: 'New Name' } } }
-
-      context 'when the ability to update thier name is not disabled for users' do
-        before do
-          stub_application_setting(updating_name_disabled_for_users: false)
-          sign_in(user)
-        end
-
-        it 'updates the name' do
-          subject
-
-          expect(response.status).to eq(302)
-          expect(user.reload.name).to eq('New Name')
-        end
-      end
-
-      context 'when the ability to update their name is disabled for users' do
-        before do
-          stub_application_setting(updating_name_disabled_for_users: true)
-        end
-
-        context 'as a regular user' do
-          it 'does not update the name' do
-            sign_in(user)
-
-            subject
-
-            expect(response.status).to eq(302)
-            expect(user.reload.name).not_to eq('New Name')
-          end
-        end
-
-        context 'as an admin user' do
-          it 'updates the name' do
-            admin = create(:admin)
-
-            sign_in(admin)
-
-            subject
-
-            expect(response.status).to eq(302)
-            expect(admin.reload.name).to eq('New Name')
-          end
-        end
-      end
     end
 
     it 'allows setting a user status' do
@@ -135,7 +87,17 @@ describe ProfilesController, :request_store do
       put :update, params: { user: { status: { message: 'Working hard!' } } }
 
       expect(user.reload.status.message).to eq('Working hard!')
-      expect(response).to have_gitlab_http_status(302)
+      expect(response).to have_gitlab_http_status(:found)
+    end
+
+    it 'allows updating user specified job title' do
+      title = 'Marketing Executive'
+      sign_in(user)
+
+      put :update, params: { user: { job_title: title } }
+
+      expect(user.reload.job_title).to eq(title)
+      expect(response).to have_gitlab_http_status(:found)
     end
   end
 
@@ -152,7 +114,7 @@ describe ProfilesController, :request_store do
 
       user.reload
 
-      expect(response.status).to eq(302)
+      expect(response).to have_gitlab_http_status(:found)
       expect(user.username).to eq(new_username)
     end
 
@@ -165,7 +127,7 @@ describe ProfilesController, :request_store do
           },
           format: :json
 
-      expect(response.status).to eq(200)
+      expect(response).to have_gitlab_http_status(:ok)
       expect(json_response['message']).to eq(s_('Profiles|Username successfully changed'))
     end
 
@@ -178,7 +140,7 @@ describe ProfilesController, :request_store do
           },
           format: :json
 
-      expect(response.status).to eq(422)
+      expect(response).to have_gitlab_http_status(:unprocessable_entity)
       expect(json_response['message']).to match(/Username change failed/)
     end
 
@@ -200,7 +162,7 @@ describe ProfilesController, :request_store do
 
         user.reload
 
-        expect(response.status).to eq(302)
+        expect(response).to have_gitlab_http_status(:found)
         expect(gitlab_shell.repository_exists?(project.repository_storage, "#{new_username}/#{project.path}.git")).to be_truthy
       end
     end
@@ -218,7 +180,7 @@ describe ProfilesController, :request_store do
 
         user.reload
 
-        expect(response.status).to eq(302)
+        expect(response).to have_gitlab_http_status(:found)
         expect(gitlab_shell.repository_exists?(project.repository_storage, "#{project.disk_path}.git")).to be_truthy
         expect(before_disk_path).to eq(project.disk_path)
       end

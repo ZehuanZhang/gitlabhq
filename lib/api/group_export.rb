@@ -3,6 +3,8 @@
 module API
   class GroupExport < Grape::API
     before do
+      not_found! unless Feature.enabled?(:group_import_export, user_group, default_enabled: true)
+
       authorize! :admin_group, user_group
     end
 
@@ -25,9 +27,13 @@ module API
         detail 'This feature was introduced in GitLab 12.5.'
       end
       post ':id/export' do
-        GroupExportWorker.perform_async(current_user.id, user_group.id, params)
+        export_service = ::Groups::ImportExport::ExportService.new(group: user_group, user: current_user)
 
-        accepted!
+        if export_service.async_execute
+          accepted!
+        else
+          render_api_error!(message: 'Group export could not be started.')
+        end
       end
     end
   end

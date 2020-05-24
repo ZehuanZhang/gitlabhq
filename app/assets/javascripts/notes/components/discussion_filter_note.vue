@@ -1,5 +1,5 @@
 <script>
-import { GlButton } from '@gitlab/ui';
+import { GlDeprecatedButton } from '@gitlab/ui';
 import Icon from '~/vue_shared/components/icon.vue';
 import { __, sprintf } from '~/locale';
 
@@ -7,7 +7,7 @@ import notesEventHub from '../event_hub';
 
 export default {
   components: {
-    GlButton,
+    GlDeprecatedButton,
     Icon,
   },
   computed: {
@@ -38,14 +38,14 @@ export default {
       <icon name="comment" />
     </div>
     <div class="timeline-content">
-      <div v-html="timelineContent"></div>
+      <div ref="timelineContent" v-html="timelineContent"></div>
       <div class="discussion-filter-actions mt-2">
-        <gl-button variant="default" @click="selectFilter(0)">
+        <gl-deprecated-button ref="showAllActivity" variant="default" @click="selectFilter(0)">
           {{ __('Show all activity') }}
-        </gl-button>
-        <gl-button variant="default" @click="selectFilter(1)">
+        </gl-deprecated-button>
+        <gl-deprecated-button ref="showComments" variant="default" @click="selectFilter(1)">
           {{ __('Show comments only') }}
-        </gl-button>
+        </gl-deprecated-button>
       </div>
     </div>
   </li>

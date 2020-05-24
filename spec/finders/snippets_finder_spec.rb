@@ -114,7 +114,7 @@ describe SnippetsFinder do
 
       context 'when author is not valid' do
         it 'returns quickly' do
-          finder = described_class.new(admin, author: 1234)
+          finder = described_class.new(admin, author: non_existing_record_id)
 
           expect(finder).not_to receive(:init_collection)
           expect(Snippet).to receive(:none).and_call_original
@@ -208,7 +208,7 @@ describe SnippetsFinder do
 
       context 'when project is not valid' do
         it 'returns quickly' do
-          finder = described_class.new(admin, project: 1234)
+          finder = described_class.new(admin, project: non_existing_record_id)
 
           expect(finder).not_to receive(:init_collection)
           expect(Snippet).to receive(:none).and_call_original
@@ -282,6 +282,17 @@ describe SnippetsFinder do
 
       it 'returns only personal snippets when the user cannot read cross project' do
         expect(described_class.new(user).execute).to contain_exactly(private_personal_snippet, internal_personal_snippet, public_personal_snippet)
+      end
+    end
+
+    context 'when project snippets are disabled' do
+      it 'returns quickly' do
+        disabled_snippets_project = create(:project, :snippets_disabled)
+        finder = described_class.new(user, project: disabled_snippets_project.id)
+
+        expect(finder).not_to receive(:init_collection)
+        expect(Snippet).to receive(:none).and_call_original
+        expect(finder.execute).to be_empty
       end
     end
   end

@@ -34,7 +34,7 @@ describe 'Project members list' do
     expect(second_row).to be_blank
   end
 
-  it 'update user acess level', :js do
+  it 'update user access level', :js do
     project.add_developer(user2)
 
     visit_members_page
@@ -86,13 +86,30 @@ describe 'Project members list' do
     end
   end
 
+  context 'project bots' do
+    let(:project_bot) { create(:user, :project_bot, name: 'project_bot') }
+
+    before do
+      project.add_maintainer(project_bot)
+    end
+
+    it 'does not show form used to change roles and "Expiration date" or the remove user button' do
+      project_member = project.project_members.find_by(user_id: project_bot.id)
+
+      visit_members_page
+
+      expect(page).not_to have_selector("#edit_project_member_#{project_member.id}")
+      expect(page).not_to have_selector("#project_member_#{project_member.id} .btn-remove")
+    end
+  end
+
   def add_user(id, role)
-    page.within ".users-project-form" do
+    page.within ".invite-users-form" do
       select2(id, from: "#user_ids", multiple: true)
       select(role, from: "access_level")
     end
 
-    click_button "Add to project"
+    click_button "Invite"
   end
 
   def visit_members_page

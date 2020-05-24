@@ -17,6 +17,9 @@ class GlobalPolicy < BasePolicy
 
   condition(:private_instance_statistics, score: 0) { Gitlab::CurrentSettings.instance_statistics_visibility_private? }
 
+  condition(:project_bot, scope: :user) { @user&.project_bot? }
+  condition(:migration_bot, scope: :user) { @user&.migration_bot? }
+
   rule { admin | (~private_instance_statistics & ~anonymous) }
     .enable :read_instance_statistics
 
@@ -36,12 +39,27 @@ class GlobalPolicy < BasePolicy
     enable :use_slash_commands
   end
 
-  rule { blocked | internal }.policy do
+  rule { inactive }.policy do
     prevent :log_in
     prevent :access_api
     prevent :access_git
+    prevent :use_slash_commands
+  end
+
+  rule { blocked | internal }.policy do
+    prevent :log_in
+    prevent :access_api
     prevent :receive_notifications
     prevent :use_slash_commands
+  end
+
+  rule { blocked | (internal & ~migration_bot) }.policy do
+    prevent :access_git
+  end
+
+  rule { project_bot }.policy do
+    prevent :log_in
+    prevent :receive_notifications
   end
 
   rule { deactivated }.policy do
@@ -60,6 +78,10 @@ class GlobalPolicy < BasePolicy
     enable :create_group
   end
 
+  rule { can?(:create_group) }.policy do
+    enable :create_group_with_default_branch_protection
+  end
+
   rule { can_create_fork }.policy do
     enable :create_fork
   end
@@ -75,7 +97,7 @@ class GlobalPolicy < BasePolicy
 
   rule { ~anonymous }.policy do
     enable :read_instance_metadata
-    enable :create_personal_snippet
+    enable :create_snippet
   end
 
   rule { admin }.policy do
@@ -83,7 +105,7 @@ class GlobalPolicy < BasePolicy
     enable :update_custom_attribute
   end
 
-  rule { external_user }.prevent :create_personal_snippet
+  rule { external_user }.prevent :create_snippet
 end
 
 GlobalPolicy.prepend_if_ee('EE::GlobalPolicy')

@@ -31,7 +31,7 @@ describe API::Discussions do
 
   context 'when noteable is a Snippet' do
     let!(:snippet) { create(:project_snippet, project: project, author: user) }
-    let!(:snippet_note) { create(:discussion_note_on_snippet, noteable: snippet, project: project, author: user) }
+    let!(:snippet_note) { create(:discussion_note_on_project_snippet, noteable: snippet, project: project, author: user) }
 
     it_behaves_like 'discussions API', 'projects', 'snippets', 'id' do
       let(:parent) { project }
@@ -58,7 +58,7 @@ describe API::Discussions do
         post api("/projects/#{project.id}/merge_requests/#{noteable['iid']}/discussions", user),
           params: { body: 'hi!', position: position }
 
-        expect(response).to have_gitlab_http_status(400)
+        expect(response).to have_gitlab_http_status(:bad_request)
       end
     end
   end

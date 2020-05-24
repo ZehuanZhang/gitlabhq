@@ -164,17 +164,7 @@ describe 'User creates branch and merge request on issue page', :js do
     context 'when issue is confidential' do
       let(:issue) { create(:issue, :confidential, project: project) }
 
-      it 'disables the create branch button' do
-        stub_feature_flags(create_confidential_merge_request: false)
-
-        visit project_issue_path(project, issue)
-
-        expect(page).not_to have_css('.create-mr-dropdown-wrap')
-      end
-
-      it 'enables the create branch button when feature flag is enabled' do
-        stub_feature_flags(create_confidential_merge_request: true)
-
+      it 'enables the create branch button' do
         visit project_issue_path(project, issue)
 
         expect(page).to have_css('.create-mr-dropdown-wrap')
@@ -187,7 +177,7 @@ describe 'User creates branch and merge request on issue page', :js do
       let(:branch_name) { "#{issue.iid}-foo" }
 
       before do
-        project.repository.create_branch(branch_name, 'master')
+        project.repository.create_branch(branch_name)
 
         visit project_issue_path(project, issue)
       end
@@ -287,7 +277,7 @@ describe 'User creates branch and merge request on issue page', :js do
     expect(source_message).to have_text('Source is not available')
 
     # JavaScript gets refs started with `mas` (entered above) and places the first match.
-    # User sees `mas` in black color (the part he entered) and the `ter` in gray color (a hint).
+    # User sees `mas` in black color (the part they entered) and the `ter` in gray color (a hint).
     # Since hinting is implemented via text selection and rspec/capybara doesn't have matchers for it,
     # we just checking the whole source name.
     expect(input_source.value).to eq(project.default_branch)

@@ -11,6 +11,9 @@ module IssuableActions
     before_action only: :show do
       push_frontend_feature_flag(:scoped_labels, default_enabled: true)
     end
+    before_action do
+      push_frontend_feature_flag(:not_issuable_queries, @project, default_enabled: true)
+    end
   end
 
   def permitted_keys
@@ -137,7 +140,7 @@ module IssuableActions
     end
 
     notes = prepare_notes_for_rendering(notes)
-    notes = notes.select { |n| n.visible_for?(current_user) }
+    notes = notes.select { |n| n.readable_by?(current_user) }
 
     discussions = Discussion.build_collection(notes, issuable)
 

@@ -60,13 +60,57 @@ describe MergeRequestPollWidgetEntity do
         project.add_developer(user)
 
         expect(subject[:new_blob_path])
-          .to eq("/#{resource.project.full_path}/new/#{resource.source_branch}")
+          .to eq("/#{resource.project.full_path}/-/new/#{resource.source_branch}")
       end
     end
 
     context 'when user cannot push to project' do
       it 'returns nil' do
         expect(subject[:new_blob_path]).to be_nil
+      end
+    end
+  end
+
+  describe 'terraform_reports_path' do
+    context 'when merge request has terraform reports' do
+      before do
+        allow(resource).to receive(:has_terraform_reports?).and_return(true)
+      end
+
+      it 'set the path to poll data' do
+        expect(subject[:terraform_reports_path]).to be_present
+      end
+    end
+
+    context 'when merge request has no terraform reports' do
+      before do
+        allow(resource).to receive(:has_terraform_reports?).and_return(false)
+      end
+
+      it 'set the path to poll data' do
+        expect(subject[:terraform_reports_path]).to be_nil
+      end
+    end
+  end
+
+  describe 'accessibility_report_path' do
+    context 'when merge request has accessibility reports' do
+      before do
+        allow(resource).to receive(:has_accessibility_reports?).and_return(true)
+      end
+
+      it 'set the path to poll data' do
+        expect(subject[:accessibility_report_path]).to be_present
+      end
+    end
+
+    context 'when merge request has no accessibility reports' do
+      before do
+        allow(resource).to receive(:has_accessibility_reports?).and_return(false)
+      end
+
+      it 'set the path to poll data' do
+        expect(subject[:accessibility_report_path]).to be_nil
       end
     end
   end
@@ -94,6 +138,10 @@ describe MergeRequestPollWidgetEntity do
   end
 
   describe 'auto merge' do
+    before do
+      project.add_maintainer(user)
+    end
+
     context 'when auto merge is enabled' do
       let(:resource) { create(:merge_request, :merge_when_pipeline_succeeds) }
 
@@ -138,7 +186,7 @@ describe MergeRequestPollWidgetEntity do
   end
 
   describe 'pipeline' do
-    let(:pipeline) { create(:ci_empty_pipeline, project: project, ref: resource.source_branch, sha: resource.source_branch_sha, head_pipeline_of: resource) }
+    let!(:pipeline) { create(:ci_empty_pipeline, project: project, ref: resource.source_branch, sha: resource.source_branch_sha, head_pipeline_of: resource) }
 
     before do
       allow_any_instance_of(MergeRequestPresenter).to receive(:can?).and_call_original
@@ -158,6 +206,10 @@ describe MergeRequestPollWidgetEntity do
 
           expect(subject[:pipeline]).to eq(pipeline_payload)
         end
+
+        it 'returns ci_status' do
+          expect(subject[:ci_status]).to eq('pending')
+        end
       end
 
       context 'when is not up to date' do
@@ -171,9 +223,14 @@ describe MergeRequestPollWidgetEntity do
 
     context 'when user does not have access to pipelines' do
       let(:result) { false }
+      let(:req) { double('request', current_user: user, project: project) }
 
       it 'does not have pipeline' do
         expect(subject[:pipeline]).to eq(nil)
+      end
+
+      it 'does not return ci_status' do
+        expect(subject[:ci_status]).to eq(nil)
       end
     end
   end

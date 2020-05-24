@@ -28,13 +28,15 @@ import initLayoutNav from './layout_nav';
 import './feature_highlight/feature_highlight_options';
 import LazyLoader from './lazy_loader';
 import initLogoAnimation from './logo';
-import './frequent_items';
+import initFrequentItemDropdowns from './frequent_items';
 import initBreadcrumbs from './breadcrumb';
 import initUsagePingConsent from './usage_ping_consent';
 import initPerformanceBar from './performance_bar';
 import initSearchAutocomplete from './search_autocomplete';
 import GlFieldErrors from './gl_field_errors';
 import initUserPopovers from './user_popovers';
+import initBroadcastNotifications from './broadcast_notification';
+import PersistentUserCallout from './persistent_user_callout';
 import { initUserTracking } from './tracking';
 import { __ } from './locale';
 
@@ -47,7 +49,7 @@ window.$ = jQuery;
 // Add nonce to jQuery script handler
 jQuery.ajaxSetup({
   converters: {
-    // eslint-disable-next-line @gitlab/i18n/no-non-i18n-strings, func-names
+    // eslint-disable-next-line @gitlab/require-i18n-strings, func-names
     'text script': function(text) {
       jQuery.globalEval(text, { nonce: getCspNonceValue() });
       return text;
@@ -67,7 +69,7 @@ if (gon && gon.disable_animations) {
 // inject test utilities if necessary
 if (process.env.NODE_ENV !== 'production' && gon && gon.test_env) {
   disableJQueryAnimations();
-  import(/* webpackMode: "eager" */ './test_utils/');
+  import(/* webpackMode: "eager" */ './test_utils/'); // eslint-disable-line no-unused-expressions
 }
 
 document.addEventListener('beforeunload', () => {
@@ -104,7 +106,14 @@ function deferredInitialisation() {
   initLogoAnimation();
   initUsagePingConsent();
   initUserPopovers();
-  initUserTracking();
+  initBroadcastNotifications();
+  initFrequentItemDropdowns();
+
+  const recoverySettingsCallout = document.querySelector('.js-recovery-settings-callout');
+  PersistentUserCallout.factory(recoverySettingsCallout);
+
+  const usersOverLicenseCallout = document.querySelector('.js-users-over-license-callout');
+  PersistentUserCallout.factory(usersOverLicenseCallout);
 
   if (document.querySelector('.search')) initSearchAutocomplete();
 
@@ -181,6 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (document.querySelector('#js-peek')) initPerformanceBar({ container: '#js-peek' });
 
+  initUserTracking();
   initLayoutNav();
 
   // Set the default path for all cookies to GitLab's root directory
@@ -194,10 +204,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  if (bootstrapBreakpoint === 'sm' || bootstrapBreakpoint === 'xs') {
-    const $rightSidebar = $('aside.right-sidebar, .layout-page');
+  const isBoardsPage = /(projects|groups):boards:show/.test(document.body.dataset.page);
+  if (!isBoardsPage && (bootstrapBreakpoint === 'sm' || bootstrapBreakpoint === 'xs')) {
+    const $rightSidebar = $('aside.right-sidebar');
+    const $layoutPage = $('.layout-page');
 
-    $rightSidebar.removeClass('right-sidebar-expanded').addClass('right-sidebar-collapsed');
+    if ($rightSidebar.length > 0) {
+      $rightSidebar.removeClass('right-sidebar-expanded').addClass('right-sidebar-collapsed');
+      $layoutPage.removeClass('right-sidebar-expanded').addClass('right-sidebar-collapsed');
+    } else {
+      $layoutPage.removeClass('right-sidebar-expanded right-sidebar-collapsed');
+    }
   }
 
   // prevent default action for disabled buttons
@@ -222,7 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Disable form buttons while a form is submitting
   $body.on('ajax:complete, ajax:beforeSend, submit', 'form', function ajaxCompleteCallback(e) {
-    const $buttons = $('[type="submit"], .js-disable-on-submit', this);
+    const $buttons = $('[type="submit"], .js-disable-on-submit', this).not('.js-no-auto-disable');
     switch (e.type) {
       case 'ajax:beforeSend':
       case 'submit':
@@ -284,6 +301,18 @@ document.addEventListener('DOMContentLoaded', () => {
       const $gutterIcon = $sidebarGutterToggle.find('i');
       if ($gutterIcon.hasClass('fa-angle-double-right')) {
         $sidebarGutterToggle.trigger('click');
+      }
+
+      const sidebarGutterVueToggleEl = document.querySelector('.js-sidebar-vue-toggle');
+
+      // Sidebar has an icon which corresponds to collapsing the sidebar
+      // only then trigger the click.
+      if (sidebarGutterVueToggleEl) {
+        const collapseIcon = sidebarGutterVueToggleEl.querySelector('i.fa-angle-double-right');
+
+        if (collapseIcon) {
+          collapseIcon.click();
+        }
       }
     }
   });

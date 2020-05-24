@@ -8,9 +8,18 @@ describe StageUpdateWorker do
       let(:stage) { create(:ci_stage_entity) }
 
       it 'updates stage status' do
-        expect_any_instance_of(Ci::Stage).to receive(:update_status)
+        expect_any_instance_of(Ci::Stage).to receive(:set_status).with('skipped')
 
         described_class.new.perform(stage.id)
+      end
+
+      it_behaves_like 'an idempotent worker' do
+        let(:job_args) { [stage.id] }
+
+        it 'results in the stage getting the skipped status' do
+          expect { subject }.to change { stage.reload.status }.from('pending').to('skipped')
+          expect { subject }.not_to change { stage.reload.status }
+        end
       end
     end
 

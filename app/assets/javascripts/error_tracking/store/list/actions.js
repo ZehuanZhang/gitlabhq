@@ -18,6 +18,7 @@ export function startPolling({ state, commit, dispatch }) {
         search_term: state.searchQuery,
         sort: state.sortField,
         cursor: state.cursor,
+        issue_status: state.statusFilter,
       },
     },
     successCallback: ({ data }) => {
@@ -83,6 +84,12 @@ export const searchByQuery = ({ commit, dispatch }, query) => {
   dispatch('startPolling');
 };
 
+export const filterByStatus = ({ commit, dispatch }, status) => {
+  commit(types.SET_STATUS_FILTER, status);
+  dispatch('stopPolling');
+  dispatch('startPolling');
+};
+
 export const sortByField = ({ commit, dispatch }, field) => {
   commit(types.SET_CURSOR, null);
   commit(types.SET_SORT_FIELD, field);
@@ -98,6 +105,10 @@ export const fetchPaginatedResults = ({ commit, dispatch }, cursor) => {
   commit(types.SET_CURSOR, cursor);
   dispatch('stopPolling');
   dispatch('startPolling');
+};
+
+export const removeIgnoredResolvedErrors = ({ commit }, error) => {
+  commit(types.REMOVE_IGNORED_RESOLVED_ERRORS, error);
 };
 
 export default () => {};

@@ -11,6 +11,7 @@ module Gitlab
   # the resulting HTML through HTML pipeline filters.
   module Asciidoc
     MAX_INCLUDE_DEPTH = 5
+    MAX_INCLUDES = 32
     DEFAULT_ADOC_ATTRS = {
         'showtitle' => true,
         'sectanchors' => true,
@@ -24,6 +25,19 @@ module Gitlab
         'max-include-depth' => MAX_INCLUDE_DEPTH
     }.freeze
 
+    def self.path_attrs(path)
+      return {} unless path
+
+      {
+        # Set an empty docname if the path is a directory
+        'docname' => if path[-1] == ::File::SEPARATOR
+                       ''
+                     else
+                       ::File.basename(path, '.*')
+                     end
+      }
+    end
+
     # Public: Converts the provided Asciidoc markup into HTML.
     #
     # input         - the source text in Asciidoc format
@@ -34,12 +48,14 @@ module Gitlab
         include_processor ::Gitlab::Asciidoc::IncludeProcessor.new(context)
       end
 
+      extra_attrs = path_attrs(context[:requested_path])
       asciidoc_opts = { safe: :secure,
                         backend: :gitlab_html5,
-                        attributes: DEFAULT_ADOC_ATTRS,
+                        attributes: DEFAULT_ADOC_ATTRS.merge(extra_attrs),
                         extensions: extensions }
 
       context[:pipeline] = :ascii_doc
+      context[:max_includes] = [MAX_INCLUDES, context[:max_includes]].compact.min
 
       plantuml_setup
 

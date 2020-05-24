@@ -1,9 +1,9 @@
 <script>
-import { flatten, isNumber } from 'underscore';
+import { flattenDeep, isNumber } from 'lodash';
 import { GlChartSeriesLabel } from '@gitlab/ui/dist/charts';
 import { roundOffFloat } from '~/lib/utils/common_utils';
 import { hexToRgb } from '~/lib/utils/color_utils';
-import { areaOpacityValues, symbolSizes, colorValues } from '../../constants';
+import { areaOpacityValues, symbolSizes, colorValues, panelTypes } from '../../constants';
 import { graphDataValidatorForAnomalyValues } from '../../utils';
 import MonitorTimeSeriesChart from './time_series.vue';
 
@@ -77,7 +77,7 @@ export default {
      * This offset is the lowest value.
      */
     yOffset() {
-      const values = flatten(this.series.map(ser => ser.data.map(([, y]) => y)));
+      const values = flattenDeep(this.series.map(ser => ser.data.map(([, y]) => y)));
       const min = values.length ? Math.floor(Math.min(...values)) : 0;
       return min < 0 ? -min : 0;
     },
@@ -91,7 +91,7 @@ export default {
       ]);
       return {
         ...this.graphData,
-        type: 'line-chart',
+        type: panelTypes.LINE_CHART,
         metrics: [metricQuery],
       };
     },
@@ -127,7 +127,6 @@ export default {
         });
 
       const yAxisWithOffset = {
-        name: this.yAxisLabel,
         axisLabel: {
           formatter: num => roundOffFloat(num - this.yOffset, 3).toString(),
         },
@@ -162,6 +161,7 @@ export default {
           }),
         );
       }
+
       return { yAxis: yAxisWithOffset, series: boundarySeries };
     },
   },
@@ -209,7 +209,7 @@ export default {
     :series-config="metricSeriesConfig"
   >
     <slot></slot>
-    <template v-slot:tooltipContent="slotProps">
+    <template #tooltip-content="slotProps">
       <div
         v-for="(content, seriesIndex) in slotProps.tooltip.content"
         :key="seriesIndex"

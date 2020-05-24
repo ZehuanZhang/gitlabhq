@@ -14,18 +14,29 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
   skip_before_action :merge_request, only: [:index, :bulk_update]
   before_action :whitelist_query_limiting, only: [:assign_related_issues, :update]
   before_action :authorize_update_issuable!, only: [:close, :edit, :update, :remove_wip, :sort]
-  before_action :authorize_read_actual_head_pipeline!, only: [:test_reports, :exposed_artifacts]
+  before_action :authorize_read_actual_head_pipeline!, only: [
+    :test_reports,
+    :exposed_artifacts,
+    :coverage_reports,
+    :terraform_reports,
+    :accessibility_reports
+  ]
   before_action :set_issuables_index, only: [:index]
   before_action :authenticate_user!, only: [:assign_related_issues]
   before_action :check_user_can_push_to_source_branch!, only: [:rebase]
   before_action only: [:show] do
-    push_frontend_feature_flag(:diffs_batch_load, @project)
-    push_frontend_feature_flag(:single_mr_diff_view, @project)
+    push_frontend_feature_flag(:diffs_batch_load, @project, default_enabled: true)
+    push_frontend_feature_flag(:deploy_from_footer, @project, default_enabled: true)
+    push_frontend_feature_flag(:single_mr_diff_view, @project, default_enabled: true)
+    push_frontend_feature_flag(:suggest_pipeline) if experiment_enabled?(:suggest_pipeline)
+    push_frontend_feature_flag(:code_navigation, @project)
+    push_frontend_feature_flag(:widget_visibility_polling, @project, default_enabled: true)
+    push_frontend_feature_flag(:merge_ref_head_comments, @project)
+    push_frontend_feature_flag(:mr_commit_neighbor_nav, @project, default_enabled: true)
   end
 
   before_action do
     push_frontend_feature_flag(:vue_issuable_sidebar, @project.group)
-    push_frontend_feature_flag(:async_mr_widget, @project)
   end
 
   around_action :allow_gitaly_ref_name_caching, only: [:index, :show, :discussions]
@@ -45,7 +56,7 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
 
   def show
     close_merge_request_if_no_source_project
-    @merge_request.check_mergeability
+    @merge_request.check_mergeability(async: true)
 
     respond_to do |format|
       format.html do
@@ -62,6 +73,7 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
         @issuable_sidebar = serializer.represent(@merge_request, serializer: 'sidebar')
         @current_user_data = UserSerializer.new(project: @project).represent(current_user, {}, MergeRequestUserEntity).to_json
         @show_whitespace_default = current_user.nil? || current_user.show_whitespace_in_diffs
+        @coverage_path = coverage_reports_project_merge_request_path(@project, @merge_request, format: :json) if @merge_request.has_coverage_reports?
 
         set_pipeline_variables
 
@@ -117,8 +129,37 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
     }
   end
 
+  def context_commits
+    return render_404 unless project.context_commits_enabled?
+
+    # Get commits from repository
+    # or from cache if already merged
+    commits = ContextCommitsFinder.new(project, @merge_request, { search: params[:search], limit: params[:limit], offset: params[:offset] }).execute
+    render json: CommitEntity.represent(commits, { type: :full, request: merge_request })
+  end
+
   def test_reports
     reports_response(@merge_request.compare_test_reports)
+  end
+
+  def accessibility_reports
+    if @merge_request.has_accessibility_reports?
+      reports_response(@merge_request.compare_accessibility_reports)
+    else
+      head :no_content
+    end
+  end
+
+  def coverage_reports
+    if @merge_request.has_coverage_reports?
+      reports_response(@merge_request.find_coverage_reports)
+    else
+      head :no_content
+    end
+  end
+
+  def terraform_reports
+    reports_response(@merge_request.find_terraform_reports)
   end
 
   def exposed_artifacts
@@ -318,17 +359,18 @@ class Projects::MergeRequestsController < Projects::MergeRequests::ApplicationCo
   end
 
   def serialize_widget(merge_request)
-    serializer.represent(merge_request, serializer: 'widget')
+    cached_data = serializer.represent(merge_request, serializer: 'poll_cached_widget')
+    widget_data = serializer.represent(merge_request, serializer: 'poll_widget')
+    cached_data.merge!(widget_data)
   end
 
   def serializer
-    MergeRequestSerializer.new(current_user: current_user, project: merge_request.project)
+    @serializer ||= MergeRequestSerializer.new(current_user: current_user, project: merge_request.project)
   end
 
   def define_edit_vars
     @source_project = @merge_request.source_project
     @target_project = @merge_request.target_project
-    @target_branches = @merge_request.target_project.repository.branch_names
     @noteable = @merge_request
 
     # FIXME: We have to assign a presenter to another instance variable

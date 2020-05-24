@@ -20,6 +20,11 @@ class User < ApplicationRecord
   include WithUploads
   include OptionallySearch
   include FromUnion
+  include BatchDestroyDependentAssociations
+  include HasUniqueInternalUsers
+  include IgnorableColumns
+  include UpdateHighestRole
+  include HasUserType
 
   DEFAULT_NOTIFICATION_LEVEL = :participating
 
@@ -53,10 +58,19 @@ class User < ApplicationRecord
   devise :lockable, :recoverable, :rememberable, :trackable,
          :validatable, :omniauthable, :confirmable, :registerable
 
+  # This module adds async behaviour to Devise emails
+  # and should be added after Devise modules are initialized.
+  include AsyncDeviseEmail
+
   BLOCKED_MESSAGE = "Your account has been blocked. Please contact your GitLab " \
+                    "administrator if you think this is an error."
+  LOGIN_FORBIDDEN = "Your account does not have the required permission to login. Please contact your GitLab " \
                     "administrator if you think this is an error."
 
   MINIMUM_INACTIVE_DAYS = 180
+
+  ignore_column :bot_type, remove_with: '13.1', remove_after: '2020-05-22'
+  ignore_column :ghost, remove_with: '13.2', remove_after: '2020-06-22'
 
   # Override Devise::Models::Trackable#update_tracked_fields!
   # to limit database writes to at most once every hour
@@ -77,6 +91,9 @@ class User < ApplicationRecord
 
   # Virtual attribute for authenticating by either username or email
   attr_accessor :login
+
+  # Virtual attribute for impersonator
+  attr_accessor :impersonator
 
   #
   # Relations
@@ -156,16 +173,21 @@ class User < ApplicationRecord
   has_many :term_agreements
   belongs_to :accepted_term, class_name: 'ApplicationSetting::Term'
 
+  has_many :metrics_users_starred_dashboards, class_name: 'Metrics::UsersStarredDashboard', inverse_of: :user
+
   has_one :status, class_name: 'UserStatus'
   has_one :user_preference
+  has_one :user_detail
+  has_one :user_highest_role
+  has_one :user_canonical_email
 
   #
   # Validations
   #
   # Note: devise :validatable above adds validations for :email and :password
-  validates :name, presence: true, length: { maximum: 128 }
-  validates :first_name, length: { maximum: 255 }
-  validates :last_name, length: { maximum: 255 }
+  validates :name, presence: true, length: { maximum: 255 }
+  validates :first_name, length: { maximum: 127 }
+  validates :last_name, length: { maximum: 127 }
   validates :email, confirmation: true
   validates :notification_email, presence: true
   validates :notification_email, devise_email: true, if: ->(user) { user.notification_email != user.email }
@@ -185,6 +207,13 @@ class User < ApplicationRecord
   validate :owns_public_email, if: :public_email_changed?
   validate :owns_commit_email, if: :commit_email_changed?
   validate :signup_domain_valid?, on: :create, if: ->(user) { !user.created_by_id }
+  validate :check_email_restrictions, on: :create, if: ->(user) { !user.created_by_id }
+
+  validates :theme_id, allow_nil: true, inclusion: { in: Gitlab::Themes.valid_ids,
+    message: _("%{placeholder} is not a valid theme") % { placeholder: '%{value}' } }
+
+  validates :color_scheme_id, allow_nil: true, inclusion: { in: Gitlab::ColorSchemes.valid_ids,
+    message: _("%{placeholder} is not a valid color scheme") % { placeholder: '%{value}' } }
 
   before_validation :sanitize_attrs
   before_validation :set_notification_email, if: :new_record?
@@ -199,6 +228,7 @@ class User < ApplicationRecord
   before_save :check_for_verified_email, if: ->(user) { user.email_changed? && !user.new_record? }
   before_validation :ensure_namespace_correct
   before_save :ensure_namespace_correct # in case validation is skipped
+  before_save :ensure_bio_is_assigned_to_user_details, if: :bio_changed?
   after_validation :set_username_errors
   after_update :username_changed_hook, if: :saved_change_to_username?
   after_destroy :post_destroy_hook
@@ -222,19 +252,16 @@ class User < ApplicationRecord
   after_initialize :set_projects_limit
 
   # User's Layout preference
-  enum layout: [:fixed, :fluid]
+  enum layout: { fixed: 0, fluid: 1 }
 
   # User's Dashboard preference
-  # Note: When adding an option, it MUST go on the end of the array.
-  enum dashboard: [:projects, :stars, :project_activity, :starred_project_activity, :groups, :todos, :issues, :merge_requests, :operations]
+  enum dashboard: { projects: 0, stars: 1, project_activity: 2, starred_project_activity: 3, groups: 4, todos: 5, issues: 6, merge_requests: 7, operations: 8 }
 
   # User's Project preference
-  # Note: When adding an option, it MUST go on the end of the array.
-  enum project_view: [:readme, :activity, :files]
+  enum project_view: { readme: 0, activity: 1, files: 2 }
 
   # User's role
-  # Note: When adding an option, it MUST go on the end of the array.
-  enum role: [:software_developer, :development_team_lead, :devops_engineer, :systems_administrator, :security_analyst, :data_analyst, :product_manager, :product_designer, :other], _suffix: true
+  enum role: { software_developer: 0, development_team_lead: 1, devops_engineer: 2, systems_administrator: 3, security_analyst: 4, data_analyst: 5, product_manager: 6, product_designer: 7, other: 8 }, _suffix: true
 
   delegate :path, to: :namespace, allow_nil: true, prefix: true
   delegate :notes_filter_for, to: :user_preference
@@ -244,11 +271,14 @@ class User < ApplicationRecord
   delegate :time_display_relative, :time_display_relative=, to: :user_preference
   delegate :time_format_in_24h, :time_format_in_24h=, to: :user_preference
   delegate :show_whitespace_in_diffs, :show_whitespace_in_diffs=, to: :user_preference
+  delegate :tab_width, :tab_width=, to: :user_preference
   delegate :sourcegraph_enabled, :sourcegraph_enabled=, to: :user_preference
   delegate :setup_for_company, :setup_for_company=, to: :user_preference
   delegate :render_whitespace_in_code, :render_whitespace_in_code=, to: :user_preference
+  delegate :job_title, :job_title=, to: :user_detail, allow_nil: true
 
   accepts_nested_attributes_for :user_preference, update_only: true
+  accepts_nested_attributes_for :user_detail, update_only: true
 
   state_machine :state, initial: :active do
     event :block do
@@ -276,14 +306,10 @@ class User < ApplicationRecord
       def blocked?
         true
       end
+    end
 
-      def active_for_authentication?
-        false
-      end
-
-      def inactive_message
-        BLOCKED_MESSAGE
-      end
+    before_transition do
+      !Gitlab::Database.read_only?
     end
 
     # rubocop: disable CodeReuse/ServiceClass
@@ -301,25 +327,39 @@ class User < ApplicationRecord
   scope :admins, -> { where(admin: true) }
   scope :blocked, -> { with_states(:blocked, :ldap_blocked) }
   scope :external, -> { where(external: true) }
+  scope :confirmed, -> { where.not(confirmed_at: nil) }
   scope :active, -> { with_state(:active).non_internal }
+  scope :active_without_ghosts, -> { with_state(:active).without_ghosts }
   scope :deactivated, -> { with_state(:deactivated).non_internal }
   scope :without_projects, -> { joins('LEFT JOIN project_authorizations ON users.id = project_authorizations.user_id').where(project_authorizations: { user_id: nil }) }
-  scope :order_recent_sign_in, -> { reorder(Gitlab::Database.nulls_last_order('current_sign_in_at', 'DESC')) }
-  scope :order_oldest_sign_in, -> { reorder(Gitlab::Database.nulls_last_order('current_sign_in_at', 'ASC')) }
-  scope :order_recent_last_activity, -> { reorder(Gitlab::Database.nulls_last_order('last_activity_on', 'DESC')) }
-  scope :order_oldest_last_activity, -> { reorder(Gitlab::Database.nulls_first_order('last_activity_on', 'ASC')) }
-  scope :confirmed, -> { where.not(confirmed_at: nil) }
   scope :by_username, -> (usernames) { iwhere(username: Array(usernames).map(&:to_s)) }
   scope :for_todos, -> (todos) { where(id: todos.select(:user_id)) }
   scope :with_emails, -> { preload(:emails) }
   scope :with_dashboard, -> (dashboard) { where(dashboard: dashboard) }
   scope :with_public_profile, -> { where(private_profile: false) }
-
   scope :with_expiring_and_not_notified_personal_access_tokens, ->(at) do
     where('EXISTS (?)',
           ::PersonalAccessToken
             .where('personal_access_tokens.user_id = users.id')
             .expiring_and_not_notified(at).select(1))
+  end
+  scope :order_recent_sign_in, -> { reorder(Gitlab::Database.nulls_last_order('current_sign_in_at', 'DESC')) }
+  scope :order_oldest_sign_in, -> { reorder(Gitlab::Database.nulls_last_order('current_sign_in_at', 'ASC')) }
+  scope :order_recent_last_activity, -> { reorder(Gitlab::Database.nulls_last_order('last_activity_on', 'DESC')) }
+  scope :order_oldest_last_activity, -> { reorder(Gitlab::Database.nulls_first_order('last_activity_on', 'ASC')) }
+
+  def active_for_authentication?
+    super && can?(:log_in)
+  end
+
+  def inactive_message
+    if blocked?
+      BLOCKED_MESSAGE
+    elsif internal?
+      LOGIN_FORBIDDEN
+    else
+      super
+    end
   end
 
   def self.with_visible_profile(user)
@@ -385,6 +425,11 @@ class User < ApplicationRecord
     # Devise method overridden to allow support for dynamic password lengths
     def password_length
       Gitlab::CurrentSettings.minimum_password_length..Devise.password_length.max
+    end
+
+    # Generate a random password that conforms to the current password length settings
+    def random_password
+      Devise.friendly_token(password_length.max)
     end
 
     # Devise method overridden to allow sign in with email or username
@@ -465,7 +510,7 @@ class User < ApplicationRecord
       when 'deactivated'
         deactivated
       else
-        active
+        active_without_ghosts
       end
     end
 
@@ -476,7 +521,7 @@ class User < ApplicationRecord
     # query - The search query as a String
     #
     # Returns an ActiveRecord::Relation.
-    def search(query)
+    def search(query, **options)
       query = query&.delete_prefix('@')
       return none if query.blank?
 
@@ -579,9 +624,28 @@ class User < ApplicationRecord
     # owns records previously belonging to deleted users.
     def ghost
       email = 'ghost%s@example.com'
-      unique_internal(where(ghost: true), 'ghost', email) do |u|
+      unique_internal(where(user_type: :ghost), 'ghost', email) do |u|
         u.bio = _('This is a "Ghost User", created to hold all issues authored by users that have since been deleted. This user cannot be removed.')
         u.name = 'Ghost User'
+      end
+    end
+
+    def alert_bot
+      email_pattern = "alert%s@#{Settings.gitlab.host}"
+
+      unique_internal(where(user_type: :alert_bot), 'alert-bot', email_pattern) do |u|
+        u.bio = 'The GitLab alert bot'
+        u.name = 'GitLab Alert Bot'
+      end
+    end
+
+    def migration_bot
+      email_pattern = "noreply+gitlab-migration-bot%s@#{Settings.gitlab.host}"
+
+      unique_internal(where(user_type: :migration_bot), 'migration-bot', email_pattern) do |u|
+        u.bio = 'The GitLab migration bot'
+        u.name = 'GitLab Migration Bot'
+        u.confirmed_at = Time.zone.now
       end
     end
 
@@ -596,25 +660,13 @@ class User < ApplicationRecord
     end
   end
 
-  def full_path
-    username
-  end
-
-  def internal?
-    ghost?
-  end
-
-  def self.internal
-    where(ghost: true)
-  end
-
-  def self.non_internal
-    where('ghost IS NOT TRUE')
-  end
-
   #
   # Instance methods
   #
+
+  def full_path
+    username
+  end
 
   def to_param
     username
@@ -636,7 +688,7 @@ class User < ApplicationRecord
     @reset_token, enc = Devise.token_generator.generate(self.class, :reset_password_token)
 
     self.reset_password_token   = enc
-    self.reset_password_sent_at = Time.now.utc
+    self.reset_password_sent_at = Time.current.utc
 
     @reset_token
   end
@@ -902,11 +954,11 @@ class User < ApplicationRecord
   end
 
   def allow_password_authentication_for_web?
-    Gitlab::CurrentSettings.password_authentication_enabled_for_web? && !ldap_user? && !ultraauth_user?
+    Gitlab::CurrentSettings.password_authentication_enabled_for_web? && !ldap_user?
   end
 
   def allow_password_authentication_for_git?
-    Gitlab::CurrentSettings.password_authentication_enabled_for_git? && !ldap_user? && !ultraauth_user?
+    Gitlab::CurrentSettings.password_authentication_enabled_for_git? && !ldap_user?
   end
 
   def can_change_username?
@@ -994,14 +1046,6 @@ class User < ApplicationRecord
     end
   end
 
-  def ultraauth_user?
-    if identities.loaded?
-      identities.find { |identity| Gitlab::Auth::OAuth::Provider.ultraauth_provider?(identity.provider) && !identity.extern_uid.nil? }
-    else
-      identities.exists?(["provider = ? AND extern_uid IS NOT NULL", "ultraauth"])
-    end
-  end
-
   def ldap_identity
     @ldap_identity ||= identities.find_by(["provider LIKE ?", "ldap%"])
   end
@@ -1015,7 +1059,7 @@ class User < ApplicationRecord
   end
 
   def highest_role
-    members.maximum(:access_level) || Gitlab::Access::NO_ACCESS
+    user_highest_role&.highest_access_level || Gitlab::Access::NO_ACCESS
   end
 
   def accessible_deploy_keys
@@ -1074,7 +1118,7 @@ class User < ApplicationRecord
     if !Gitlab.config.ldap.enabled
       false
     elsif ldap_user?
-      !last_credential_check_at || (last_credential_check_at + ldap_sync_time) < Time.now
+      !last_credential_check_at || (last_credential_check_at + ldap_sync_time) < Time.current
     else
       false
     end
@@ -1149,12 +1193,16 @@ class User < ApplicationRecord
     Member.where(invite_email: verified_emails).invite
   end
 
-  def all_emails
+  def all_emails(include_private_email: true)
     all_emails = []
     all_emails << email unless temp_oauth_email?
-    all_emails << private_commit_email
+    all_emails << private_commit_email if include_private_email
     all_emails.concat(emails.map(&:email))
     all_emails
+  end
+
+  def all_public_emails
+    all_emails(include_private_email: false)
   end
 
   def verified_emails
@@ -1189,7 +1237,8 @@ class User < ApplicationRecord
     {
       name: name,
       username: username,
-      avatar_url: avatar_url(only_path: false)
+      avatar_url: avatar_url(only_path: false),
+      email: email
     }
   end
 
@@ -1200,6 +1249,13 @@ class User < ApplicationRecord
     else
       build_namespace(path: username, name: name)
     end
+  end
+
+  # Temporary, will be removed when bio is fully migrated
+  def ensure_bio_is_assigned_to_user_details
+    return if Feature.disabled?(:migrate_bio_to_user_details, default_enabled: true)
+
+    user_detail.bio = bio.to_s[0...255] # bio can be NULL in users, but cannot be NULL in user_details
   end
 
   def set_username_errors
@@ -1309,7 +1365,7 @@ class User < ApplicationRecord
   def contributed_projects
     events = Event.select(:project_id)
       .contributions.where(author_id: self)
-      .where("created_at > ?", Time.now - 1.year)
+      .where("created_at > ?", Time.current - 1.year)
       .distinct
       .reorder(nil)
 
@@ -1328,7 +1384,7 @@ class User < ApplicationRecord
         .select('ci_runners.*')
 
       group_runners = Ci::RunnerNamespace
-        .where(namespace_id: owned_groups.select(:id))
+        .where(namespace_id: Gitlab::ObjectHierarchy.new(owned_groups).base_and_descendants.select(:id))
         .joins(:runner)
         .select('ci_runners.*')
 
@@ -1569,6 +1625,10 @@ class User < ApplicationRecord
     super.presence || build_user_preference
   end
 
+  def user_detail
+    super.presence || build_user_detail
+  end
+
   def todos_limited_to(ids)
     todos.where(id: ids)
   end
@@ -1578,7 +1638,7 @@ class User < ApplicationRecord
   end
 
   def password_expired?
-    !!(password_expires_at && password_expires_at < Time.now)
+    !!(password_expires_at && password_expires_at < Time.current)
   end
 
   def can_be_deactivated?
@@ -1606,14 +1666,31 @@ class User < ApplicationRecord
   end
   # End of signup_flow experiment methods
 
-  # @deprecated
-  alias_method :owned_or_masters_groups, :owned_or_maintainers_groups
+  def dismissed_callout?(feature_name:, ignore_dismissal_earlier_than: nil)
+    callouts = self.callouts.with_feature_name(feature_name)
+    callouts = callouts.with_dismissed_after(ignore_dismissal_earlier_than) if ignore_dismissal_earlier_than
+
+    callouts.any?
+  end
+
+  # Load the current highest access by looking directly at the user's memberships
+  def current_highest_access_level
+    members.non_request.maximum(:access_level)
+  end
+
+  def confirmation_required_on_sign_in?
+    !confirmed? && !confirmation_period_valid?
+  end
+
+  def impersonated?
+    impersonator.present?
+  end
 
   protected
 
   # override, from Devise::Validatable
   def password_required?
-    return false if internal?
+    return false if internal? || project_bot?
 
     super
   end
@@ -1623,6 +1700,23 @@ class User < ApplicationRecord
     return false if Feature.disabled?(:soft_email_confirmation)
 
     super
+  end
+
+  # This is copied from Devise::Models::TwoFactorAuthenticatable#consume_otp!
+  #
+  # An OTP cannot be used more than once in a given timestep
+  # Storing timestep of last valid OTP is sufficient to satisfy this requirement
+  #
+  # See:
+  #   <https://github.com/tinfoil/devise-two-factor/blob/master/lib/devise_two_factor/models/two_factor_authenticatable.rb#L66>
+  #
+  def consume_otp!
+    if self.consumed_timestep != current_otp_timestep
+      self.consumed_timestep = current_otp_timestep
+      return Gitlab::Database.read_only? ? true : save(validate: false)
+    end
+
+    false
   end
 
   private
@@ -1646,13 +1740,6 @@ class User < ApplicationRecord
     # user is an admin and the only user in the instance, this shouldn't
     # cause too much load on the system.
     ApplicationSetting.current_without_cache&.usage_stats_set_by_user_id == self.id
-  end
-
-  # Added according to https://github.com/plataformatec/devise/blob/7df57d5081f9884849ca15e4fde179ef164a575f/README.md#activejob-integration
-  def send_devise_notification(notification, *args)
-    return true unless can?(:receive_notifications)
-
-    devise_mailer.__send__(notification, self, *args).deliver_later # rubocop:disable GitlabSecurity/PublicSend
   end
 
   def ensure_user_rights_and_limits
@@ -1702,46 +1789,15 @@ class User < ApplicationRecord
     end
   end
 
-  def self.unique_internal(scope, username, email_pattern, &block)
-    scope.first || create_unique_internal(scope, username, email_pattern, &block)
-  end
+  def check_email_restrictions
+    return unless Gitlab::CurrentSettings.email_restrictions_enabled?
 
-  def self.create_unique_internal(scope, username, email_pattern, &creation_block)
-    # Since we only want a single one of these in an instance, we use an
-    # exclusive lease to ensure than this block is never run concurrently.
-    lease_key = "user:unique_internal:#{username}"
-    lease = Gitlab::ExclusiveLease.new(lease_key, timeout: 1.minute.to_i)
+    restrictions = Gitlab::CurrentSettings.email_restrictions
+    return if restrictions.blank?
 
-    until uuid = lease.try_obtain
-      # Keep trying until we obtain the lease. To prevent hammering Redis too
-      # much we'll wait for a bit between retries.
-      sleep(1)
+    if Gitlab::UntrustedRegexp.new(restrictions).match?(email)
+      errors.add(:email, _('is not allowed. Try again with a different email address, or contact your GitLab admin.'))
     end
-
-    # Recheck if the user is already present. One might have been
-    # added between the time we last checked (first line of this method)
-    # and the time we acquired the lock.
-    existing_user = uncached { scope.first }
-    return existing_user if existing_user.present?
-
-    uniquify = Uniquify.new
-
-    username = uniquify.string(username) { |s| User.find_by_username(s) }
-
-    email = uniquify.string(-> (n) { Kernel.sprintf(email_pattern, n) }) do |s|
-      User.find_by_email(s)
-    end
-
-    user = scope.build(
-      username: username,
-      email: email,
-      &creation_block
-    )
-
-    Users::UpdateService.new(user, user: user).execute(validate: false) # rubocop: disable CodeReuse/ServiceClass
-    user
-  ensure
-    Gitlab::ExclusiveLease.cancel(lease_key, uuid)
   end
 
   def groups_with_developer_maintainer_project_access
@@ -1758,6 +1814,16 @@ class User < ApplicationRecord
 
   def no_recent_activity?
     last_active_at.to_i <= MINIMUM_INACTIVE_DAYS.days.ago.to_i
+  end
+
+  def update_highest_role?
+    return false unless persisted?
+
+    (previous_changes.keys & %w(state user_type ghost)).any?
+  end
+
+  def update_highest_role_attribute
+    id
   end
 end
 

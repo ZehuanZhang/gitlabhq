@@ -18,25 +18,28 @@ class MergeRequest < ApplicationRecord
   include DeprecatedAssignee
   include ShaAttribute
   include IgnorableColumns
+  include MilestoneEventable
+  include StateEventable
 
   sha_attribute :squash_commit_sha
 
   self.reactive_cache_key = ->(model) { [model.project.id, model.iid] }
   self.reactive_cache_refresh_interval = 10.minutes
   self.reactive_cache_lifetime = 10.minutes
+  self.reactive_cache_hard_limit = 20.megabytes
 
   SORTING_PREFERENCE_FIELD = :merge_requests_sort
 
   belongs_to :target_project, class_name: "Project"
   belongs_to :source_project, class_name: "Project"
   belongs_to :merge_user, class_name: "User"
+  belongs_to :iteration, foreign_key: 'sprint_id'
 
-  has_internal_id :iid, scope: :target_project, init: ->(s) { s&.target_project&.merge_requests&.maximum(:iid) }
+  has_internal_id :iid, scope: :target_project, track_if: -> { !importing? }, init: ->(s) { s&.target_project&.merge_requests&.maximum(:iid) }
 
   has_many :merge_request_diffs
-
-  has_many :merge_request_milestones
-  has_many :milestones, through: :merge_request_milestones
+  has_many :merge_request_context_commits
+  has_many :merge_request_context_commit_diff_files, through: :merge_request_context_commits, source: :diff_files
 
   has_one :merge_request_diff,
     -> { order('merge_request_diffs.id DESC') }, inverse_of: :merge_request
@@ -48,6 +51,7 @@ class MergeRequest < ApplicationRecord
   # 1. There are arguments - in which case we might be trying to force-reload.
   # 2. This association is already loaded.
   # 3. The latest diff does not exist.
+  # 4. It doesn't have any merge_request_diffs - it returns an empty MergeRequestDiff
   #
   # The second one in particular is important - MergeRequestDiff#merge_request
   # is the inverse of MergeRequest#merge_request_diff, which means it may not be
@@ -56,7 +60,7 @@ class MergeRequest < ApplicationRecord
   def merge_request_diff
     fallback = latest_merge_request_diff unless association(:merge_request_diff).loaded?
 
-    fallback || super
+    fallback || super || MergeRequestDiff.new(merge_request_id: id)
   end
 
   belongs_to :head_pipeline, foreign_key: "head_pipeline_id", class_name: "Ci::Pipeline"
@@ -74,7 +78,7 @@ class MergeRequest < ApplicationRecord
 
   has_many :merge_request_assignees
   has_many :assignees, class_name: "User", through: :merge_request_assignees
-  has_many :user_mentions, class_name: "MergeRequestUserMention"
+  has_many :user_mentions, class_name: "MergeRequestUserMention", dependent: :delete_all # rubocop:disable Cop/ActiveRecordDependent
 
   has_many :deployment_merge_requests
 
@@ -97,8 +101,8 @@ class MergeRequest < ApplicationRecord
   after_create :ensure_merge_request_diff
   after_update :clear_memoized_shas
   after_update :reload_diff_if_branch_changed
-  after_save :ensure_metrics
-  after_commit :expire_etag_cache
+  after_save :ensure_metrics, unless: :importing?
+  after_commit :expire_etag_cache, unless: :importing?
 
   # When this attribute is true some MR validation is ignored
   # It allows us to close or modify broken merge requests
@@ -160,20 +164,27 @@ class MergeRequest < ApplicationRecord
 
   state_machine :merge_status, initial: :unchecked do
     event :mark_as_unchecked do
-      transition [:can_be_merged, :unchecked] => :unchecked
-      transition [:cannot_be_merged, :cannot_be_merged_recheck] => :cannot_be_merged_recheck
+      transition [:can_be_merged, :checking, :unchecked] => :unchecked
+      transition [:cannot_be_merged, :cannot_be_merged_rechecking, :cannot_be_merged_recheck] => :cannot_be_merged_recheck
+    end
+
+    event :mark_as_checking do
+      transition unchecked: :checking
+      transition cannot_be_merged_recheck: :cannot_be_merged_rechecking
     end
 
     event :mark_as_mergeable do
-      transition [:unchecked, :cannot_be_merged_recheck] => :can_be_merged
+      transition [:unchecked, :cannot_be_merged_recheck, :checking, :cannot_be_merged_rechecking] => :can_be_merged
     end
 
     event :mark_as_unmergeable do
-      transition [:unchecked, :cannot_be_merged_recheck] => :cannot_be_merged
+      transition [:unchecked, :cannot_be_merged_recheck, :checking, :cannot_be_merged_rechecking] => :cannot_be_merged
     end
 
     state :unchecked
     state :cannot_be_merged_recheck
+    state :checking
+    state :cannot_be_merged_rechecking
     state :can_be_merged
     state :cannot_be_merged
 
@@ -182,7 +193,7 @@ class MergeRequest < ApplicationRecord
     end
 
     # rubocop: disable CodeReuse/ServiceClass
-    after_transition unchecked: :cannot_be_merged do |merge_request, transition|
+    after_transition [:unchecked, :checking] => :cannot_be_merged do |merge_request, transition|
       if merge_request.notify_conflict?
         NotificationService.new.merge_request_unmergeable(merge_request)
         TodoService.new.merge_request_became_unmergeable(merge_request)
@@ -191,8 +202,14 @@ class MergeRequest < ApplicationRecord
     # rubocop: enable CodeReuse/ServiceClass
 
     def check_state?(merge_status)
-      [:unchecked, :cannot_be_merged_recheck].include?(merge_status.to_sym)
+      [:unchecked, :cannot_be_merged_recheck, :checking, :cannot_be_merged_rechecking].include?(merge_status.to_sym)
     end
+  end
+
+  # Returns current merge_status except it returns `cannot_be_merged_rechecking` as `checking`
+  # to avoid exposing unnecessary internal state
+  def public_merge_status
+    cannot_be_merged_rechecking? ? 'checking' : merge_status
   end
 
   validates :source_project, presence: true, unless: [:allow_broken, :importing?, :closed_without_fork?]
@@ -223,14 +240,22 @@ class MergeRequest < ApplicationRecord
   scope :by_merge_commit_sha, -> (sha) do
     where(merge_commit_sha: sha)
   end
+  scope :by_cherry_pick_sha, -> (sha) do
+    joins(:notes).where(notes: { commit_id: sha })
+  end
   scope :join_project, -> { joins(:target_project) }
   scope :references_project, -> { references(:target_project) }
+
+  PROJECT_ROUTE_AND_NAMESPACE_ROUTE = [
+    target_project: [:route, { namespace: :route }],
+    source_project: [:route, { namespace: :route }]
+  ].freeze
+
   scope :with_api_entity_associations, -> {
     preload(:assignees, :author, :unresolved_notes, :labels, :milestone,
             :timelogs, :latest_merge_request_diff,
-            metrics: [:latest_closed_by, :merged_by],
-            target_project: [:route, { namespace: :route }],
-            source_project: [:route, { namespace: :route }])
+            *PROJECT_ROUTE_AND_NAMESPACE_ROUTE,
+            metrics: [:latest_closed_by, :merged_by])
   }
   scope :by_target_branch_wildcard, ->(wildcard_branch_name) do
     where("target_branch LIKE ?", ApplicationRecord.sanitize_sql_like(wildcard_branch_name).tr('*', '%'))
@@ -242,7 +267,9 @@ class MergeRequest < ApplicationRecord
     with_state(:opened).where(auto_merge_enabled: true)
   end
 
-  ignore_column :state, remove_with: '12.7', remove_after: '2019-12-22'
+  scope :including_metrics, -> do
+    includes(:metrics)
+  end
 
   after_save :keep_around_commit, unless: :importing?
 
@@ -258,11 +285,9 @@ class MergeRequest < ApplicationRecord
   alias_method :issuing_parent, :target_project
 
   delegate :active?, to: :head_pipeline, prefix: true, allow_nil: true
-  delegate :success?, to: :actual_head_pipeline, prefix: true, allow_nil: true
+  delegate :success?, :active?, to: :actual_head_pipeline, prefix: true, allow_nil: true
 
   RebaseLockTimeout = Class.new(StandardError)
-
-  REBASE_LOCK_MESSAGE = _("Failed to enqueue the rebase operation, possibly due to a long-lived transaction. Try again later.")
 
   def self.reference_prefix
     '!'
@@ -390,11 +415,23 @@ class MergeRequest < ApplicationRecord
   def to_reference(from = nil, full: false)
     reference = "#{self.class.reference_prefix}#{iid}"
 
-    "#{project.to_reference(from, full: full)}#{reference}"
+    "#{project.to_reference_base(from, full: full)}#{reference}"
+  end
+
+  def context_commits(limit: nil)
+    @context_commits ||= merge_request_context_commits.limit(limit).map(&:to_commit)
+  end
+
+  def recent_context_commits
+    context_commits(limit: MergeRequestDiff::COMMITS_SAFE_SIZE)
+  end
+
+  def context_commits_count
+    context_commits.count
   end
 
   def commits(limit: nil)
-    return merge_request_diff.commits(limit: limit) if persisted?
+    return merge_request_diff.commits(limit: limit) if merge_request_diff.persisted?
 
     commits_arr = if compare_commits
                     reversed_commits = compare_commits.reverse
@@ -411,7 +448,7 @@ class MergeRequest < ApplicationRecord
   end
 
   def commits_count
-    if persisted?
+    if merge_request_diff.persisted?
       merge_request_diff.commits_count
     elsif compare_commits
       compare_commits.size
@@ -421,7 +458,7 @@ class MergeRequest < ApplicationRecord
   end
 
   def commit_shas(limit: nil)
-    return merge_request_diff.commit_shas(limit: limit) if persisted?
+    return merge_request_diff.commit_shas(limit: limit) if merge_request_diff.persisted?
 
     shas =
       if compare_commits
@@ -451,7 +488,7 @@ class MergeRequest < ApplicationRecord
 
   # Set off a rebase asynchronously, atomically updating the `rebase_jid` of
   # the MR so that the status of the operation can be tracked.
-  def rebase_async(user_id)
+  def rebase_async(user_id, skip_ci: false)
     with_rebase_lock do
       raise ActiveRecord::StaleObjectError if !open? || rebase_in_progress?
 
@@ -460,7 +497,7 @@ class MergeRequest < ApplicationRecord
       # attribute is set *and* that the sidekiq job is still running. So a JID
       # for a completed RebaseWorker is equivalent to a nil JID.
       jid = Sidekiq::Worker.skipping_transaction_check do
-        RebaseWorker.perform_async(id, user_id)
+        RebaseWorker.perform_async(id, user_id, skip_ci)
       end
 
       update_column(:rebase_jid, jid)
@@ -482,11 +519,11 @@ class MergeRequest < ApplicationRecord
   end
 
   def first_commit
-    merge_request_diff ? merge_request_diff.first_commit : compare_commits.first
+    compare_commits.present? ? compare_commits.first : merge_request_diff.first_commit
   end
 
   def raw_diffs(*args)
-    merge_request_diff ? merge_request_diff.raw_diffs(*args) : compare.raw_diffs(*args)
+    compare.present? ? compare.raw_diffs(*args) : merge_request_diff.raw_diffs(*args)
   end
 
   def diffs(diff_options = {})
@@ -528,26 +565,36 @@ class MergeRequest < ApplicationRecord
     end
   end
 
+  def diff_stats
+    return unless diff_refs
+
+    strong_memoize(:diff_stats) do
+      project.repository.diff_stats(diff_refs.base_sha, diff_refs.head_sha)
+    end
+  end
+
   def diff_size
     # Calling `merge_request_diff.diffs.real_size` will also perform
     # highlighting, which we don't need here.
-    merge_request_diff&.real_size || diffs.real_size
+    merge_request_diff&.real_size || diff_stats&.real_size || diffs.real_size
   end
 
-  def modified_paths(past_merge_request_diff: nil)
-    diffs = if past_merge_request_diff
-              past_merge_request_diff
-            elsif compare
-              compare
-            else
-              self.merge_request_diff
-            end
+  def modified_paths(past_merge_request_diff: nil, fallback_on_overflow: false)
+    if past_merge_request_diff
+      past_merge_request_diff.modified_paths(fallback_on_overflow: fallback_on_overflow)
+    elsif compare
+      diff_stats&.paths || compare.modified_paths
+    else
+      merge_request_diff.modified_paths(fallback_on_overflow: fallback_on_overflow)
+    end
+  end
 
-    diffs.modified_paths
+  def new_paths
+    diffs.diff_files.map(&:new_path)
   end
 
   def diff_base_commit
-    if persisted?
+    if merge_request_diff.persisted?
       merge_request_diff.base_commit
     else
       branch_merge_base_commit
@@ -555,7 +602,7 @@ class MergeRequest < ApplicationRecord
   end
 
   def diff_start_commit
-    if persisted?
+    if merge_request_diff.persisted?
       merge_request_diff.start_commit
     else
       target_branch_head
@@ -563,7 +610,7 @@ class MergeRequest < ApplicationRecord
   end
 
   def diff_head_commit
-    if persisted?
+    if merge_request_diff.persisted?
       merge_request_diff.head_commit
     else
       source_branch_head
@@ -571,7 +618,7 @@ class MergeRequest < ApplicationRecord
   end
 
   def diff_start_sha
-    if persisted?
+    if merge_request_diff.persisted?
       merge_request_diff.start_commit_sha
     else
       target_branch_head.try(:sha)
@@ -579,7 +626,7 @@ class MergeRequest < ApplicationRecord
   end
 
   def diff_base_sha
-    if persisted?
+    if merge_request_diff.persisted?
       merge_request_diff.base_commit_sha
     else
       branch_merge_base_commit.try(:sha)
@@ -587,7 +634,7 @@ class MergeRequest < ApplicationRecord
   end
 
   def diff_head_sha
-    if persisted?
+    if merge_request_diff.persisted?
       merge_request_diff.head_commit_sha
     else
       source_branch_head.try(:sha)
@@ -700,7 +747,7 @@ class MergeRequest < ApplicationRecord
   end
 
   def validate_branch_name(attr)
-    return unless changes_include?(attr)
+    return unless will_save_change_to_attribute?(attr)
 
     branch = read_attribute(attr)
 
@@ -748,7 +795,7 @@ class MergeRequest < ApplicationRecord
   end
 
   def ensure_merge_request_diff
-    merge_request_diff || create_merge_request_diff
+    merge_request_diff.persisted? || create_merge_request_diff
   end
 
   def create_merge_request_diff
@@ -814,12 +861,22 @@ class MergeRequest < ApplicationRecord
     MergeRequests::ReloadDiffsService.new(self, current_user).execute
   end
 
-  def check_mergeability
-    return if Feature.enabled?(:merge_requests_conditional_mergeability_check, default_enabled: true) && !recheck_merge_status?
+  def check_mergeability(async: false)
+    return unless recheck_merge_status?
 
-    MergeRequests::MergeabilityCheckService.new(self).execute(retry_lease: false)
+    check_service = MergeRequests::MergeabilityCheckService.new(self)
+
+    if async && Feature.enabled?(:async_merge_request_check_mergeability, project, default_enabled: true)
+      check_service.async_execute
+    else
+      check_service.execute(retry_lease: false)
+    end
   end
   # rubocop: enable CodeReuse/ServiceClass
+
+  def diffable_merge_ref?
+    can_be_merged? && merge_ref_head.present?
+  end
 
   # Returns boolean indicating the merge_status should be rechecked in order to
   # switch to either can_be_merged or cannot_be_merged.
@@ -985,7 +1042,7 @@ class MergeRequest < ApplicationRecord
   def closes_issues(current_user = self.author)
     if target_branch == project.default_branch
       messages = [title, description]
-      messages.concat(commits.map(&:safe_message)) if merge_request_diff
+      messages.concat(commits.map(&:safe_message)) if merge_request_diff.persisted?
 
       Gitlab::ClosingIssueExtractor.new(project, current_user)
         .closed_by_message(messages.join("\n"))
@@ -1074,26 +1131,6 @@ class MergeRequest < ApplicationRecord
     end
   end
 
-  # Return array of possible target branches
-  # depends on target project of MR
-  def target_branches
-    if target_project.nil?
-      []
-    else
-      target_project.repository.branch_names
-    end
-  end
-
-  # Return array of possible source branches
-  # depends on source project of MR
-  def source_branches
-    if source_project.nil?
-      []
-    else
-      source_project.repository.branch_names
-    end
-  end
-
   def has_ci?
     return false if has_no_commits?
 
@@ -1144,7 +1181,7 @@ class MergeRequest < ApplicationRecord
   # Since deployments run on a merge request ref (e.g. `refs/merge-requests/:iid/head`),
   # we cannot look up environments with source branch name.
   def environments
-    return Environment.none unless actual_head_pipeline&.triggered_by_merge_request?
+    return Environment.none unless actual_head_pipeline&.merge_request?
 
     actual_head_pipeline.environments
   end
@@ -1189,12 +1226,10 @@ class MergeRequest < ApplicationRecord
   end
 
   def in_locked_state
-    begin
-      lock_mr
-      yield
-    ensure
-      unlock_mr
-    end
+    lock_mr
+    yield
+  ensure
+    unlock_mr
   end
 
   def diverged_commits_count
@@ -1226,7 +1261,7 @@ class MergeRequest < ApplicationRecord
 
   def all_pipelines
     strong_memoize(:all_pipelines) do
-      MergeRequest::Pipelines.new(self).all
+      Ci::PipelinesForMergeRequestFinder.new(self).all
     end
   end
 
@@ -1251,7 +1286,7 @@ class MergeRequest < ApplicationRecord
       variables.append(key: 'CI_MERGE_REQUEST_PROJECT_URL', value: project.web_url)
       variables.append(key: 'CI_MERGE_REQUEST_TARGET_BRANCH_NAME', value: target_branch.to_s)
       variables.append(key: 'CI_MERGE_REQUEST_TITLE', value: title)
-      variables.append(key: 'CI_MERGE_REQUEST_ASSIGNEES', value: assignee_username_list) if assignees.any?
+      variables.append(key: 'CI_MERGE_REQUEST_ASSIGNEES', value: assignee_username_list) if assignees.present?
       variables.append(key: 'CI_MERGE_REQUEST_MILESTONE', value: milestone.title) if milestone
       variables.append(key: 'CI_MERGE_REQUEST_LABELS', value: label_names.join(',')) if labels.present?
       variables.concat(source_project_variables)
@@ -1266,9 +1301,51 @@ class MergeRequest < ApplicationRecord
     compare_reports(Ci::CompareTestReportsService)
   end
 
-  def has_exposed_artifacts?
-    return false unless Feature.enabled?(:ci_expose_arbitrary_artifacts_in_mr, default_enabled: true)
+  def has_accessibility_reports?
+    return false unless Feature.enabled?(:accessibility_report_view, project)
 
+    actual_head_pipeline.present? && actual_head_pipeline.has_reports?(Ci::JobArtifact.accessibility_reports)
+  end
+
+  def has_coverage_reports?
+    return false unless Feature.enabled?(:coverage_report_view, project)
+
+    actual_head_pipeline&.has_reports?(Ci::JobArtifact.coverage_reports)
+  end
+
+  def has_terraform_reports?
+    actual_head_pipeline&.has_reports?(Ci::JobArtifact.terraform_reports)
+  end
+
+  def compare_accessibility_reports
+    unless has_accessibility_reports?
+      return { status: :error, status_reason: _('This merge request does not have accessibility reports') }
+    end
+
+    compare_reports(Ci::CompareAccessibilityReportsService)
+  end
+
+  # TODO: this method and compare_test_reports use the same
+  # result type, which is handled by the controller's #reports_response.
+  # we should minimize mistakes by isolating the common parts.
+  # issue: https://gitlab.com/gitlab-org/gitlab/issues/34224
+  def find_coverage_reports
+    unless has_coverage_reports?
+      return { status: :error, status_reason: 'This merge request does not have coverage reports' }
+    end
+
+    compare_reports(Ci::GenerateCoverageReportsService)
+  end
+
+  def find_terraform_reports
+    unless has_terraform_reports?
+      return { status: :error, status_reason: 'This merge request does not have terraform reports' }
+    end
+
+    compare_reports(Ci::GenerateTerraformReportsService)
+  end
+
+  def has_exposed_artifacts?
     actual_head_pipeline&.has_exposed_artifacts?
   end
 
@@ -1289,7 +1366,7 @@ class MergeRequest < ApplicationRecord
   # issue: https://gitlab.com/gitlab-org/gitlab/issues/34224
   def compare_reports(service_class, current_user = nil)
     with_reactive_cache(service_class.name, current_user&.id) do |data|
-      unless service_class.new(project, current_user)
+      unless service_class.new(project, current_user, id: id)
         .latest?(base_pipeline, actual_head_pipeline, data)
         raise InvalidateReactiveCache
       end
@@ -1306,7 +1383,7 @@ class MergeRequest < ApplicationRecord
     raise NameError, service_class unless service_class < Ci::CompareReportsBaseService
 
     current_user = User.find_by(id: current_user_id)
-    service_class.new(project, current_user).execute(base_pipeline, actual_head_pipeline)
+    service_class.new(project, current_user, id: id).execute(base_pipeline, actual_head_pipeline)
   end
 
   def all_commits
@@ -1403,7 +1480,7 @@ class MergeRequest < ApplicationRecord
   end
 
   def has_commits?
-    merge_request_diff && commits_count.to_i > 0
+    merge_request_diff.persisted? && commits_count.to_i > 0
   end
 
   def has_no_commits?
@@ -1514,7 +1591,7 @@ class MergeRequest < ApplicationRecord
     end
   rescue ActiveRecord::LockWaitTimeout => e
     Gitlab::ErrorTracking.track_exception(e)
-    raise RebaseLockTimeout, REBASE_LOCK_MESSAGE
+    raise RebaseLockTimeout, _('Failed to enqueue the rebase operation, possibly due to a long-lived transaction. Try again later.')
   end
 
   def source_project_variables

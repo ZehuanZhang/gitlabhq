@@ -16,6 +16,7 @@
 - css_controls_class = compact_mode ? [] : ["flex-lg-row", "justify-content-lg-between"]
 - css_controls_class << "with-pipeline-status" if show_pipeline_status_icon
 - avatar_container_class = project.creator && use_creator_avatar ? '' : 'rect-avatar'
+- license_name = project_license_name(project)
 
 %li.project-row.d-flex{ class: css_class }
   = cache(cache_key) do
@@ -42,16 +43,20 @@
           %span.metadata-info.visibility-icon.append-right-10.prepend-top-8.text-secondary.has-tooltip{ data: { container: 'body', placement: 'top' }, title: visibility_icon_description(project) }
             = visibility_level_icon(project.visibility_level, fw: true)
 
-          - if explore_projects_tab? && project.repository.license
+          - if explore_projects_tab? && license_name
             %span.metadata-info.d-inline-flex.align-items-center.append-right-10.prepend-top-8
               = sprite_icon('scale', size: 14, css_class: 'append-right-4')
-              = project.repository.license.name
+              = license_name
 
           - if !explore_projects_tab? && access&.nonzero?
             -# haml-lint:disable UnnecessaryStringOutput
             = ' ' # prevent haml from eating the space between elements
             .metadata-info.prepend-top-8
               %span.user-access-role.d-block= Gitlab::Access.human_access(access)
+
+          - if !explore_projects_tab?
+            .metadata-info.prepend-top-8
+              = render_if_exists 'compliance_management/compliance_framework/compliance_framework_badge', project: project
 
         - if show_last_commit_as_description
           .description.d-none.d-sm-block.append-right-default

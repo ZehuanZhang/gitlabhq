@@ -7,6 +7,7 @@ module QA
         class Show < Page::Base
           include Page::Component::Issuable::Common
           include Page::Component::Note
+          include Page::Component::DesignManagement
 
           view 'app/assets/javascripts/notes/components/comment_form.vue' do
             element :comment_button
@@ -56,6 +57,23 @@ module QA
             element :new_note_form, 'attr: :note' # rubocop:disable QA/ElementWithPattern
           end
 
+          view 'app/views/projects/issues/_tabs.html.haml' do
+            element :discussion_tab_link
+            element :discussion_tab_content
+            element :designs_tab_link
+            element :designs_tab_content
+          end
+
+          def click_discussion_tab
+            click_element(:discussion_tab_link)
+            active_element?(:discussion_tab_content)
+          end
+
+          def click_designs_tab
+            click_element(:designs_tab_link)
+            active_element?(:designs_tab_content)
+          end
+
           def click_milestone_link
             click_element(:milestone_link)
           end
@@ -89,9 +107,7 @@ module QA
           end
 
           def has_comment?(comment_text)
-            wait(reload: false) do
-              has_element?(:noteable_note_item, text: comment_text)
-            end
+            has_element?(:noteable_note_item, text: comment_text, wait: QA::Support::Repeater::DEFAULT_MAX_WAIT_TIME)
           end
 
           def more_assignees_link
@@ -126,10 +142,10 @@ module QA
               end
             end
 
-            click_body
+            click_element(:edit_link_labels)
 
             labels.each do |label|
-              has_element?(:labels_block, text: label)
+              has_element?(:labels_block, text: label, wait: 0)
             end
 
             refresh
@@ -155,7 +171,7 @@ module QA
 
           def wait_assignees_block_finish_loading
             within_element(:assignee_block) do
-              wait(reload: false, max: 10, interval: 1) do
+              wait_until(reload: false, max_duration: 10, sleep_interval: 1) do
                 finished_loading_block?
                 yield
               end

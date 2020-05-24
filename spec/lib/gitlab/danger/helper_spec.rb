@@ -76,6 +76,16 @@ describe Gitlab::Danger::Helper do
     end
   end
 
+  describe '#all_ee_changes' do
+    subject { helper.all_ee_changes }
+
+    it 'returns all changed files starting with ee/' do
+      expect(helper).to receive(:all_changed_files).and_return(%w[fr/ee/beer.rb ee/wine.rb ee/lib/ido.rb ee.k])
+
+      is_expected.to match_array(%w[ee/wine.rb ee/lib/ido.rb])
+    end
+  end
+
   describe '#ee?' do
     subject { helper.ee? }
 
@@ -175,9 +185,12 @@ describe Gitlab::Danger::Helper do
       'spec/javascripts/foo' | :frontend
       'spec/frontend/bar'    | :frontend
       'vendor/assets/foo'    | :frontend
+      'babel.config.js'      | :frontend
       'jest.config.js'       | :frontend
       'package.json'         | :frontend
       'yarn.lock'            | :frontend
+      'config/foo.js'        | :frontend
+      'config/deep/foo.js'   | :frontend
 
       'ee/app/assets/foo'       | :frontend
       'ee/app/views/foo'        | :frontend
@@ -203,7 +216,6 @@ describe Gitlab::Danger::Helper do
 
       'Gemfile'        | :backend
       'Gemfile.lock'   | :backend
-      'Procfile'       | :backend
       'Rakefile'       | :backend
       'FOO_VERSION'    | :backend
 
@@ -218,12 +230,16 @@ describe Gitlab::Danger::Helper do
       'scripts/foo'                                           | :engineering_productivity
       'lib/gitlab/danger/foo'                                 | :engineering_productivity
       'ee/lib/gitlab/danger/foo'                              | :engineering_productivity
+      '.overcommit.yml.example'                               | :engineering_productivity
+      '.editorconfig'                                         | :engineering_productivity
+      'tooling/overcommit/foo'                                | :engineering_productivity
 
       'lib/gitlab/ci/templates/Security/SAST.gitlab-ci.yml'   | :backend
 
       'ee/FOO_VERSION' | :unknown
 
       'db/schema.rb'                                              | :database
+      'db/structure.sql'                                          | :database
       'db/migrate/foo'                                            | :database
       'db/post_migrate/foo'                                       | :database
       'ee/db/migrate/foo'                                         | :database
@@ -313,6 +329,19 @@ describe Gitlab::Danger::Helper do
     end
   end
 
+  describe '#sanitize_mr_title' do
+    where(:mr_title, :expected_mr_title) do
+      'My MR title'      | 'My MR title'
+      'WIP: My MR title' | 'My MR title'
+    end
+
+    with_them do
+      subject { helper.sanitize_mr_title(mr_title) }
+
+      it { is_expected.to eq(expected_mr_title) }
+    end
+  end
+
   describe '#security_mr?' do
     it 'returns false when `gitlab_helper` is unavailable' do
       expect(helper).to receive(:gitlab_helper).and_return(nil)
@@ -322,16 +351,81 @@ describe Gitlab::Danger::Helper do
 
     it 'returns false when on a normal merge request' do
       expect(fake_gitlab).to receive(:mr_json)
-        .and_return('web_url' => 'https://gitlab.com/gitlab-org/gitlab/merge_requests/1')
+        .and_return('web_url' => 'https://gitlab.com/gitlab-org/gitlab/-/merge_requests/1')
 
       expect(helper).not_to be_security_mr
     end
 
     it 'returns true when on a security merge request' do
       expect(fake_gitlab).to receive(:mr_json)
-        .and_return('web_url' => 'https://gitlab.com/gitlab-org/security/gitlab/merge_requests/1')
+        .and_return('web_url' => 'https://gitlab.com/gitlab-org/security/gitlab/-/merge_requests/1')
 
       expect(helper).to be_security_mr
+    end
+  end
+
+  describe '#mr_has_label?' do
+    it 'returns false when `gitlab_helper` is unavailable' do
+      expect(helper).to receive(:gitlab_helper).and_return(nil)
+
+      expect(helper.mr_has_labels?('telemetry')).to be_falsey
+    end
+
+    context 'when mr has labels' do
+      before do
+        mr_labels = ['telemetry', 'telemetry::reviewed']
+        expect(fake_gitlab).to receive(:mr_labels).and_return(mr_labels)
+      end
+
+      it 'returns true with a matched label' do
+        expect(helper.mr_has_labels?('telemetry')).to be_truthy
+      end
+
+      it 'returns false with unmatched label' do
+        expect(helper.mr_has_labels?('database')).to be_falsey
+      end
+
+      it 'returns true with an array of labels' do
+        expect(helper.mr_has_labels?(['telemetry', 'telemetry::reviewed'])).to be_truthy
+      end
+
+      it 'returns true with multi arguments with matched labels' do
+        expect(helper.mr_has_labels?('telemetry', 'telemetry::reviewed')).to be_truthy
+      end
+
+      it 'returns false with multi arguments with unmatched labels' do
+        expect(helper.mr_has_labels?('telemetry', 'telemetry::non existing')).to be_falsey
+      end
+    end
+  end
+
+  describe '#labels_list' do
+    let(:labels) { ['telemetry', 'telemetry::reviewed'] }
+
+    it 'composes the labels string' do
+      expect(helper.labels_list(labels)).to eq('~"telemetry", ~"telemetry::reviewed"')
+    end
+
+    context 'when passing a separator' do
+      it 'composes the labels string with the given separator' do
+        expect(helper.labels_list(labels, sep: ' ')).to eq('~"telemetry" ~"telemetry::reviewed"')
+      end
+    end
+
+    it 'returns empty string for empty array' do
+      expect(helper.labels_list([])).to eq('')
+    end
+  end
+
+  describe '#prepare_labels_for_mr' do
+    it 'composes the labels string' do
+      mr_labels = ['telemetry', 'telemetry::reviewed']
+
+      expect(helper.prepare_labels_for_mr(mr_labels)).to eq('/label ~"telemetry" ~"telemetry::reviewed"')
+    end
+
+    it 'returns empty string for empty array' do
+      expect(helper.prepare_labels_for_mr([])).to eq('')
     end
   end
 end

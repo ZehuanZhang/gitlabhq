@@ -1,6 +1,18 @@
 import axios from '~/lib/utils/axios_utils';
 import { joinPaths, escapeFileUrl } from '~/lib/utils/url_utility';
 import Api from '~/api';
+import getUserPermissions from '../queries/getUserPermissions.query.graphql';
+import gqClient from './gql';
+
+const fetchApiProjectData = projectPath => Api.project(projectPath).then(({ data }) => data);
+
+const fetchGqlProjectData = projectPath =>
+  gqClient
+    .query({
+      query: getUserPermissions,
+      variables: { projectPath },
+    })
+    .then(({ data }) => data.project);
 
 export default {
   getFileData(endpoint) {
@@ -13,7 +25,7 @@ export default {
       return Promise.resolve(file.content);
     }
 
-    if (file.raw) {
+    if (file.raw || !file.rawPath) {
       return Promise.resolve(file.raw);
     }
 
@@ -35,6 +47,7 @@ export default {
         joinPaths(
           gon.relative_url_root || '/',
           file.projectId,
+          '-',
           'raw',
           sha,
           escapeFileUrl(filePath),
@@ -46,7 +59,16 @@ export default {
       .then(({ data }) => data);
   },
   getProjectData(namespace, project) {
-    return Api.project(`${namespace}/${project}`);
+    const projectPath = `${namespace}/${project}`;
+
+    return Promise.all([fetchApiProjectData(projectPath), fetchGqlProjectData(projectPath)]).then(
+      ([apiProjectData, gqlProjectData]) => ({
+        data: {
+          ...apiProjectData,
+          ...gqlProjectData,
+        },
+      }),
+    );
   },
   getProjectMergeRequests(projectId, params = {}) {
     return Api.projectMergeRequests(projectId, params);
@@ -66,12 +88,16 @@ export default {
   commit(projectId, payload) {
     return Api.commitMultiple(projectId, payload);
   },
-  getFiles(projectUrl, ref) {
-    const url = `${projectUrl}/files/${ref}`;
+  getFiles(projectPath, ref) {
+    const url = `${gon.relative_url_root}/${projectPath}/-/files/${ref}`;
     return axios.get(url, { params: { format: 'json' } });
   },
   lastCommitPipelines({ getters }) {
     const commitSha = getters.lastCommit.id;
     return Api.commitPipelines(getters.currentProject.path_with_namespace, commitSha);
+  },
+  pingUsage(projectPath) {
+    const url = `${gon.relative_url_root}/${projectPath}/usage_ping/web_ide_pipelines_count`;
+    return axios.post(url);
   },
 };

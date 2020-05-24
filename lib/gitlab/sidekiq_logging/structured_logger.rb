@@ -6,7 +6,7 @@ require 'active_record/log_subscriber'
 module Gitlab
   module SidekiqLogging
     class StructuredLogger
-      MAXIMUM_JOB_ARGUMENTS_LENGTH = 10.kilobytes
+      include LogsJobs
 
       def call(job, queue)
         started_time = get_time
@@ -26,12 +26,14 @@ module Gitlab
 
       private
 
-      def base_message(payload)
-        "#{payload['class']} JID-#{payload['jid']}"
-      end
-
       def add_instrumentation_keys!(job, output_payload)
         output_payload.merge!(job.slice(*::Gitlab::InstrumentationHelper::KEYS))
+      end
+
+      def add_logging_extras!(job, output_payload)
+        output_payload.merge!(
+          job.select { |key, _| key.to_s.start_with?("#{ApplicationWorker::LOGGING_EXTRA_KEY}.") }
+        )
       end
 
       def log_job_start(payload)
@@ -47,6 +49,7 @@ module Gitlab
       def log_job_done(job, started_time, payload, job_exception = nil)
         payload = payload.dup
         add_instrumentation_keys!(job, payload)
+        add_logging_extras!(job, payload)
 
         elapsed_time = elapsed(started_time)
         add_time_keys!(elapsed_time, payload)
@@ -54,40 +57,28 @@ module Gitlab
         message = base_message(payload)
 
         if job_exception
-          payload['message'] = "#{message}: fail: #{payload['duration']} sec"
+          payload['message'] = "#{message}: fail: #{payload['duration_s']} sec"
           payload['job_status'] = 'fail'
           payload['error_message'] = job_exception.message
           payload['error_class'] = job_exception.class.name
         else
-          payload['message'] = "#{message}: done: #{payload['duration']} sec"
+          payload['message'] = "#{message}: done: #{payload['duration_s']} sec"
           payload['job_status'] = 'done'
         end
 
-        payload['db_duration'] = ActiveRecord::LogSubscriber.runtime
-        payload['db_duration_s'] = payload['db_duration'] / 1000
+        db_duration = ActiveRecord::LogSubscriber.runtime
+        payload['db_duration_s'] = Gitlab::Utils.ms_to_round_sec(db_duration)
 
         payload
       end
 
       def add_time_keys!(time, payload)
-        payload['duration'] = time[:duration].round(6)
+        payload['duration_s'] = time[:duration].round(Gitlab::InstrumentationHelper::DURATION_PRECISION)
 
         # ignore `cpu_s` if the platform does not support Process::CLOCK_THREAD_CPUTIME_ID (time[:cputime] == 0)
         # supported OS version can be found at: https://www.rubydoc.info/stdlib/core/2.1.6/Process:clock_gettime
-        payload['cpu_s'] = time[:cputime].round(6) if time[:cputime] > 0
+        payload['cpu_s'] = time[:cputime].round(Gitlab::InstrumentationHelper::DURATION_PRECISION) if time[:cputime] > 0
         payload['completed_at'] = Time.now.utc.to_f
-      end
-
-      def parse_job(job)
-        job = job.dup
-
-        # Add process id params
-        job['pid'] = ::Process.pid
-
-        job.delete('args') unless ENV['SIDEKIQ_LOG_ARGUMENTS']
-        job['args'] = limited_job_args(job['args']) if job['args']
-
-        job
       end
 
       def elapsed(t0)
@@ -107,21 +98,6 @@ module Gitlab
 
       def current_time
         Gitlab::Metrics::System.monotonic_time
-      end
-
-      def limited_job_args(args)
-        return unless args.is_a?(Array)
-
-        total_length = 0
-        limited_args = args.take_while do |arg|
-          total_length += arg.to_json.length
-
-          total_length <= MAXIMUM_JOB_ARGUMENTS_LENGTH
-        end
-
-        limited_args.push('...') if total_length > MAXIMUM_JOB_ARGUMENTS_LENGTH
-
-        limited_args
       end
     end
   end

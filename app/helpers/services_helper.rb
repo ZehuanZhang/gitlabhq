@@ -51,21 +51,57 @@ module ServicesHelper
     end
   end
 
-  def service_save_button(service)
-    button_tag(class: 'btn btn-success', type: 'submit', disabled: service.deprecated?, data: { qa_selector: 'save_changes_button' }) do
+  def service_save_button
+    button_tag(class: 'btn btn-success', type: 'submit', data: { qa_selector: 'save_changes_button' }) do
       icon('spinner spin', class: 'hidden js-btn-spinner') +
         content_tag(:span, 'Save changes', class: 'js-btn-label')
     end
   end
 
-  def disable_fields_service?(service)
-    !current_controller?("admin/services") && service.deprecated?
+  def scoped_integrations_path
+    if @project.present?
+      project_settings_integrations_path(@project)
+    elsif @group.present?
+      group_settings_integrations_path(@group)
+    else
+      integrations_admin_application_settings_path
+    end
+  end
+
+  def scoped_integration_path(integration)
+    if @project.present?
+      project_service_path(@project, integration)
+    elsif @group.present?
+      group_settings_integration_path(@group, integration)
+    else
+      admin_application_settings_integration_path(integration)
+    end
+  end
+
+  def scoped_edit_integration_path(integration)
+    if @project.present?
+      edit_project_service_path(@project, integration)
+    elsif @group.present?
+      edit_group_settings_integration_path(@group, integration)
+    else
+      edit_admin_application_settings_integration_path(integration)
+    end
+  end
+
+  def scoped_test_integration_path(integration)
+    if @project.present?
+      test_project_settings_integration_path(@project, integration)
+    elsif @group.present?
+      test_group_settings_integration_path(@group, integration)
+    else
+      test_admin_application_settings_integration_path(integration)
+    end
   end
 
   extend self
 end
 
-ServicesHelper.prepend_if_ee('EE::ServicesHelper') # rubocop: disable Cop/InjectEnterpriseEditionModule
+ServicesHelper.prepend_if_ee('EE::ServicesHelper')
 
 # The methods in `EE::ServicesHelper` should be available as both instance and
 # class methods.

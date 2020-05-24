@@ -15,7 +15,7 @@ describe Gitlab::Metrics::Dashboard::ServiceSelector do
     context 'when just the dashboard path is provided' do
       let(:arguments) { { dashboard_path: '.gitlab/dashboards/test.yml' } }
 
-      it { is_expected.to be Metrics::Dashboard::ProjectDashboardService }
+      it { is_expected.to be Metrics::Dashboard::CustomDashboardService }
 
       context 'when the path is for the system dashboard' do
         let(:arguments) { { dashboard_path: system_dashboard_path } }
@@ -28,6 +28,12 @@ describe Gitlab::Metrics::Dashboard::ServiceSelector do
 
         it { is_expected.to be Metrics::Dashboard::PodDashboardService }
       end
+    end
+
+    context 'when the path is for the self monitoring dashboard' do
+      let(:arguments) { { dashboard_path: self_monitoring_dashboard_path } }
+
+      it { is_expected.to be Metrics::Dashboard::SelfMonitoringDashboardService }
     end
 
     context 'when the embedded flag is provided' do
@@ -91,6 +97,17 @@ describe Gitlab::Metrics::Dashboard::ServiceSelector do
         end
 
         it { is_expected.to be Metrics::Dashboard::GrafanaMetricEmbedService }
+      end
+
+      context 'with the embed defined in the arguments' do
+        let(:arguments) do
+          {
+            embedded: true,
+            embed_json: '{}'
+          }
+        end
+
+        it { is_expected.to be Metrics::Dashboard::TransientEmbedService }
       end
     end
   end

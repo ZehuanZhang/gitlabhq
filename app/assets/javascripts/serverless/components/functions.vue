@@ -74,10 +74,10 @@ export default {
 </script>
 
 <template>
-  <section id="serverless-functions">
+  <section id="serverless-functions" class="flex-grow">
     <gl-loading-icon
       v-if="checkingInstalled"
-      :size="2"
+      size="lg"
       class="prepend-top-default append-bottom-default"
     />
 
@@ -97,7 +97,7 @@ export default {
         </template>
         <gl-loading-icon
           v-if="isLoading"
-          :size="2"
+          size="lg"
           class="prepend-top-default append-bottom-default js-functions-loader"
         />
       </div>

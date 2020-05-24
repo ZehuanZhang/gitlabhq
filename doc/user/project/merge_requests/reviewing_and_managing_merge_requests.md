@@ -64,6 +64,15 @@ list.
 
 ![Merge request diff file navigation](img/merge_request_diff_file_navigation.png)
 
+### Merge requests commit navigation
+
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/18140) in GitLab 13.0.
+
+To seamlessly navigate among commits in a merge request, from the **Commits** tab, click one of
+the commits to open the single-commit view. From there, you can navigate among the commits
+by clicking the **Prev** and **Next** buttons on the top-right of the page or by using the
+<kbd>X</kbd> and <kbd>C</kbd> keyboard shortcuts.
+
 ### Incrementally expand merge request diffs
 
 By default, the diff shows only the parts of a file which are changed.
@@ -72,6 +81,10 @@ To view more unchanged lines above or below a change click on the
 to expand the entire file.
 
 ![Incrementally expand merge request diffs](img/incrementally_expand_merge_request_diffs_v12_2.png)
+
+[Introduced](https://gitlab.com/gitlab-org/gitlab/-/issues/205401) in GitLab 13.1, when viewing a
+merge request's **Changes** tab, if a certain file was only renamed, you can expand it to see the
+entire content by clicking **Show file contents**.
 
 ### Ignore whitespace changes in Merge Request diff view
 
@@ -87,7 +100,7 @@ whitespace changes.
 
 ## Perform inline code reviews
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/issues/13950) in GitLab 11.5.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/issues/13950) in GitLab 11.5.
 
 GitLab provides a way of leaving comments in any part of the file being changed
 in a Merge Request. To do so, click the **...** button in the gutter of the Merge Request diff UI to expand the diff lines and leave a comment, just as you would for a changed line.
@@ -102,7 +115,7 @@ you will be able to see:
 - Both pre and post-merge pipelines and the environment information if any.
 - Which deployments are in progress.
 
-If there's an [environment](../../../ci/environments.md) and the application is
+If there's an [environment](../../../ci/environments/index.md) and the application is
 successfully deployed to it, the deployed environment and the link to the
 Review App will be shown as well.
 
@@ -116,11 +129,11 @@ environment.
 Deployments that are ongoing will be shown, as well as the deploying/deployed state
 for environments. If it's the first time the branch is deployed, the link
 will return a `404` error until done. During the deployment, the stop button will
-be disabled. If the pipeline fails to deploy, the deployment info will be hidden.
+be disabled. If the pipeline fails to deploy, the deployment information will be hidden.
 
 ![Merge request pipeline](img/merge_request_pipeline.png)
 
-For more information, [read about pipelines](../../../ci/pipelines.md).
+For more information, [read about pipelines](../../../ci/pipelines/index.md).
 
 ### Merge when pipeline succeeds (MWPS)
 
@@ -128,7 +141,7 @@ Set a merge request that looks ready to merge to [merge automatically when CI pi
 
 ### Live preview with Review Apps
 
-If you configured [Review Apps](https://about.gitlab.com/product/review-apps/) for your project,
+If you configured [Review Apps](https://about.gitlab.com/stages-devops-lifecycle/review-apps/) for your project,
 you can preview the changes submitted to a feature-branch through a merge request
 in a per-branch basis. No need to checkout the branch, install and preview locally;
 all your changes will be available to preview by anyone with the Review Apps link.
@@ -200,7 +213,7 @@ project is a fork (even a private fork) of the target project.
 
 Add the following alias to your `~/.gitconfig`:
 
-```
+```plaintext
 [alias]
     mr = !sh -c 'git fetch $1 merge-requests/$2/head:mr-$1-$2 && git checkout mr-$1-$2' -
 ```
@@ -209,7 +222,7 @@ Now you can check out a particular merge request from any repository and any
 remote. For example, to check out the merge request with ID 5 as shown in GitLab
 from the `origin` remote, do:
 
-```
+```shell
 git mr origin 5
 ```
 
@@ -221,7 +234,7 @@ it out.
 Locate the section for your GitLab remote in the `.git/config` file. It looks
 like this:
 
-```
+```plaintext
 [remote "origin"]
   url = https://gitlab.com/gitlab-org/gitlab-foss.git
   fetch = +refs/heads/*:refs/remotes/origin/*
@@ -229,19 +242,19 @@ like this:
 
 You can open the file with:
 
-```
+```shell
 git config -e
 ```
 
 Now add the following line to the above section:
 
-```
+```plaintext
 fetch = +refs/merge-requests/*/head:refs/remotes/origin/merge-requests/*
 ```
 
 In the end, it should look like this:
 
-```
+```plaintext
 [remote "origin"]
   url = https://gitlab.com/gitlab-org/gitlab-foss.git
   fetch = +refs/heads/*:refs/remotes/origin/*
@@ -250,7 +263,7 @@ In the end, it should look like this:
 
 Now you can fetch all the merge requests:
 
-```
+```shell
 git fetch origin
 
 ...
@@ -262,7 +275,7 @@ From https://gitlab.com/gitlab-org/gitlab-foss.git
 
 And to check out a particular merge request:
 
-```
+```shell
 git checkout origin/merge-requests/1
 ```
 

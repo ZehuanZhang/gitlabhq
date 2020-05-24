@@ -18,7 +18,7 @@ module Gitlab
         :committed_date, :committer_name, :committer_email
       ].freeze
 
-      attr_accessor *SERIALIZE_KEYS # rubocop:disable Lint/AmbiguousOperator
+      attr_accessor(*SERIALIZE_KEYS)
 
       def ==(other)
         return false unless other.is_a?(Gitlab::Git::Commit)
@@ -57,11 +57,8 @@ module Gitlab
           # Already a commit?
           return commit_id if commit_id.is_a?(Gitlab::Git::Commit)
 
-          # Some weird thing?
-          return unless commit_id.is_a?(String)
-
           # This saves us an RPC round trip.
-          return if commit_id.include?(':')
+          return unless valid?(commit_id)
 
           commit = find_commit(repo, commit_id)
 
@@ -93,12 +90,15 @@ module Gitlab
         #   Commit.last_for_path(repo, 'master', 'Gemfile')
         #
         def last_for_path(repo, ref, path = nil)
+          # rubocop: disable Rails/FindBy
+          # This is not where..first from ActiveRecord
           where(
             repo: repo,
             ref: ref,
             path: path,
             limit: 1
           ).first
+          # rubocop: enable Rails/FindBy
         end
 
         # Get commits between two revspecs
@@ -130,8 +130,7 @@ module Gitlab
         #     :skip is the number of commits to skip
         #     :order is the commits order and allowed value is :none (default), :date,
         #        :topo, or any combination of them (in an array). Commit ordering types
-        #        are documented here:
-        #        http://www.rubydoc.info/github/libgit2/rugged/Rugged#SORT_NONE-constant)
+        #        are documented here: https://git-scm.com/docs/git-log#_commit_ordering
         def find_all(repo, options = {})
           wrapped_gitaly_errors do
             Gitlab::GitalyClient::CommitService.new(repo).find_all_commits(options)
@@ -254,7 +253,7 @@ module Gitlab
       end
 
       def no_commit_message
-        "--no commit message"
+        "No commit message"
       end
 
       def to_hash
@@ -428,6 +427,15 @@ module Gitlab
 
       def fetch_body_from_gitaly
         self.class.get_message(@repository, id)
+      end
+
+      def self.valid?(commit_id)
+        commit_id.is_a?(String) && !(
+          commit_id.start_with?('-') ||
+            commit_id.include?(':') ||
+            commit_id.include?("\x00") ||
+            commit_id.match?(/\s/)
+        )
       end
     end
   end

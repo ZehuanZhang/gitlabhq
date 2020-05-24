@@ -1,10 +1,9 @@
 <script>
-import { GlTooltipDirective, GlLink, GlButton } from '@gitlab/ui';
+import { GlTooltipDirective, GlLink, GlDeprecatedButton } from '@gitlab/ui';
 import { __, sprintf } from '~/locale';
 import CiIconBadge from './ci_badge_link.vue';
 import TimeagoTooltip from './time_ago_tooltip.vue';
 import UserAvatarImage from './user_avatar/user_avatar_image.vue';
-import LoadingButton from '~/vue_shared/components/loading_button.vue';
 
 /**
  * Renders header component for job and pipeline page based on UI mockups
@@ -19,8 +18,7 @@ export default {
     TimeagoTooltip,
     UserAvatarImage,
     GlLink,
-    GlButton,
-    LoadingButton,
+    GlDeprecatedButton,
   },
   directives: {
     GlTooltip: GlTooltipDirective,
@@ -47,11 +45,6 @@ export default {
       required: false,
       default: () => ({}),
     },
-    actions: {
-      type: Array,
-      required: false,
-      default: () => [],
-    },
     hasSidebarButton: {
       type: Boolean,
       required: false,
@@ -71,9 +64,6 @@ export default {
   },
 
   methods: {
-    onClickAction(action) {
-      this.$emit('actionClicked', action);
-    },
     onClickSidebarButton() {
       this.$emit('clickedSidebarButton');
     },
@@ -115,20 +105,10 @@ export default {
       </template>
     </section>
 
-    <section v-if="actions.length" class="header-action-buttons">
-      <template v-for="(action, i) in actions">
-        <loading-button
-          :key="i"
-          :loading="action.isLoading"
-          :disabled="action.isLoading"
-          :class="action.cssClass"
-          container-class="d-inline"
-          :label="action.label"
-          @click="onClickAction(action)"
-        />
-      </template>
+    <section v-if="$slots.default" class="header-action-buttons">
+      <slot></slot>
     </section>
-    <gl-button
+    <gl-deprecated-button
       v-if="hasSidebarButton"
       id="toggleSidebar"
       class="d-block d-sm-none
@@ -136,6 +116,6 @@ sidebar-toggle-btn js-sidebar-build-toggle js-sidebar-build-toggle-header"
       @click="onClickSidebarButton"
     >
       <i class="fa fa-angle-double-left" aria-hidden="true" aria-labelledby="toggleSidebar"> </i>
-    </gl-button>
+    </gl-deprecated-button>
   </header>
 </template>

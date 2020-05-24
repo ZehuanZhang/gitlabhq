@@ -3,13 +3,15 @@
 - **Write the code and the tests.**: As with any code, EE features should have
   good test coverage to prevent regressions.
 - **Write documentation.**: Add documentation to the `doc/` directory. Describe
-  the feature and include screenshots, if applicable.
+  the feature and include screenshots, if applicable. Indicate [what editions](documentation/styleguide.md#product-badges)
+  the feature applies to.
 - **Submit a MR to the `www-gitlab-com` project.**: Add the new feature to the
   [EE features list](https://about.gitlab.com/features/).
 
 ## Act as CE when unlicensed
 
-Since the implementation of [GitLab CE features to work with unlicensed EE instance][ee-as-ce]
+Since the implementation of
+[GitLab CE features to work with unlicensed EE instance](https://gitlab.com/gitlab-org/gitlab/-/issues/2500)
 GitLab Enterprise Edition should work like GitLab Community Edition
 when no license is active. So EE features always should be guarded by
 `project.feature_available?` or `group.feature_available?` (or
@@ -23,8 +25,6 @@ You can force GitLab to act as CE by either deleting the `ee/` directory or by
 setting the [`FOSS_ONLY` environment variable](https://gitlab.com/gitlab-org/gitlab/blob/master/config/helpers/is_ee_env.js)
 to something that evaluates as `true`. The same works for running tests
 (for example `FOSS_ONLY=1 yarn jest`).
-
-[ee-as-ce]: https://gitlab.com/gitlab-org/gitlab/issues/2500
 
 ## Separation of EE code
 
@@ -53,10 +53,8 @@ is applied not only to models. Here's a list of other examples:
 - `ee/app/views/foo/_bar.html.haml`
 
 This works because for every path that is present in CE's eager-load/auto-load
-paths, we add the same `ee/`-prepended path in [`config/application.rb`].
+paths, we add the same `ee/`-prepended path in [`config/application.rb`](https://gitlab.com/gitlab-org/gitlab/blob/925d3d4ebc7a2c72964ce97623ae41b8af12538d/config/application.rb#L42-52).
 This also applies to views.
-
-[`config/application.rb`]: https://gitlab.com/gitlab-org/gitlab/blob/925d3d4ebc7a2c72964ce97623ae41b8af12538d/config/application.rb#L42-52
 
 ### EE features based on CE features
 
@@ -114,7 +112,7 @@ There are a few gotchas with it:
   smaller methods. Or create a "hook" method that is empty in CE,
   and with the EE-specific implementation in EE.
 - when the original implementation contains a guard clause (e.g.
-  `return unless condition`), we cannot easily extend the behaviour by
+  `return unless condition`), we cannot easily extend the behavior by
   overriding the method, because we can't know when the overridden method
   (i.e. calling `super` in the overriding method) would want to stop early.
   In this case, we shouldn't just override it, but update the original method
@@ -134,7 +132,7 @@ There are a few gotchas with it:
   ```
 
   Instead of just overriding `Base#execute`, we should update it and extract
-  the behaviour into another method:
+  the behavior into another method:
 
   ```ruby
     class Base
@@ -350,6 +348,55 @@ resolve when you add the indentation to the equation.
 EE-specific views should be placed in `ee/app/views/`, using extra
 sub-directories if appropriate.
 
+### Code in `lib/gitlab/background_migration/`
+
+When you create EE-only background migrations, you have to plan for users that
+downgrade GitLab EE to CE. In other words, every EE-only migration has to be present in
+CE code but with no implementation, instead you need to extend it on EE side.
+
+GitLab CE:
+
+```ruby
+# lib/gitlab/background_migration/prune_orphaned_geo_events.rb
+
+module Gitlab
+  module BackgroundMigration
+    class PruneOrphanedGeoEvents
+      def perform(table_name)
+      end
+    end
+  end
+end
+
+Gitlab::BackgroundMigration::PruneOrphanedGeoEvents.prepend_if_ee('EE::Gitlab::BackgroundMigration::PruneOrphanedGeoEvents')
+```
+
+GitLab EE:
+
+```ruby
+# ee/lib/ee/gitlab/background_migration/prune_orphaned_geo_events.rb
+
+module EE
+  module Gitlab
+    module BackgroundMigration
+      module PruneOrphanedGeoEvents
+        extend ::Gitlab::Utils::Override
+
+        override :perform
+        def perform(table_name = EVENT_TABLES.first)
+          return if ::Gitlab::Database.read_only?
+
+          deleted_rows = prune_orphaned_rows(table_name)
+          table_name   = next_table(table_name) if deleted_rows.zero?
+
+          ::BackgroundMigrationWorker.perform_in(RESCHEDULE_DELAY, self.class.name.demodulize, table_name) if table_name
+        end
+      end
+    end
+  end
+end
+```
+
 #### Using `render_if_exists`
 
 Instead of using regular `render`, we should use `render_if_exists`, which
@@ -457,17 +504,17 @@ end
 Note that due to namespace differences, we need to use the full qualifier for some
 constants.
 
-#### EE params
+#### EE parameters
 
 We can define `params` and utilize `use` in another `params` definition to
-include params defined in EE. However, we need to define the "interface" first
+include parameters defined in EE. However, we need to define the "interface" first
 in CE in order for EE to override it. We don't have to do this in other places
 due to `prepend_if_ee`, but Grape is complex internally and we couldn't easily
 do that, so we'll follow regular object-oriented practices that we define the
 interface first here.
 
-For example, suppose we have a few more optional params for EE. We can move the
-params out of the `Grape::API` class to a helper module, so we can inject it
+For example, suppose we have a few more optional parameters for EE. We can move the
+parameters out of the `Grape::API` class to a helper module, so we can inject it
 before it would be used in the class.
 
 ```ruby
@@ -567,9 +614,9 @@ module EE
 end
 ```
 
-#### EE-specific behaviour
+#### EE-specific behavior
 
-Sometimes we need EE-specific behaviour in some of the APIs. Normally we could
+Sometimes we need EE-specific behavior in some of the APIs. Normally we could
 use EE methods to override CE methods, however API routes are not methods and
 therefore can't be simply overridden. We need to extract them into a standalone
 method, or introduce some "hooks" where we could inject behavior in the CE
@@ -835,7 +882,7 @@ information on managing page-specific JavaScript within EE.
 
 To separate Vue template differences we should [async import the components](https://vuejs.org/v2/guide/components-dynamic-async.html#Async-Components).
 
-Doing this allows for us to load the correct component in EE whilst in CE
+Doing this allows for us to load the correct component in EE while in CE
 we can load a empty component that renders nothing. This code **should**
 exist in the CE repository as well as the EE repository.
 
@@ -873,7 +920,7 @@ import mixin from 'ee_else_ce/path/mixin';
 - Computed Properties/methods and getters only used in the child import still need a counterpart in CE
 
 - For store modules, we will need a CE counterpart too.
-- You can see an MR with an example [here](https://gitlab.com/gitlab-org/gitlab/merge_requests/9762)
+- You can see an MR with an example [here](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/9762)
 
 #### `template` tag
 

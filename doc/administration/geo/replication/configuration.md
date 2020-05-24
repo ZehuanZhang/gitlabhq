@@ -5,7 +5,7 @@
 NOTE: **Note:**
 This is the final step in setting up a **secondary** Geo node. Stages of the
 setup process must be completed in the documented order.
-Before attempting the steps in this stage, [complete all prior stages][setup-geo-omnibus].
+Before attempting the steps in this stage, [complete all prior stages](index.md#using-omnibus-gitlab).
 
 The basic steps of configuring a **secondary** node are to:
 
@@ -25,12 +25,12 @@ Any change that requires access to the **Admin Area** needs to be done in the
 
 GitLab stores a number of secret values in the `/etc/gitlab/gitlab-secrets.json`
 file which *must* be the same on all nodes. Until there is
-a means of automatically replicating these between nodes (see [issue #3789](https://gitlab.com/gitlab-org/gitlab/issues/3789)),
+a means of automatically replicating these between nodes (see [issue #3789](https://gitlab.com/gitlab-org/gitlab/-/issues/3789)),
 they must be manually replicated to the **secondary** node.
 
 1. SSH into the **primary** node, and execute the command below:
 
-   ```sh
+   ```shell
    sudo cat /etc/gitlab/gitlab-secrets.json
    ```
 
@@ -38,20 +38,20 @@ they must be manually replicated to the **secondary** node.
 
 1. SSH into the **secondary** node and login as the `root` user:
 
-   ```sh
+   ```shell
    sudo -i
    ```
 
 1. Make a backup of any existing secrets:
 
-   ```sh
+   ```shell
    mv /etc/gitlab/gitlab-secrets.json /etc/gitlab/gitlab-secrets.json.`date +%F`
    ```
 
 1. Copy `/etc/gitlab/gitlab-secrets.json` from the **primary** node to the **secondary** node, or
    copy-and-paste the file contents between nodes:
 
-   ```sh
+   ```shell
    sudo editor /etc/gitlab/gitlab-secrets.json
 
    # paste the output of the `cat` command you ran on the primary
@@ -60,14 +60,14 @@ they must be manually replicated to the **secondary** node.
 
 1. Ensure the file permissions are correct:
 
-   ```sh
+   ```shell
    chown root:root /etc/gitlab/gitlab-secrets.json
    chmod 0600 /etc/gitlab/gitlab-secrets.json
    ```
 
 1. Reconfigure the **secondary** node for the change to take effect:
 
-   ```sh
+   ```shell
    gitlab-ctl reconfigure
    gitlab-ctl restart
    ```
@@ -77,7 +77,7 @@ they must be manually replicated to the **secondary** node.
 GitLab integrates with the system-installed SSH daemon, designating a user
 (typically named `git`) through which all access requests are handled.
 
-In a [Disaster Recovery] situation, GitLab system
+In a [Disaster Recovery](../disaster_recovery/index.md) situation, GitLab system
 administrators will promote a **secondary** node to the **primary** node. DNS records for the
 **primary** domain should also be updated to point to the new **primary** node
 (previously a **secondary** node). Doing so will avoid the need to update Git remotes and API URLs.
@@ -88,13 +88,13 @@ keys must be manually replicated to the **secondary** node.
 
 1. SSH into the **secondary** node and login as the `root` user:
 
-   ```sh
+   ```shell
    sudo -i
    ```
 
 1. Make a backup of any existing SSH host keys:
 
-   ```sh
+   ```shell
    find /etc/ssh -iname ssh_host_* -exec cp {} {}.backup.`date +%F` \;
    ```
 
@@ -102,14 +102,14 @@ keys must be manually replicated to the **secondary** node.
 
    If you can access your **primary** node using the **root** user:
 
-   ```sh
+   ```shell
    # Run this from the secondary node, change `<primary_node_fqdn>` for the IP or FQDN of the server
    scp root@<primary_node_fqdn>:/etc/ssh/ssh_host_*_key* /etc/ssh
    ```
 
-   If you only have access through a user with **sudo** privileges:
+   If you only have access through a user with `sudo` privileges:
 
-   ```sh
+   ```shell
    # Run this from your primary node:
    sudo tar --transform 's/.*\///g' -zcvf ~/geo-host-key.tar.gz /etc/ssh/ssh_host_*_key*
 
@@ -120,20 +120,20 @@ keys must be manually replicated to the **secondary** node.
 
 1. On your **secondary** node, ensure the file permissions are correct:
 
-   ```sh
+   ```shell
    chown root:root /etc/ssh/ssh_host_*_key*
    chmod 0600 /etc/ssh/ssh_host_*_key*
    ```
 
 1. To verify key fingerprint matches, execute the following command on both nodes:
 
-   ```sh
+   ```shell
    for file in /etc/ssh/ssh_host_*_key; do ssh-keygen -lf $file; done
    ```
 
    You should get an output similar to this one and they should be identical on both nodes:
 
-   ```sh
+   ```shell
    1024 SHA256:FEZX2jQa2bcsd/fn/uxBzxhKdx4Imc4raXrHwsbtP0M root@serverhostname (DSA)
    256 SHA256:uw98R35Uf+fYEQ/UnJD9Br4NXUFPv7JAUln5uHlgSeY root@serverhostname (ECDSA)
    256 SHA256:sqOUWcraZQKd89y/QQv/iynPTOGQxcOTIXU/LsoPmnM root@serverhostname (ED25519)
@@ -142,7 +142,7 @@ keys must be manually replicated to the **secondary** node.
 
 1. Verify that you have the correct public keys for the existing private keys:
 
-   ```sh
+   ```shell
    # This will print the fingerprint for private keys:
    for file in /etc/ssh/ssh_host_*_key; do ssh-keygen -lf $file; done
 
@@ -153,9 +153,9 @@ keys must be manually replicated to the **secondary** node.
    NOTE: **Note:**
    The output for private keys and public keys command should generate the same fingerprint.
 
-1. Restart sshd on your **secondary** node:
+1. Restart `sshd` on your **secondary** node:
 
-   ```sh
+   ```shell
    # Debian or Ubuntu installations
    sudo service ssh reload
 
@@ -167,11 +167,11 @@ keys must be manually replicated to the **secondary** node.
 
 1. SSH into your GitLab **secondary** server and login as root:
 
-   ```sh
+   ```shell
    sudo -i
    ```
 
-1. Edit `/etc/gitlab/gitlab.rb` and add a **unique** name for your node.  You will need this in the next steps:
+1. Edit `/etc/gitlab/gitlab.rb` and add a **unique** name for your node. You will need this in the next steps:
 
    ```ruby
    # The unique identifier for the Geo node.
@@ -180,11 +180,11 @@ keys must be manually replicated to the **secondary** node.
 
 1. Reconfigure the **secondary** node for the change to take effect:
 
-   ```sh
+   ```shell
    gitlab-ctl reconfigure
    ```
 
-1. Visit the **primary** node's **Admin Area > Geo**
+1. Visit the **primary** node's **{admin}** **Admin Area >** **{location-dot}** **Geo**
    (`/admin/geo/nodes`) in your browser.
 1. Click the **New node** button.
    ![Add secondary node](img/adding_a_secondary_node.png)
@@ -201,20 +201,20 @@ keys must be manually replicated to the **secondary** node.
 1. Click the **Add node** button to add the **secondary** node.
 1. SSH into your GitLab **secondary** server and restart the services:
 
-   ```sh
+   ```shell
    gitlab-ctl restart
    ```
 
    Check if there are any common issue with your Geo setup by running:
 
-   ```sh
+   ```shell
    gitlab-rake gitlab:geo:check
    ```
 
 1. SSH into your **primary** server and login as root to verify the
    **secondary** node is reachable or there are any common issue with your Geo setup:
 
-   ```sh
+   ```shell
    gitlab-rake gitlab:geo:check
    ```
 
@@ -231,7 +231,7 @@ You can login to the **secondary** node with the same credentials as used for th
 Using Hashed Storage significantly improves Geo replication. Project and group
 renames no longer require synchronization between nodes.
 
-1. Visit the **primary** node's **Admin Area > Settings > Repository**
+1. Visit the **primary** node's **{admin}** **Admin Area >** **{settings}** **Settings > Repository**
    (`/admin/application_settings/repository`) in your browser.
 1. In the **Repository storage** section, check **Use hashed storage paths for newly created and renamed projects**.
 
@@ -242,14 +242,14 @@ You can safely skip this step if your **primary** node uses a CA-issued HTTPS ce
 If your **primary** node is using a self-signed certificate for *HTTPS* support, you will
 need to add that certificate to the **secondary** node's trust store. Retrieve the
 certificate from the **primary** node and follow
-[these instructions][omnibus-ssl]
+[these instructions](https://docs.gitlab.com/omnibus/settings/ssl.html)
 on the **secondary** node.
 
 ### Step 6. Enable Git access over HTTP/HTTPS
 
 Geo synchronizes repositories over HTTP/HTTPS, and therefore requires this clone
-method to be enabled. Navigate to **Admin Area > Settings**
-(`/admin/application_settings`) on the **primary** node, and set
+method to be enabled. Navigate to **{admin}** **Admin Area >** **{settings}** **Settings**
+(`/admin/application_settings/general`) on the **primary** node, and set
 `Enabled Git access protocols` to `Both SSH and HTTP(S)` or `Only HTTP(S)`.
 
 ### Step 7. Verify proper functioning of the **secondary** node
@@ -257,13 +257,13 @@ method to be enabled. Navigate to **Admin Area > Settings**
 Your **secondary** node is now configured!
 
 You can login to the **secondary** node with the same credentials you used for the
-**primary** node. Visit the **secondary** node's **Admin Area > Geo**
+**primary** node. Visit the **secondary** node's **{admin}** **Admin Area >** **{location-dot}** **Geo**
 (`/admin/geo/nodes`) in your browser to check if it's correctly identified as a
 **secondary** Geo node and if Geo is enabled.
 
 The initial replication, or 'backfill', will probably still be in progress. You
-can monitor the synchronization process on each geo node from the **primary**
-node's Geo Nodes dashboard in your browser.
+can monitor the synchronization process on each Geo node from the **primary**
+node's **Geo Nodes** dashboard in your browser.
 
 ![Geo dashboard](img/geo_node_dashboard.png)
 
@@ -283,7 +283,7 @@ Please note that disabling a **secondary** node will stop the synchronization pr
 Please note that if `git_data_dirs` is customized on the **primary** node for multiple
 repository shards you must duplicate the same configuration on each **secondary** node.
 
-Point your users to the ["Using a Geo Server" guide][using-geo].
+Point your users to the ["Using a Geo Server" guide](using_a_geo_server.md).
 
 Currently, this is what is synced:
 
@@ -314,6 +314,17 @@ It is important to note that selective synchronization:
      Selective synchronization restrictions are implemented on the **secondary** nodes,
      not the **primary** node.
 
+### Git operations on unreplicated repositories
+
+> [Introduced](https://gitlab.com/groups/gitlab-org/-/epics/2562) in GitLab 12.10 for HTTP(S) and in GitLab 13.0 for SSH.
+
+Git clone, pull, and push operations over HTTP(S) and SSH are supported for repositories that
+exist on the **primary** node but not on **secondary** nodes. This situation can occur
+when:
+
+- Selective synchronization does not include the project attached to the repository.
+- The repository is actively being replicated but has not completed yet.
+
 ## Upgrading Geo
 
 See the [updating the Geo nodes document](updating_the_geo_nodes.md).
@@ -321,10 +332,3 @@ See the [updating the Geo nodes document](updating_the_geo_nodes.md).
 ## Troubleshooting
 
 See the [troubleshooting document](troubleshooting.md).
-
-[setup-geo-omnibus]: index.md#using-omnibus-gitlab
-[Hashed Storage]: ../../repository_storage_types.md
-[Disaster Recovery]: ../disaster_recovery/index.md
-[gitlab-com/infrastructure#2821]: https://gitlab.com/gitlab-com/infrastructure/issues/2821
-[omnibus-ssl]: https://docs.gitlab.com/omnibus/settings/ssl.html
-[using-geo]: using_a_geo_server.md

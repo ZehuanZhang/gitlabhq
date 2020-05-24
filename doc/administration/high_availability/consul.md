@@ -4,14 +4,17 @@ type: reference
 
 # Working with the bundled Consul service **(PREMIUM ONLY)**
 
-As part of its High Availability stack, GitLab Premium includes a bundled version of [Consul](https://www.consul.io/) that can be managed through `/etc/gitlab/gitlab.rb`.
+As part of its High Availability stack, GitLab Premium includes a bundled version of [Consul](https://www.consul.io/) that can be managed through `/etc/gitlab/gitlab.rb`. Consul is a service networking solution. When it comes to [GitLab Architecture](../../development/architecture.md), Consul utilization is supported for configuring:
+
+1. [Monitoring in Scaled and Highly Available environments](monitoring_node.md)
+1. [PostgreSQL High Availability with Omnibus](database.md#high-availability-with-omnibus-gitlab-premium-only)
 
 A Consul cluster consists of multiple server agents, as well as client agents that run on other nodes which need to talk to the Consul cluster.
 
 ## Prerequisites
 
 First, make sure to [download/install](https://about.gitlab.com/install/)
-GitLab Omnibus **on each node**.
+Omnibus GitLab **on each node**.
 
 Choose an installation method, then make sure you complete steps:
 
@@ -58,13 +61,13 @@ On each Consul node perform the following:
 Before moving on, make sure Consul is configured correctly. Run the following
 command to verify all server nodes are communicating:
 
-```sh
+```shell
 /opt/gitlab/embedded/bin/consul members
 ```
 
 The output should be similar to:
 
-```
+```plaintext
 Node                 Address               Status  Type    Build  Protocol  DC
 CONSUL_NODE_ONE      XXX.XXX.XXX.YYY:8301  alive   server  0.9.2  2         gitlab_consul
 CONSUL_NODE_TWO      XXX.XXX.XXX.YYY:8301  alive   server  0.9.2  2         gitlab_consul
@@ -80,8 +83,8 @@ check the [Troubleshooting section](#troubleshooting) before proceeding.
 
 To see which nodes are part of the cluster, run the following on any member in the cluster
 
-```
-# /opt/gitlab/embedded/bin/consul members
+```shell
+$ /opt/gitlab/embedded/bin/consul members
 Node            Address               Status  Type    Build  Protocol  DC
 consul-b        XX.XX.X.Y:8301        alive   server  0.9.0  2         gitlab_consul
 consul-c        XX.XX.X.Y:8301        alive   server  0.9.0  2         gitlab_consul
@@ -94,7 +97,8 @@ Ideally all nodes will have a `Status` of `alive`.
 
 ### Restarting the server cluster
 
-**Note**: This section only applies to server agents. It is safe to restart client agents whenever needed.
+NOTE: **Note:**
+This section only applies to server agents. It is safe to restart client agents whenever needed.
 
 If it is necessary to restart the server cluster, it is important to do this in a controlled fashion in order to maintain quorum. If quorum is lost, you will need to follow the Consul [outage recovery](#outage-recovery) process to recover the cluster.
 
@@ -106,7 +110,7 @@ For larger clusters, it is possible to restart multiple agents at a time. See th
 
 Nodes running GitLab-bundled Consul should be:
 
-- Members of a healthy cluster prior to upgrading the GitLab Omnibus package.
+- Members of a healthy cluster prior to upgrading the Omnibus GitLab package.
 - Upgraded one node at a time.
 
 NOTE: **NOTE:**
@@ -127,7 +131,7 @@ By default, the server agents will attempt to [bind](https://www.consul.io/docs/
 
 You will see messages like the following in `gitlab-ctl tail consul` output if you are running into this issue:
 
-```
+```plaintext
 2017-09-25_19:53:39.90821     2017/09/25 19:53:39 [WARN] raft: no known peers, aborting election
 2017-09-25_19:53:41.74356     2017/09/25 19:53:41 [ERR] agent: failed to sync remote state: No cluster leader
 ```
@@ -154,7 +158,7 @@ In the case that a node has multiple private IPs the agent be confused as to whi
 
 You will see messages like the following in `gitlab-ctl tail consul` output if you are running into this issue:
 
-```
+```plaintext
 2017-11-09_17:41:45.52876 ==> Starting Consul agent...
 2017-11-09_17:41:45.53057 ==> Error creating agent: Failed to get advertise address: Multiple private IPs found. Please configure one.
 ```
@@ -181,10 +185,10 @@ If you lost enough server agents in the cluster to break quorum, then the cluste
 
 By default, GitLab does not store anything in the Consul cluster that cannot be recreated. To erase the Consul database and reinitialize
 
-```
-# gitlab-ctl stop consul
-# rm -rf /var/opt/gitlab/consul/data
-# gitlab-ctl start consul
+```shell
+gitlab-ctl stop consul
+rm -rf /var/opt/gitlab/consul/data
+gitlab-ctl start consul
 ```
 
 After this, the cluster should start back up, and the server agents rejoin. Shortly after that, the client agents should rejoin as well.

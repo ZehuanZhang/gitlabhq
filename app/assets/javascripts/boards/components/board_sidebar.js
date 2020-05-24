@@ -2,6 +2,7 @@
 
 import $ from 'jquery';
 import Vue from 'vue';
+import { GlLabel } from '@gitlab/ui';
 import Flash from '~/flash';
 import { sprintf, __ } from '~/locale';
 import Sidebar from '~/right_sidebar';
@@ -22,6 +23,7 @@ export default Vue.extend({
   components: {
     AssigneeTitle,
     Assignees,
+    GlLabel,
     SidebarEpicsSelect: () =>
       import('ee_component/sidebar/components/sidebar_item_epics_select.vue'),
     RemoveBtn,
@@ -32,6 +34,7 @@ export default Vue.extend({
     currentUser: {
       type: Object,
       default: () => ({}),
+      required: false,
     },
   },
   data() {
@@ -48,7 +51,7 @@ export default Vue.extend({
       return Object.keys(this.issue).length;
     },
     milestoneTitle() {
-      return this.issue.milestone ? this.issue.milestone.title : __('No Milestone');
+      return this.issue.milestone ? this.issue.milestone.title : __('No milestone');
     },
     canRemove() {
       return !this.list.preset;
@@ -97,12 +100,14 @@ export default Vue.extend({
     eventHub.$on('sidebar.addAssignee', this.addAssignee);
     eventHub.$on('sidebar.removeAllAssignees', this.removeAllAssignees);
     eventHub.$on('sidebar.saveAssignees', this.saveAssignees);
+    eventHub.$on('sidebar.closeAll', this.closeSidebar);
   },
   beforeDestroy() {
     eventHub.$off('sidebar.removeAssignee', this.removeAssignee);
     eventHub.$off('sidebar.addAssignee', this.addAssignee);
     eventHub.$off('sidebar.removeAllAssignees', this.removeAllAssignees);
     eventHub.$off('sidebar.saveAssignees', this.saveAssignees);
+    eventHub.$off('sidebar.closeAll', this.closeSidebar);
   },
   mounted() {
     new IssuableContext(this.currentUser);
@@ -146,9 +151,6 @@ export default Vue.extend({
     },
     showScopedLabels(label) {
       return boardsStore.scopedLabels.enabled && isScopedLabel(label);
-    },
-    helpLink() {
-      return boardsStore.scopedLabels.helpLink;
     },
   },
 });

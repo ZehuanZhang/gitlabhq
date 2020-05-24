@@ -1,6 +1,9 @@
 ---
 last_updated: 2020-01-06
 type: reference, howto
+stage: Release
+group: Release Management
+info: To determine the technical writer assigned to the Stage/Group associated with this page, see https://about.gitlab.com/handbook/engineering/ux/technical-writing/#designated-technical-writers
 ---
 
 # Creating and Tweaking GitLab CI/CD for GitLab Pages
@@ -37,10 +40,10 @@ anything for them to work.
 Explaining [every detail of GitLab CI/CD](../../../ci/yaml/README.md)
 and GitLab Runner is out of the scope of this guide, but we'll
 need to understand just a few things to be able to write our own
-`.gitlab-ci.yml` or tweak an existing one. It's an
-[Yaml](https://docs.ansible.com/ansible/latest/reference_appendices/YAMLSyntax.html) file,
+`.gitlab-ci.yml` or tweak an existing one. It's a
+[YAML](https://docs.ansible.com/ansible/latest/reference_appendices/YAMLSyntax.html) file,
 with its own syntax. You can always check your CI syntax with
-the [GitLab CI Lint Tool](https://gitlab.com/ci/lint).
+the [GitLab CI/CD Lint Tool](https://gitlab.com/ci/lint).
 
 ## Practical example
 
@@ -48,19 +51,19 @@ Let's consider you have a [Jekyll](https://jekyllrb.com/) site.
 To build it locally, you would open your terminal, and run `jekyll build`.
 Of course, before building it, you had to install Jekyll in your computer.
 For that, you had to open your terminal and run `gem install jekyll`.
-Right? GitLab CI + GitLab Runner do the same thing. But you need to
+Right? GitLab CI/CD + GitLab Runner do the same thing. But you need to
 write in the `.gitlab-ci.yml` the script you want to run so
 GitLab Runner will do it for you. It looks more complicated than it
 is. What you need to tell the Runner:
 
-```sh
+```shell
 gem install jekyll
 jekyll build
 ```
 
 ### Script
 
-To transpose this script to Yaml, it would be like this:
+To transpose this script to YAML, it would be like this:
 
 ```yaml
 script:
@@ -144,7 +147,7 @@ pages:
 That's it! A `.gitlab-ci.yml` with the content above would deploy
 your Jekyll 3.4.0 site with GitLab Pages. This is the minimum
 configuration for our example. On the steps below, we'll refine
-the script by adding extra options to our GitLab CI.
+the script by adding extra options to our GitLab CI/CD.
 
 Artifacts will be automatically deleted once GitLab Pages got deployed.
 You can preserve artifacts for limited time by specifying the expiry time.
@@ -216,7 +219,7 @@ pages:
 Another interesting concept to keep in mind are build stages.
 Your web app can pass through a lot of tests and other tasks
 until it's deployed to staging or production environments.
-There are three default stages on GitLab CI: build, test,
+There are three default stages on GitLab CI/CD: build, test,
 and deploy. To specify which stage your _job_ is running,
 simply add another line to your CI:
 
@@ -279,7 +282,7 @@ parallel. So, if your web app needs more than one test
 before being deployed, you can run all your test at the
 same time, it's not necessary to wait one test to finish
 to run the other. Of course, this is just a brief
-introduction of GitLab CI and GitLab Runner, which are
+introduction of GitLab CI/CD and GitLab Runner, which are
 tools much more powerful than that. This is what you
 need to be able to create and tweak your builds for
 your GitLab Pages site.
@@ -364,27 +367,27 @@ from Jekyll `_config.yml` file, otherwise Jekyll will
 understand it as a regular directory to build
 together with the site:
 
-```yml
+```yaml
 exclude:
   - vendor
 ```
 
-There we go! Now our GitLab CI not only builds our website,
+There we go! Now our GitLab CI/CD not only builds our website,
 but also **continuously test** pushes to feature-branches,
 **caches** dependencies installed with Bundler, and
 **continuously deploy** every push to the `master` branch.
 
 ## Advanced GitLab CI for GitLab Pages
 
-What you can do with GitLab CI is pretty much up to your
+What you can do with GitLab CI/CD is pretty much up to your
 creativity. Once you get used to it, you start creating
 awesome scripts that automate most of tasks you'd do
 manually in the past. Read through the
-[documentation of GitLab CI](../../../ci/yaml/README.md)
+[documentation of GitLab CI/CD](../../../ci/yaml/README.md)
 to understand how to go even further on your scripts.
 
 - On this blog post, understand the concept of
-  [using GitLab CI `environments` to deploy your
+  [using GitLab CI/CD `environments` to deploy your
   web app to staging and production](https://about.gitlab.com/blog/2016/08/26/ci-deployment-and-environments/).
 - On this post, learn [how to run jobs sequentially,
   in parallel, or build a custom pipeline](https://about.gitlab.com/blog/2016/07/29/the-basics-of-gitlab-ci/)

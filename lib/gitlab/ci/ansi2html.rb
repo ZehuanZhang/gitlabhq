@@ -15,7 +15,7 @@ module Gitlab
         4 => 'blue',
         5 => 'magenta',
         6 => 'cyan',
-        7 => 'white', # not that this is gray in the dark (aka default) color table
+        7 => 'white' # not that this is gray in the dark (aka default) color table
       }.freeze
 
       STYLE_SWITCHES = {
@@ -353,7 +353,7 @@ module Gitlab
 
         def restore_state(new_state, stream)
           state = Base64.urlsafe_decode64(new_state)
-          state = JSON.parse(state, symbolize_names: true)
+          state = Gitlab::Json.parse(state, symbolize_names: true)
           return if state[:offset].to_i > stream.size
 
           STATE_PARAMS.each do |param|

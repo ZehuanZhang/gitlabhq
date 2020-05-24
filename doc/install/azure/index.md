@@ -21,7 +21,7 @@ First, you'll need an account on Azure. There are three ways to do this:
   services, exploring Microsoft's cloud for free. Even after the first 30 days, you never have to pay
   anything unless you decide to transition to paid services with a Pay-As-You-Go Azure subscription.
   This is a great way to try out Azure and cloud computing, and you can
-  [read more in their comprehensive FAQ][Azure-Free-Account-FAQ].
+  [read more in their comprehensive FAQ](https://azure.microsoft.com/en-us/free/free-account-faq/).
 - If you have an MSDN subscription, you can activate your Azure subscriber benefits. Your MSDN
   subscription gives you recurring Azure credits every month, so why not put those credits to use and
   try out GitLab right now?
@@ -73,7 +73,7 @@ The first items we need to configure are the basic settings of the underlying vi
    _(read the [SSH documentation](../../ssh/README.md) to learn more about how to set up SSH
    public keys)_
    1. If you chose **Password** - enter the password you wish to use _(this is the password that you
-   will use later in this tutorial to [SSH] into the VM, so make sure it's a strong password/passphrase)_
+   will use later in this tutorial to [SSH](https://en.wikipedia.org/wiki/Secure_Shell) into the VM, so make sure it's a strong password/passphrase)_
 
 1. Choose the appropriate `Subscription` tier for your Azure account
 1. Choose an existing `Resource Group` or create a new one - e.g. **"GitLab-CE-Azure"**
@@ -105,10 +105,10 @@ ahead and select this one, but please choose the size which best meets your own 
 
 ![Azure - Create Virtual Machine - Size](img/azure-create-virtual-machine-size.png)
 
-> **Note:** be aware that whilst your VM is active (known as "allocated"), it will incur
+> **Note:** be aware that while your VM is active (known as "allocated"), it will incur
 "compute charges" which, ultimately, you will be billed for. So, even if you're using the
 free trial credits, you'll likely want to learn
-[how to properly shutdown an Azure VM to save money](https://buildazure.com/properly-shutdown-azure-vm-to-save-money/).
+[how to properly shutdown an Azure VM to save money](https://build5nines.com/properly-shutdown-azure-vm-to-save-money/).
 
 Go ahead and click your chosen size, then click **"Select"** when you're ready to proceed to the
 next step.
@@ -177,7 +177,7 @@ Click **"Save"** for the changes to take effect.
 domain registrar which points to the public IP address of your Azure VM. If you do this, you'll need
 to make sure your VM is configured to use a _static_ public IP address (i.e. not a _dynamic_ one)
 or you will have to reconfigure the DNS `A` record each time Azure reassigns your VM a new public IP
-address. Read [IP address types and allocation methods in Azure][Azure-IP-Address-Types] to learn more.
+address. Read [IP address types and allocation methods in Azure](https://docs.microsoft.com/en-us/azure/virtual-network/virtual-network-ip-addresses-overview-arm) to learn more.
 
 ## Let's open some ports
 
@@ -216,7 +216,7 @@ ports to enable public internet access to two services in particular:
    public access to the instance of GitLab running on our VM.
 1. **SSH** (port 22) - opening port 22 will enable our VM to respond to SSH connection requests,
    allowing public access (with authentication) to remote terminal sessions
-   _(you'll see why we need [SSH] access to our VM [later on in this tutorial](#maintaining-your-gitlab-instance))_
+   _(you'll see why we need [SSH](https://en.wikipedia.org/wiki/Secure_Shell) access to our VM [later on in this tutorial](#maintaining-your-gitlab-instance))_
 
 ### Open HTTP on Port 80
 
@@ -226,19 +226,19 @@ connections:
 ![Azure - Add inbound security rules - HTTP](img/azure-add-inbound-sec-rule-http.png)
 
 1. Enter **"HTTP"** in the `Name` field
-1. Select **HTTP** from the options in the `Service` drop-down
+1. Select **HTTP** from the options in the `Service` dropdown list
 1. Make sure the `Action` is set to **Allow**
 1. Click **"OK"**
 
 ### Open SSH on Port 22
 
 Repeat the above process, adding a second Inbound security rule to open port 22, enabling our VM to
-accept [SSH] connections:
+accept [SSH](https://en.wikipedia.org/wiki/Secure_Shell) connections:
 
 ![Azure - Add inbound security rules - SSH](img/azure-add-inbound-sec-rule-ssh.png)
 
 1. Enter **"SSH"** in the `Name` field
-1. Select **SSH** from the options in the `Service` drop-down
+1. Select **SSH** from the options in the `Service` dropdown list
 1. Make sure the `Action` is set to **Allow**
 1. Click **"OK"**
 
@@ -327,7 +327,7 @@ process will still be the same.
 
 To perform an update, we need to connect directly to our Azure VM instance and run some commands
 from the terminal. Our Azure VM is actually a server running Linux (Ubuntu), so we'll need to
-connect to it using SSH ([Secure Shell][SSH]).
+connect to it using SSH ([Secure Shell](https://en.wikipedia.org/wiki/Secure_Shell)).
 
 If you're running Windows, you'll need to connect using [PuTTY](https://www.putty.org) or an equivalent Windows SSH client.
 If you're running Linux or macOS, then you already have an SSH client installed.
@@ -341,14 +341,14 @@ If you're running Linux or macOS, then you already have an SSH client installed.
 
 #### SSH from the command-line
 
-If you're running [SSH] from the command-line (terminal), then type in the following command to
+If you're running [SSH](https://en.wikipedia.org/wiki/Secure_Shell) from the command-line (terminal), then type in the following command to
 connect to your VM, substituting `username` and `your-azure-domain-name.com` for the correct values.
 
 Again, remember that your Azure VM domain name will be the one you
 [set up previously in the tutorial](#set-up-a-domain-name). If you didn't set up a domain name for
 your VM, you can use the IP address in its place in the following command:
 
-```bash
+```shell
 ssh username@your-azure-domain-name.com
 ```
 
@@ -356,15 +356,15 @@ Provide your password at the prompt to authenticate.
 
 #### SSH from Windows (PuTTY)
 
-If you're using [PuTTY](https://www.putty.org) in Windows as your [SSH] client, then you might want to take a quick
-read on [using PuTTY in Windows][Using-SSH-In-Putty].
+If you're using [PuTTY](https://www.putty.org) in Windows as your [SSH](https://en.wikipedia.org/wiki/Secure_Shell) client, then you might want to take a quick
+read on [using PuTTY in Windows](https://mediatemple.net/community/products/dv/204404604/using-ssh-in-putty-).
 
 ### Updating GitLab
 
 Once you've logged in via SSH, enter the following command to update GitLab to the latest
 version:
 
-```bash
+```shell
 sudo apt-get update && sudo apt-get install gitlab-ce
 ```
 
@@ -376,7 +376,7 @@ terminal window:
 
 Once the update process has completed, you'll see a message like this:
 
-```
+```plaintext
 Upgrade complete! If your GitLab server is misbehaving try running
 
    sudo gitlab-ctl restart
@@ -412,31 +412,16 @@ Check out our other [Technical Articles](../../articles/index.md) or browse the 
 
 ### Useful links
 
-- [GitLab Community Edition][CE]
-- [GitLab Enterprise Edition][EE]
-- [Microsoft Azure][Azure]
-  - [Azure - Free Account FAQ][Azure-Free-Account-FAQ]
+- [GitLab Community Edition](https://about.gitlab.com/features/)
+- [GitLab Enterprise Edition](https://about.gitlab.com/features/#ee-starter)
+- [Microsoft Azure](https://azure.microsoft.com/en-us/)
+  - [Azure - Free Account FAQ](https://azure.microsoft.com/en-us/free/free-account-faq/)
   - [Azure - Marketplace](https://azuremarketplace.microsoft.com/en-us/marketplace/)
-  - [Azure Portal][Azure-Portal]
-  - [Azure - Pricing Calculator][Azure-Pricing-Calculator]
+  - [Azure Portal](https://portal.azure.com)
+  - [Azure - Pricing Calculator](https://azure.microsoft.com/en-us/pricing/calculator/)
   - [Azure - Troubleshoot SSH Connections to an Azure Linux VM](https://docs.microsoft.com/en-us/azure/virtual-machines/troubleshooting/troubleshoot-ssh-connection)
-  - [Azure - Properly Shutdown an Azure VM](https://buildazure.com/properly-shutdown-azure-vm-to-save-money/)
-- [SSH], [PuTTY](https://www.putty.org) and [Using SSH in PuTTY][Using-SSH-In-Putty]
-
-[Original-Blog-Post]: https://about.gitlab.com/blog/2016/07/13/how-to-setup-a-gitlab-instance-on-microsoft-azure/ "How to Set up a GitLab Instance on Microsoft Azure"
-[CE]: https://about.gitlab.com/features/
-[EE]: https://about.gitlab.com/features/#ee-starter
-
-[Azure-Troubleshoot-Linux-VM]: https://docs.microsoft.com/en-us/azure/virtual-machines/linux/troubleshoot-app-connection "Troubleshoot application connectivity issues on a Linux virtual machine in Azure"
-[Azure-IP-Address-Types]: https://docs.microsoft.com/en-us/azure/virtual-network/virtual-network-ip-addresses-overview-arm "IP address types and allocation methods in Azure"
-[Azure-How-To-Open-Ports]: https://docs.microsoft.com/en-us/azure/virtual-machines/windows/nsg-quickstart-portal "How to open ports to a virtual machine with the Azure portal"
-[Azure]: https://azure.microsoft.com/en-us/
-[Azure-Free-Account-FAQ]: https://azure.microsoft.com/en-us/free/free-account-faq/
-[Azure-Portal]: https://portal.azure.com
-[Azure-Pricing-Calculator]: https://azure.microsoft.com/en-us/pricing/calculator/
-
-[SSH]: https://en.wikipedia.org/wiki/Secure_Shell
-[Using-SSH-In-Putty]: https://mediatemple.net/community/products/dv/204404604/using-ssh-in-putty-
+  - [Azure - Properly Shutdown an Azure VM](https://build5nines.com/properly-shutdown-azure-vm-to-save-money/)
+- [SSH](https://en.wikipedia.org/wiki/Secure_Shell), [PuTTY](https://www.putty.org) and [Using SSH in PuTTY](https://mediatemple.net/community/products/dv/204404604/using-ssh-in-putty-)
 
 <!-- ## Troubleshooting
 

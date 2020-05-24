@@ -7,37 +7,19 @@ the [Elasticsearch integration documentation](../integration/elasticsearch.md#en
 
 ## Deep Dive
 
-In June 2019, Mario de la Ossa hosted a [Deep Dive] on GitLab's [Elasticsearch integration] to share his domain specific knowledge with anyone who may work in this part of the code base in the future. You can find the [recording on YouTube], and the slides on [Google Slides] and in [PDF]. Everything covered in this deep dive was accurate as of GitLab 12.0, and while specific details may have changed since then, it should still serve as a good introduction.
+In June 2019, Mario de la Ossa hosted a Deep Dive (GitLab team members only: `https://gitlab.com/gitlab-org/create-stage/issues/1`) on GitLab's [Elasticsearch integration](../integration/elasticsearch.md) to share his domain specific knowledge with anyone who may work in this part of the code base in the future. You can find the [recording on YouTube](https://www.youtube.com/watch?v=vrvl-tN2EaA), and the slides on [Google Slides](https://docs.google.com/presentation/d/1H-pCzI_LNrgrL5pJAIQgvLX8Ji0-jIKOg1QeJQzChug/edit) and in [PDF](https://gitlab.com/gitlab-org/create-stage/uploads/c5aa32b6b07476fa8b597004899ec538/Elasticsearch_Deep_Dive.pdf). Everything covered in this deep dive was accurate as of GitLab 12.0, and while specific details may have changed since then, it should still serve as a good introduction.
 
-[Deep Dive]: https://gitlab.com/gitlab-org/create-stage/issues/1
-[Elasticsearch integration]: ../integration/elasticsearch.md
-[recording on YouTube]: https://www.youtube.com/watch?v=vrvl-tN2EaA
-[Google Slides]: https://docs.google.com/presentation/d/1H-pCzI_LNrgrL5pJAIQgvLX8Ji0-jIKOg1QeJQzChug/edit
-[PDF]: https://gitlab.com/gitlab-org/create-stage/uploads/c5aa32b6b07476fa8b597004899ec538/Elasticsearch_Deep_Dive.pdf
+## Supported Versions
 
-## Initial installation on OS X
+See [Version Requirements](../integration/elasticsearch.md#version-requirements).
 
-It is recommended to use the Docker image. After installing docker you can immediately spin up an instance with
+Developers making significant changes to Elasticsearch queries should test their features against all our supported versions.
 
-```
-docker run --name elastic56 -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:5.6.12
-```
+## Setting up development environment
 
-and use `docker stop elastic56` and `docker start elastic56` to stop/start it.
+See the [Elasticsearch GDK setup instructions](https://gitlab.com/gitlab-org/gitlab-development-kit/blob/master/doc/howto/elasticsearch.md)
 
-### Installing on the host
-
-We currently only support Elasticsearch [5.6 to 6.x](../integration/elasticsearch.md#version-requirements)
-
-Version 5.6 is available on homebrew and is the recommended version to use in order to test compatibility.
-
-```
-brew install elasticsearch@5.6
-```
-
-There is no need to install any plugins
-
-## Helpful rake tasks
+## Helpful Rake tasks
 
 - `gitlab:elastic:test:index_size`: Tells you how much space the current index is using, as well as how many documents are in the index.
 - `gitlab:elastic:test:index_size_change`: Outputs index size, reindexes, and outputs index size again. Useful when testing improvements to indexing size.
@@ -46,15 +28,15 @@ Additionally, if you need large repos or multiple forks for testing, please cons
 
 ## How does it work?
 
-The Elasticsearch integration depends on an external indexer. We ship an [indexer written in Go](https://gitlab.com/gitlab-org/gitlab-elasticsearch-indexer). The user must trigger the initial indexing via a rake task but, after this is done, GitLab itself will trigger reindexing when required via `after_` callbacks on create, update, and destroy that are inherited from [/ee/app/models/concerns/elastic/application_versioned_search.rb](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/app/models/concerns/elastic/application_versioned_search.rb).
+The Elasticsearch integration depends on an external indexer. We ship an [indexer written in Go](https://gitlab.com/gitlab-org/gitlab-elasticsearch-indexer). The user must trigger the initial indexing via a Rake task but, after this is done, GitLab itself will trigger reindexing when required via `after_` callbacks on create, update, and destroy that are inherited from [/ee/app/models/concerns/elastic/application_versioned_search.rb](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/app/models/concerns/elastic/application_versioned_search.rb).
 
-All indexing after the initial one is done via `ElasticIndexerWorker` (Sidekiq jobs).
+After initial indexing is complete, create, update, and delete operations for all models except projects (see [#207494](https://gitlab.com/gitlab-org/gitlab/-/issues/207494)) are tracked in a Redis [`ZSET`](https://redis.io/topics/data-types#sorted-sets). A regular `sidekiq-cron` `ElasticIndexBulkCronWorker` processes this queue, updating many Elasticsearch documents at a time with the [Bulk Request API](https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html).
 
 Search queries are generated by the concerns found in [ee/app/models/concerns/elastic](https://gitlab.com/gitlab-org/gitlab/tree/master/ee/app/models/concerns/elastic). These concerns are also in charge of access control, and have been a historic source of security bugs so please pay close attention to them!
 
 ## Existing Analyzers/Tokenizers/Filters
 
-These are all defined in <https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/elasticsearch/git/model.rb>
+These are all defined in [ee/lib/elastic/latest/config.rb](https://gitlab.com/gitlab-org/gitlab/blob/master/ee/lib/elastic/latest/config.rb)
 
 ### Analyzers
 
@@ -72,11 +54,14 @@ Please see the `sha_tokenizer` explanation later below for an example.
 
 #### `code_analyzer`
 
-Used when indexing a blob's filename and content. Uses the `whitespace` tokenizer and the filters: `code`, `edgeNGram_filter`, `lowercase`, and `asciifolding`
+Used when indexing a blob's filename and content. Uses the `whitespace` tokenizer and the filters: [`code`](#code), [`edgeNGram_filter`](#edgengram_filter), `lowercase`, and `asciifolding`
 
 The `whitespace` tokenizer was selected in order to have more control over how tokens are split. For example the string `Foo::bar(4)` needs to generate tokens like `Foo` and `bar(4)` in order to be properly searched.
 
 Please see the `code` filter for an explanation on how tokens are split.
+
+NOTE: **Known Issues**:
+Currently the [Elasticsearch code_analyzer doesn't account for all code cases](../integration/elasticsearch.md#known-issues).
 
 #### `code_search_analyzer`
 
@@ -196,7 +181,7 @@ If the current version is `v12p1`, and we need to create a new version for `v12p
 
 You might get an error such as
 
-```
+```plaintext
 [2018-10-31T15:54:19,762][WARN ][o.e.c.r.a.DiskThresholdMonitor] [pval5Ct]
    flood stage disk watermark [95%] exceeded on
    [pval5Ct7SieH90t5MykM5w][pval5Ct][/usr/local/var/lib/elasticsearch/nodes/0] free: 56.2gb[3%],
@@ -205,22 +190,22 @@ You might get an error such as
 
 This is because you've exceeded the disk space threshold - it thinks you don't have enough disk space left, based on the default 95% threshold.
 
-In addition, the `read_only_allow_delete` setting will be set to `true`.  It will block indexing, `forcemerge`, etc
+In addition, the `read_only_allow_delete` setting will be set to `true`. It will block indexing, `forcemerge`, etc
 
-```
+```shell
 curl "http://localhost:9200/gitlab-development/_settings?pretty"
 ```
 
 Add this to your `elasticsearch.yml` file:
 
-```
+```yaml
 # turn off the disk allocator
 cluster.routing.allocation.disk.threshold_enabled: false
 ```
 
 _or_
 
-```
+```yaml
 # set your own limits
 cluster.routing.allocation.disk.threshold_enabled: true
 cluster.routing.allocation.disk.watermark.flood_stage: 5gb   # ES 6.x only

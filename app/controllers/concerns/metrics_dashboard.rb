@@ -5,6 +5,7 @@
 module MetricsDashboard
   include RenderServiceResults
   include ChecksCollaboration
+  include EnvironmentsHelper
 
   extend ActiveSupport::Concern
 
@@ -15,8 +16,9 @@ module MetricsDashboard
       metrics_dashboard_params.to_h.symbolize_keys
     )
 
-    if include_all_dashboards? && result
-      result[:all_dashboards] = all_dashboards
+    if result
+      result[:all_dashboards] = all_dashboards if include_all_dashboards?
+      result[:metrics_data] = metrics_data(project_for_dashboard, environment_for_dashboard)
     end
 
     respond_to do |format|
@@ -33,10 +35,9 @@ module MetricsDashboard
   private
 
   def all_dashboards
-    dashboards = dashboard_finder.find_all_paths(project_for_dashboard)
-    dashboards.map do |dashboard|
-      amend_dashboard(dashboard)
-    end
+    dashboard_finder
+      .find_all_paths(project_for_dashboard)
+      .map(&method(:amend_dashboard))
   end
 
   def amend_dashboard(dashboard)
@@ -44,8 +45,14 @@ module MetricsDashboard
 
     dashboard[:can_edit] = project_dashboard ? can_edit?(dashboard) : false
     dashboard[:project_blob_path] = project_dashboard ? dashboard_project_blob_path(dashboard) : nil
+    dashboard[:starred] = starred_dashboards.include?(dashboard[:path])
+    dashboard[:user_starred_path] = project_for_dashboard ? user_starred_path(project_for_dashboard, dashboard[:path]) : nil
 
     dashboard
+  end
+
+  def user_starred_path(project, path)
+    expose_path(api_v4_projects_metrics_user_starred_dashboards_path(id: project.id, params: { dashboard_path: path }))
   end
 
   def dashboard_project_blob_path(dashboard)
@@ -71,15 +78,33 @@ module MetricsDashboard
     ::Gitlab::Metrics::Dashboard::Finder
   end
 
+  def starred_dashboards
+    @starred_dashboards ||= begin
+      if project_for_dashboard.present?
+        ::Metrics::UsersStarredDashboardsFinder
+          .new(user: current_user, project: project_for_dashboard)
+          .execute
+          .map(&:dashboard_path)
+          .to_set
+      else
+        Set.new
+      end
+    end
+  end
+
   # Project is not defined for group and admin level clusters.
   def project_for_dashboard
     defined?(project) ? project : nil
   end
 
+  def environment_for_dashboard
+    defined?(environment) ? environment : nil
+  end
+
   def dashboard_success_response(result)
     {
       status: :ok,
-      json: result.slice(:all_dashboards, :dashboard, :status)
+      json: result.slice(:all_dashboards, :dashboard, :status, :metrics_data)
     }
   end
 

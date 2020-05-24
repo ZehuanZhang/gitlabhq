@@ -1,5 +1,11 @@
 import { getChangesCountForFiles, filePathMatches } from './utils';
-import { activityBarViews, packageJsonPath } from '../constants';
+import {
+  leftSidebarViews,
+  packageJsonPath,
+  PERMISSION_READ_MR,
+  PERMISSION_CREATE_MR,
+  PERMISSION_PUSH_CODE,
+} from '../constants';
 
 export const activeFile = state => state.openFiles.find(file => file.active) || null;
 
@@ -69,9 +75,11 @@ export const getOpenFile = state => path => state.openFiles.find(f => f.path ===
 export const lastOpenedFile = state =>
   [...state.changedFiles, ...state.stagedFiles].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)[0];
 
-export const isEditModeActive = state => state.currentActivityView === activityBarViews.edit;
-export const isCommitModeActive = state => state.currentActivityView === activityBarViews.commit;
-export const isReviewModeActive = state => state.currentActivityView === activityBarViews.review;
+export const isEditModeActive = state => state.currentActivityView === leftSidebarViews.edit.name;
+export const isCommitModeActive = state =>
+  state.currentActivityView === leftSidebarViews.commit.name;
+export const isReviewModeActive = state =>
+  state.currentActivityView === leftSidebarViews.review.name;
 
 export const someUncommittedChanges = state =>
   Boolean(state.changedFiles.length || state.stagedFiles.length);
@@ -113,8 +121,9 @@ export const packageJson = state => state.entries[packageJsonPath];
 export const isOnDefaultBranch = (_state, getters) =>
   getters.currentProject && getters.currentProject.default_branch === getters.branchName;
 
-export const canPushToBranch = (_state, getters) =>
-  getters.currentBranch && getters.currentBranch.can_push;
+export const canPushToBranch = (_state, getters) => {
+  return Boolean(getters.currentBranch ? getters.currentBranch.can_push : getters.canPushCode);
+};
 
 export const isFileDeletedAndReadded = (state, getters) => path => {
   const stagedFile = getters.getStagedFile(path);
@@ -141,5 +150,14 @@ export const getDiffInfo = (state, getters) => path => {
   };
 };
 
-// prevent babel-plugin-rewire from generating an invalid default during karma tests
-export default () => {};
+export const findProjectPermissions = (state, getters) => projectId =>
+  getters.findProject(projectId)?.userPermissions || {};
+
+export const canReadMergeRequests = (state, getters) =>
+  Boolean(getters.findProjectPermissions(state.currentProjectId)[PERMISSION_READ_MR]);
+
+export const canCreateMergeRequests = (state, getters) =>
+  Boolean(getters.findProjectPermissions(state.currentProjectId)[PERMISSION_CREATE_MR]);
+
+export const canPushCode = (state, getters) =>
+  Boolean(getters.findProjectPermissions(state.currentProjectId)[PERMISSION_PUSH_CODE]);

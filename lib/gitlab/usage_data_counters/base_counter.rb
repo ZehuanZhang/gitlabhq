@@ -14,18 +14,26 @@ module Gitlab::UsageDataCounters
       end
 
       def count(event)
-        increment(redis_key event)
+        increment(redis_key(event))
       end
 
       def read(event)
-        total_count(redis_key event)
+        total_count(redis_key(event))
       end
 
       def totals
-        known_events.map { |e| ["#{prefix}_#{e}".to_sym, read(e)] }.to_h
+        known_events.map { |event| [counter_key(event), read(event)] }.to_h
+      end
+
+      def fallback_totals
+        known_events.map { |event| [counter_key(event), -1] }.to_h
       end
 
       private
+
+      def counter_key(event)
+        "#{prefix}_#{event}".to_sym
+      end
 
       def known_events
         self::KNOWN_EVENTS

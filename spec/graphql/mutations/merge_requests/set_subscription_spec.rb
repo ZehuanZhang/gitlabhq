@@ -7,7 +7,9 @@ describe Mutations::MergeRequests::SetSubscription do
   let(:project) { merge_request.project }
   let(:user) { create(:user) }
 
-  subject(:mutation) { described_class.new(object: nil, context: { current_user: user }) }
+  subject(:mutation) { described_class.new(object: nil, context: { current_user: user }, field: nil) }
+
+  specify { expect(described_class).to require_graphql_authorizations(:update_merge_request) }
 
   describe '#resolve' do
     let(:subscribe) { true }

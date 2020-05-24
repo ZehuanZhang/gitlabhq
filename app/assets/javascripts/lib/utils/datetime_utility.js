@@ -1,5 +1,5 @@
 import $ from 'jquery';
-import _ from 'underscore';
+import { isString, mapValues, isNumber, reduce } from 'lodash';
 import * as timeago from 'timeago.js';
 import dateFormat from 'dateformat';
 import { languageCode, s__, __, n__ } from '../../locale';
@@ -57,6 +57,19 @@ export const getMonthNames = abbreviated => {
 export const pad = (val, len = 2) => `0${val}`.slice(-len);
 
 /**
+ * Returns i18n weekday names array.
+ */
+export const getWeekdayNames = () => [
+  __('Sunday'),
+  __('Monday'),
+  __('Tuesday'),
+  __('Wednesday'),
+  __('Thursday'),
+  __('Friday'),
+  __('Saturday'),
+];
+
+/**
  * Given a date object returns the day of the week in English
  * @param {date} date
  * @returns {String}
@@ -79,7 +92,7 @@ export const getDayName = date =>
  * @returns {String}
  */
 export const formatDate = (datetime, format = 'mmm d, yyyy h:MMtt Z') => {
-  if (_.isString(datetime) && datetime.match(/\d+-\d+\d+ /)) {
+  if (isString(datetime) && datetime.match(/\d+-\d+\d+ /)) {
     throw new Error(__('Invalid date'));
   }
   return dateFormat(datetime, format);
@@ -175,6 +188,7 @@ export const localTimeAgo = ($timeagoEls, setTimeago = true) => {
   function addTimeAgoTooltip() {
     $timeagoEls.each((i, el) => {
       // Recreate with custom template
+      el.setAttribute('title', formatDate(el.dateTime));
       $(el).tooltip({
         template:
           '<div class="tooltip local-timeago" role="tooltip"><div class="arrow"></div><div class="tooltip-inner"></div></div>',
@@ -496,7 +510,7 @@ export const parseSeconds = (
 
   let unorderedMinutes = Math.abs(seconds / SECONDS_PER_MINUTE);
 
-  return _.mapObject(timePeriodConstraints, minutesPerPeriod => {
+  return mapValues(timePeriodConstraints, minutesPerPeriod => {
     if (minutesPerPeriod === 0) {
       return 0;
     }
@@ -515,7 +529,7 @@ export const parseSeconds = (
  * If the 'fullNameFormat' param is passed it returns a non condensed string eg '1 week 3 days'
  */
 export const stringifyTime = (timeObject, fullNameFormat = false) => {
-  const reducedTime = _.reduce(
+  const reducedTime = reduce(
     timeObject,
     (memo, unitValue, unitName) => {
       const isNonZero = Boolean(unitValue);
@@ -564,6 +578,14 @@ export const getDateInPast = (date, daysInPast) =>
  */
 export const getDateInFuture = (date, daysInFuture) =>
   new Date(newDate(date).setDate(date.getDate() + daysInFuture));
+
+/**
+ * Checks if a given date-instance was created with a valid date
+ *
+ * @param  {Date} date
+ * @returns boolean
+ */
+export const isValidDate = date => date instanceof Date && !Number.isNaN(date.getTime());
 
 /*
  * Appending T00:00:00 makes JS assume local time and prevents it from shifting the date
@@ -641,7 +663,7 @@ export const dayAfter = date => new Date(newDate(date).setDate(date.getDate() + 
  * @return {String} approximated time
  */
 export const approximateDuration = (seconds = 0) => {
-  if (!_.isNumber(seconds) || seconds < 0) {
+  if (!isNumber(seconds) || seconds < 0) {
     return '';
   }
 

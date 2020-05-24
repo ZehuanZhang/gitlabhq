@@ -1,5 +1,5 @@
 <script>
-import _ from 'underscore';
+import { escape } from 'lodash';
 import axios from '~/lib/utils/axios_utils';
 import createFlash from '~/flash';
 import DeprecatedModal2 from '~/vue_shared/components/deprecated_modal_2.vue';
@@ -37,7 +37,8 @@ export default {
     text() {
       return sprintf(
         s__(`Labels|Promoting %{labelTitle} will make it available for all projects inside %{groupName}.
-        Existing project labels with the same title will be merged. This action cannot be reversed.`),
+        Existing project labels with the same title will be merged. If a group label with the same title exists,
+        it will also be merged. This action cannot be reversed.`),
         {
           labelTitle: this.labelTitle,
           groupName: this.groupName,
@@ -48,7 +49,7 @@ export default {
       const label = `<span
           class="label color-label"
           style="background-color: ${this.labelColor}; color: ${this.labelTextColor};"
-        >${_.escape(this.labelTitle)}</span>`;
+        >${escape(this.labelTitle)}</span>`;
 
       return sprintf(
         s__('Labels|<span>Promote label</span> %{labelTitle} <span>to Group Label?</span>'),

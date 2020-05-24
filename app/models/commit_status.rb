@@ -7,14 +7,16 @@ class CommitStatus < ApplicationRecord
   include Presentable
   include EnumWithNil
 
-  prepend_if_ee('::EE::CommitStatus') # rubocop: disable Cop/InjectEnterpriseEditionModule
-
   self.table_name = 'ci_builds'
 
   belongs_to :user
   belongs_to :project
   belongs_to :pipeline, class_name: 'Ci::Pipeline', foreign_key: :commit_id
   belongs_to :auto_canceled_by, class_name: 'Ci::Pipeline'
+
+  has_many :needs, class_name: 'Ci::BuildNeed', foreign_key: :build_id, inverse_of: :build
+
+  enum scheduling_type: { stage: 0, dag: 1 }, _prefix: true
 
   delegate :commit, to: :pipeline
   delegate :sha, :short_sha, :before_sha, to: :pipeline
@@ -40,6 +42,7 @@ class CommitStatus < ApplicationRecord
   scope :latest, -> { where(retried: [false, nil]) }
   scope :retried, -> { where(retried: true) }
   scope :ordered, -> { order(:name) }
+  scope :ordered_by_stage, -> { order(stage_idx: :asc) }
   scope :latest_ordered, -> { latest.ordered.includes(project: :namespace) }
   scope :retried_ordered, -> { retried.ordered.includes(project: :namespace) }
   scope :before_stage, -> (index) { where('stage_idx < ?', index) }
@@ -57,16 +60,20 @@ class CommitStatus < ApplicationRecord
     preload(:project, :user)
   end
 
-  scope :with_needs, -> (names = nil) do
-    needs = Ci::BuildNeed.scoped_build.select(1)
-    needs = needs.where(name: names) if names
-    where('EXISTS (?)', needs).preload(:needs)
+  scope :with_project_preload, -> do
+    preload(project: :namespace)
   end
 
-  scope :without_needs, -> (names = nil) do
-    needs = Ci::BuildNeed.scoped_build.select(1)
-    needs = needs.where(name: names) if names
-    where('NOT EXISTS (?)', needs)
+  scope :match_id_and_lock_version, -> (items) do
+    # it expects that items are an array of attributes to match
+    # each hash needs to have `id` and `lock_version`
+    or_conditions = items.inject(none) do |relation, item|
+      match = CommitStatus.default_scoped.where(item.slice(:id, :lock_version))
+
+      relation.or(match)
+    end
+
+    merge(or_conditions)
   end
 
   # We use `CommitStatusEnums.failure_reasons` here so that EE can more easily
@@ -84,6 +91,16 @@ class CommitStatus < ApplicationRecord
       self.run_after_commit { StageUpdateWorker.perform_async(stage.id) }
     end
     # rubocop: enable CodeReuse/ServiceClass
+  end
+
+  before_save if: :status_changed?, unless: :importing? do
+    if Feature.disabled?(:ci_atomic_processing, project)
+      self.processed = nil
+    elsif latest?
+      self.processed = false # force refresh of all dependent ones
+    elsif retried?
+      self.processed = true # retried are considered to be already processed
+    end
   end
 
   state_machine :status do
@@ -119,15 +136,15 @@ class CommitStatus < ApplicationRecord
     end
 
     before_transition [:created, :waiting_for_resource, :preparing, :skipped, :manual, :scheduled] => :pending do |commit_status|
-      commit_status.queued_at = Time.now
+      commit_status.queued_at = Time.current
     end
 
     before_transition [:created, :preparing, :pending] => :running do |commit_status|
-      commit_status.started_at = Time.now
+      commit_status.started_at = Time.current
     end
 
     before_transition any => [:success, :failed, :canceled] do |commit_status|
-      commit_status.finished_at = Time.now
+      commit_status.finished_at = Time.current
     end
 
     before_transition any => :failed do |commit_status, transition|
@@ -136,19 +153,13 @@ class CommitStatus < ApplicationRecord
     end
 
     after_transition do |commit_status, transition|
-      next unless commit_status.project
       next if transition.loopback?
+      next if commit_status.processed?
+      next unless commit_status.project
 
       commit_status.run_after_commit do
-        if pipeline_id
-          if complete? || manual?
-            PipelineProcessWorker.perform_async(pipeline_id, [id])
-          else
-            PipelineUpdateWorker.perform_async(pipeline_id)
-          end
-        end
+        schedule_stage_and_pipeline_update
 
-        StageUpdateWorker.perform_async(stage_id)
         ExpireJobCacheWorker.perform_async(id)
       end
     end
@@ -169,12 +180,21 @@ class CommitStatus < ApplicationRecord
     select(:name)
   end
 
-  def self.status_for_prior_stages(index)
-    before_stage(index).latest.slow_composite_status || 'success'
+  def self.status_for_prior_stages(index, project:)
+    before_stage(index).latest.slow_composite_status(project: project) || 'success'
   end
 
-  def self.status_for_names(names)
-    where(name: names).latest.slow_composite_status || 'success'
+  def self.status_for_names(names, project:)
+    where(name: names).latest.slow_composite_status(project: project) || 'success'
+  end
+
+  def self.update_as_processed!
+    # Marks items as processed, and increases `lock_version` (Optimisitc Locking)
+    update_all('processed=TRUE, lock_version=COALESCE(lock_version,0)+1')
+  end
+
+  def self.locking_enabled?
+    false
   end
 
   def locking_enabled?
@@ -191,6 +211,10 @@ class CommitStatus < ApplicationRecord
 
   def duration
     calculate_duration
+  end
+
+  def latest?
+    !retried?
   end
 
   def playable?
@@ -244,4 +268,31 @@ class CommitStatus < ApplicationRecord
       v =~ /\d+/ ? v.to_i : v
     end
   end
+
+  def recoverable?
+    failed? && !unrecoverable_failure?
+  end
+
+  private
+
+  def unrecoverable_failure?
+    script_failure? || missing_dependency_failure? || archived_failure? || scheduler_failure? || data_integrity_failure?
+  end
+
+  def schedule_stage_and_pipeline_update
+    if Feature.enabled?(:ci_atomic_processing, project)
+      # Atomic Processing requires only single Worker
+      PipelineProcessWorker.perform_async(pipeline_id, [id])
+    else
+      if complete? || manual?
+        PipelineProcessWorker.perform_async(pipeline_id, [id])
+      else
+        PipelineUpdateWorker.perform_async(pipeline_id)
+      end
+
+      StageUpdateWorker.perform_async(stage_id)
+    end
+  end
 end
+
+CommitStatus.prepend_if_ee('::EE::CommitStatus')

@@ -42,7 +42,11 @@ module ApplicationSettingImplementation
         asset_proxy_enabled: false,
         authorized_keys_enabled: true, # TODO default to false if the instance is configured to use AuthorizedKeysCommand
         commit_email_hostname: default_commit_email_hostname,
+        container_expiration_policies_enable_historic_entries: false,
+        container_registry_features: [],
         container_registry_token_expire_delay: 5,
+        container_registry_vendor: '',
+        container_registry_version: '',
         default_artifacts_expire_in: '30 days',
         default_branch_protection: Settings.gitlab['default_branch_protection'],
         default_ci_config_path: nil,
@@ -62,6 +66,8 @@ module ApplicationSettingImplementation
         eks_account_id: nil,
         eks_access_key_id: nil,
         eks_secret_access_key: nil,
+        email_restrictions_enabled: false,
+        email_restrictions: nil,
         first_day_of_week: 0,
         gitaly_timeout_default: 55,
         gitaly_timeout_fast: 10,
@@ -76,6 +82,7 @@ module ApplicationSettingImplementation
         housekeeping_gc_period: 200,
         housekeeping_incremental_repack_period: 10,
         import_sources: Settings.gitlab['import_sources'],
+        issues_create_limit: 300,
         local_markdown_version: 0,
         max_artifacts_size: Settings.artifacts['max_size'],
         max_attachment_size: Settings.gitlab['max_attachment_size'],
@@ -89,7 +96,7 @@ module ApplicationSettingImplementation
         plantuml_url: nil,
         polling_interval_multiplier: 1,
         project_export_enabled: true,
-        protected_ci_variables: false,
+        protected_ci_variables: true,
         push_event_hooks_limit: 3,
         push_event_activities_limit: 3,
         raw_blob_request_limit: 300,
@@ -108,7 +115,10 @@ module ApplicationSettingImplementation
         sourcegraph_enabled: false,
         sourcegraph_url: nil,
         sourcegraph_public_only: true,
+        spam_check_endpoint_enabled: false,
+        spam_check_endpoint_url: nil,
         minimum_password_length: DEFAULT_MINIMUM_PASSWORD_LENGTH,
+        namespace_storage_size_limit: 0,
         terminal_max_session_time: 0,
         throttle_authenticated_api_enabled: false,
         throttle_authenticated_api_period_in_seconds: 3600,
@@ -143,7 +153,7 @@ module ApplicationSettingImplementation
         snowplow_app_id: nil,
         snowplow_iglu_registry_url: nil,
         custom_http_clone_url_root: nil,
-        productivity_analytics_start_date: Time.now,
+        productivity_analytics_start_date: Time.current,
         snippet_size_limit: 50.megabytes
       }
     end
@@ -217,22 +227,15 @@ module ApplicationSettingImplementation
     self.outbound_local_requests_whitelist.uniq!
   end
 
+  # This method separates out the strings stored in the
+  # application_setting.outbound_local_requests_whitelist array into 2 arrays;
+  # an array of IPAddr objects (`[IPAddr.new('127.0.0.1')]`), and an array of
+  # domain strings (`['www.example.com']`).
   def outbound_local_requests_whitelist_arrays
     strong_memoize(:outbound_local_requests_whitelist_arrays) do
       next [[], []] unless self.outbound_local_requests_whitelist
 
-      ip_whitelist = []
-      domain_whitelist = []
-
-      self.outbound_local_requests_whitelist.each do |str|
-        ip_obj = Gitlab::Utils.string_to_ip_object(str)
-
-        if ip_obj
-          ip_whitelist << ip_obj
-        else
-          domain_whitelist << str
-        end
-      end
+      ip_whitelist, domain_whitelist = separate_whitelists(self.outbound_local_requests_whitelist)
 
       [ip_whitelist, domain_whitelist]
     end
@@ -356,7 +359,42 @@ module ApplicationSettingImplementation
     static_objects_external_storage_url.present?
   end
 
+  # This will eventually be configurable
+  # https://gitlab.com/gitlab-org/gitlab/issues/208161
+  def web_ide_clientside_preview_bundler_url
+    'https://sandbox-prod.gitlab-static.net'
+  end
+
   private
+
+  def separate_whitelists(string_array)
+    string_array.reduce([[], []]) do |(ip_whitelist, domain_whitelist), string|
+      address, port = parse_addr_and_port(string)
+
+      ip_obj = Gitlab::Utils.string_to_ip_object(address)
+
+      if ip_obj
+        ip_whitelist << Gitlab::UrlBlockers::IpWhitelistEntry.new(ip_obj, port: port)
+      else
+        domain_whitelist << Gitlab::UrlBlockers::DomainWhitelistEntry.new(address, port: port)
+      end
+
+      [ip_whitelist, domain_whitelist]
+    end
+  end
+
+  def parse_addr_and_port(str)
+    case str
+    when /\A\[(?<address> .* )\]:(?<port> \d+ )\z/x      # string like "[::1]:80"
+      address, port = $~[:address], $~[:port]
+    when /\A(?<address> [^:]+ ):(?<port> \d+ )\z/x       # string like "127.0.0.1:80"
+      address, port = $~[:address], $~[:port]
+    else                                                 # string with no port number
+      address, port = str, nil
+    end
+
+    [address, port&.to_i]
+  end
 
   def array_to_string(arr)
     arr&.join("\n")
@@ -387,7 +425,7 @@ module ApplicationSettingImplementation
   def terms_exist
     return unless enforce_terms?
 
-    errors.add(:terms, "You need to set terms to be enforced") unless terms.present?
+    errors.add(:base, _('You need to set terms to be enforced')) unless terms.present?
   end
 
   def expire_performance_bar_allowed_user_ids_cache

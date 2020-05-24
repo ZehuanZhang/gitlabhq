@@ -12,7 +12,9 @@ describe Mutations::Todos::Restore do
 
   let_it_be(:other_user_todo) { create(:todo, user: other_user, author: author, state: :done) }
 
-  let(:mutation) { described_class.new(object: nil, context: { current_user: current_user }) }
+  let(:mutation) { described_class.new(object: nil, context: { current_user: current_user }, field: nil) }
+
+  specify { expect(described_class).to require_graphql_authorizations(:update_todo) }
 
   describe '#resolve' do
     it 'restores a single todo' do

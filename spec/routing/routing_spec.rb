@@ -256,10 +256,8 @@ describe "Authentication", "routing" do
     expect(post("/users/sign_in")).to route_to('sessions#create')
   end
 
-  # sign_out with GET instead of DELETE facilitates ad-hoc single-sign-out processes
-  # (https://gitlab.com/gitlab-org/gitlab-foss/issues/39708)
-  it "GET /users/sign_out" do
-    expect(get("/users/sign_out")).to route_to('sessions#destroy')
+  it "POST /users/sign_out" do
+    expect(post("/users/sign_out")).to route_to('sessions#destroy')
   end
 
   it "POST /users/password" do
@@ -313,5 +311,60 @@ describe HealthCheckController, 'routing' do
 
   it 'also supports passing checks in the url' do
     expect(get('/health_check/email')).to route_to('health_check#index', checks: 'email')
+  end
+end
+
+describe InvitesController, 'routing' do
+  let_it_be(:member) { create(:project_member, :invited) }
+
+  it 'to #show' do
+    expect(get("/-/invites/#{member.invite_token}")).to route_to('invites#show', id: member.invite_token)
+  end
+
+  it 'to legacy route' do
+    expect(get("/invites/#{member.invite_token}")).to route_to('invites#show', id: member.invite_token)
+  end
+end
+
+describe AbuseReportsController, 'routing' do
+  let_it_be(:user) { create(:user) }
+
+  it 'to #new' do
+    expect(get("/-/abuse_reports/new?user_id=#{user.id}")).to route_to('abuse_reports#new', user_id: user.id.to_s)
+  end
+
+  it 'to legacy route' do
+    expect(get("/abuse_reports/new?user_id=#{user.id}")).to route_to('abuse_reports#new', user_id: user.id.to_s)
+  end
+end
+
+describe SentNotificationsController, 'routing' do
+  it 'to #unsubscribe' do
+    expect(get("/-/sent_notifications/4bee17d4a63ed60cf5db53417e9aeb4c/unsubscribe"))
+      .to route_to('sent_notifications#unsubscribe', id: '4bee17d4a63ed60cf5db53417e9aeb4c')
+  end
+end
+
+describe AutocompleteController, 'routing' do
+  it 'to #users' do
+    expect(get("/-/autocomplete/users")).to route_to('autocomplete#users')
+  end
+
+  it 'to #projects' do
+    expect(get("/-/autocomplete/projects")).to route_to('autocomplete#projects')
+  end
+
+  it 'to #award_emojis' do
+    expect(get("/-/autocomplete/award_emojis")).to route_to('autocomplete#award_emojis')
+  end
+
+  it 'to #merge_request_target_branches' do
+    expect(get("/-/autocomplete/merge_request_target_branches")).to route_to('autocomplete#merge_request_target_branches')
+  end
+
+  it 'to legacy route' do
+    expect(get("/autocomplete/users")).to route_to('autocomplete#users')
+    expect(get("/autocomplete/projects")).to route_to('autocomplete#projects')
+    expect(get("/autocomplete/award_emojis")).to route_to('autocomplete#award_emojis')
   end
 end

@@ -14,12 +14,10 @@ Please note that [S/MIME signed](../administration/smime_signing_email.md) email
 Rails provides a way to preview our mailer templates in HTML and plaintext using
 dummy data.
 
-The previews live in [`app/mailers/previews`][previews] and can be viewed at
+The previews live in [`app/mailers/previews`](https://gitlab.com/gitlab-org/gitlab-foss/tree/master/app/mailers/previews) and can be viewed at
 [`/rails/mailers`](http://localhost:3000/rails/mailers).
 
-See the [Rails guides](https://guides.rubyonrails.org/action_mailer_basics.html#previewing-emails) for more info.
-
-[previews]: https://gitlab.com/gitlab-org/gitlab-foss/tree/master/app/mailers/previews
+See the [Rails guides](https://guides.rubyonrails.org/action_mailer_basics.html#previewing-emails) for more information.
 
 ## Incoming email
 
@@ -59,19 +57,22 @@ See the [Rails guides](https://guides.rubyonrails.org/action_mailer_basics.html#
      mailbox: "inbox"
      # The IDLE command timeout.
      idle_timeout: 60
+
+     # Whether to expunge (permanently remove) messages from the mailbox when they are deleted after delivery
+     expunge_deleted: false
    ```
 
    As mentioned, the part after `+` is ignored, and this will end up in the mailbox for `gitlab-incoming@gmail.com`.
 
 1. Run this command in the GitLab root directory to launch `mail_room`:
 
-   ```sh
+   ```shell
    bundle exec mail_room -q -c config/mail_room.yml
    ```
 
 1. Verify that everything is configured correctly:
 
-   ```sh
+   ```shell
    bundle exec rake gitlab:incoming_email:check RAILS_ENV=development
    ```
 
@@ -79,17 +80,17 @@ See the [Rails guides](https://guides.rubyonrails.org/action_mailer_basics.html#
 
 ## Email namespace
 
-As of GitLab 11.7, we support a new format for email handler addresses.  This was done to
+As of GitLab 11.7, we support a new format for email handler addresses. This was done to
 support catch-all mailboxes.
 
 If you need to implement a feature which requires a new email handler, follow these rules
 for the format of the email key:
 
-- Actions are always at the end, separated by `-`.  For example `-issue` or `-merge-request`
+- Actions are always at the end, separated by `-`. For example `-issue` or `-merge-request`
 - If your feature is related to a project, the key begins with the project identifiers (project path slug
-  and project id), separated by `-`.  For example, `gitlab-org-gitlab-foss-20`
+  and project ID), separated by `-`. For example, `gitlab-org-gitlab-foss-20`
 - Additional information, such as an author's token, can be added between the project identifiers and
-  the action, separated by `-`.  For example, `gitlab-org-gitlab-foss-20-Author_Token12345678-issue`
+  the action, separated by `-`. For example, `gitlab-org-gitlab-foss-20-Author_Token12345678-issue`
 - You register your handlers in `lib/gitlab/email/handler.rb`
 
 Examples of valid email keys:

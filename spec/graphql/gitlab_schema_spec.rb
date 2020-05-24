@@ -3,14 +3,15 @@
 require 'spec_helper'
 
 describe GitlabSchema do
+  let_it_be(:connections) { GitlabSchema.connections.all_wrappers }
   let(:user) { build :user }
 
   it 'uses batch loading' do
     expect(field_instrumenters).to include(BatchLoader::GraphQL)
   end
 
-  it 'enables the preload instrumenter' do
-    expect(field_instrumenters).to include(BatchLoader::GraphQL)
+  it 'enables the generic instrumenter' do
+    expect(field_instrumenters).to include(instance_of(::Gitlab::Graphql::GenericTracing))
   end
 
   it 'enables the authorization instrumenter' do
@@ -26,17 +27,29 @@ describe GitlabSchema do
   end
 
   it 'has the base mutation' do
-    expect(described_class.mutation).to eq(::Types::MutationType.to_graphql)
+    expect(described_class.mutation).to eq(::Types::MutationType)
   end
 
   it 'has the base query' do
-    expect(described_class.query).to eq(::Types::QueryType.to_graphql)
+    expect(described_class.query).to eq(::Types::QueryType)
   end
 
-  it 'paginates active record relations using `Gitlab::Graphql::Connections::KeysetConnection`' do
-    connection = GraphQL::Relay::BaseConnection::CONNECTION_IMPLEMENTATIONS[ActiveRecord::Relation.name]
+  it 'paginates active record relations using `Pagination::Keyset::Connection`' do
+    connection = connections[ActiveRecord::Relation]
 
-    expect(connection).to eq(Gitlab::Graphql::Connections::Keyset::Connection)
+    expect(connection).to eq(Gitlab::Graphql::Pagination::Keyset::Connection)
+  end
+
+  it 'paginates ExternallyPaginatedArray using `Pagination::ExternallyPaginatedArrayConnection`' do
+    connection = connections[Gitlab::Graphql::ExternallyPaginatedArray]
+
+    expect(connection).to eq(Gitlab::Graphql::Pagination::ExternallyPaginatedArrayConnection)
+  end
+
+  it 'paginates FilterableArray using `Pagination::FilterableArrayConnection`' do
+    connection = connections[Gitlab::Graphql::FilterableArray]
+
+    expect(connection).to eq(Gitlab::Graphql::Pagination::FilterableArrayConnection)
   end
 
   describe '.execute' do
@@ -178,13 +191,17 @@ describe GitlabSchema do
     context 'for other classes' do
       # We cannot use an anonymous class here as `GlobalID` expects `.name` not
       # to return `nil`
-      class TestGlobalId
-        include GlobalID::Identification
-        attr_accessor :id
+      before do
+        test_global_id = Class.new do
+          include GlobalID::Identification
+          attr_accessor :id
 
-        def initialize(id)
-          @id = id
+          def initialize(id)
+            @id = id
+          end
         end
+
+        stub_const('TestGlobalId', test_global_id)
       end
 
       it 'falls back to a regular find' do

@@ -211,7 +211,7 @@
 
 .board-blank-state,
 .board-promotion-state {
-  background-color: $white-light;
+  background-color: $white;
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
@@ -245,7 +245,7 @@
 }
 
 .board-card {
-  background: $white-light;
+  background: $white;
   border: 1px solid $gray-200;
   box-shadow: 0 1px 2px $issue-boards-card-shadow;
   line-height: $gl-padding;
@@ -266,25 +266,18 @@
     background-color: $blue-50;
   }
 
-  .badge {
-    border: 0;
-    outline: 0;
-
-    &:hover {
-      text-decoration: underline;
-    }
-
-    @include media-breakpoint-down(lg) {
-      font-size: $gl-font-size-xs;
-      padding-left: $gl-padding-4;
-      padding-right: $gl-padding-4;
-      font-weight: $gl-font-weight-bold;
-    }
+  .gl-label {
+    margin-top: 4px;
+    margin-right: 4px;
   }
 
   .confidential-icon {
     color: $orange-600;
     cursor: help;
+  }
+
+  .issue-blocked-icon {
+    color: $red-500;
   }
 
   @include media-breakpoint-down(md) {
@@ -433,7 +426,7 @@
   max-width: 1100px;
   min-height: 500px;
   padding: 25px 15px 0;
-  background-color: $white-light;
+  background-color: $white;
   box-shadow: 0 2px 12px rgba($black, 0.5);
 
   .empty-state {
@@ -482,7 +475,7 @@
   }
 
   .board-card {
-    border: 1px solid $border-gray-dark;
+    border: 1px solid $border-white-normal;
     box-shadow: 0 1px 2px rgba($issue-boards-card-shadow, 0.3);
     cursor: pointer;
   }
@@ -508,7 +501,7 @@
   top: -3px;
   width: 17px;
   background-color: $blue-500;
-  color: $white-light;
+  color: $white;
   border: 1px solid $blue-600;
   font-size: 9px;
   line-height: 15px;
@@ -554,4 +547,28 @@
    * filtered-search-box input element increases in size on Linux smaller breakpoints
    */
   height: $input-height;
+}
+
+.issue-boards-content.is-focused {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  background: $white;
+  z-index: 9000;
+
+  @include media-breakpoint-down(sm) {
+    padding-top: 10px;
+  }
+
+  .boards-list {
+    height: calc(100vh - #{$issue-boards-filter-height});
+    overflow-x: scroll;
+  }
+
+  .issue-boards-sidebar {
+    height: 100%;
+    top: 0;
+  }
 }

@@ -2,9 +2,9 @@
 type: reference
 ---
 
-# Working with the bundle PgBouncer service
+# Working with the bundled PgBouncer service **(PREMIUM ONLY)**
 
-As part of its High Availability stack, GitLab Premium includes a bundled version of [PgBouncer](https://pgbouncer.github.io/) that can be managed through `/etc/gitlab/gitlab.rb`. PgBouncer is used to seamlessly migrate database connections between servers in a failover scenario. Additionally, it can be used in a non-HA setup to pool connections, speeding up response time while reducing resource usage.
+As part of its High Availability stack, GitLab Premium includes a bundled version of [PgBouncer](http://www.pgbouncer.org/) that can be managed through `/etc/gitlab/gitlab.rb`. PgBouncer is used to seamlessly migrate database connections between servers in a failover scenario. Additionally, it can be used in a non-HA setup to pool connections, speeding up response time while reducing resource usage.
 
 In a HA setup, it's recommended to run a PgBouncer node separately for each database node with an internal load balancer (TCP) serving each accordingly.
 
@@ -57,7 +57,7 @@ In a HA setup, it's recommended to run a PgBouncer node separately for each data
 1. Create a `.pgpass` file so Consul is able to
    reload PgBouncer. Enter the `PGBOUNCER_PASSWORD` twice when asked:
 
-   ```sh
+   ```shell
    gitlab-ctl write-pgpass --host 127.0.0.1 --database pgbouncer --user pgbouncer --hostuser gitlab-consul
    ```
 
@@ -65,7 +65,7 @@ In a HA setup, it's recommended to run a PgBouncer node separately for each data
 
 1. Ensure each node is talking to the current master:
 
-   ```sh
+   ```shell
    gitlab-ctl pgb-console # You will be prompted for PGBOUNCER_PASSWORD
    ```
 
@@ -77,13 +77,13 @@ In a HA setup, it's recommended to run a PgBouncer node separately for each data
 
 1. Once the console prompt is available, run the following queries:
 
-   ```sh
+   ```shell
    show databases ; show clients ;
    ```
 
    The output should be similar to the following:
 
-   ```
+   ```plaintext
            name         |  host       | port |      database       | force_user | pool_size | reserve_pool | pool_mode | max_connections | current_connections
    ---------------------+-------------+------+---------------------+------------+-----------+--------------+-----------+-----------------+---------------------
     gitlabhq_production | MASTER_HOST | 5432 | gitlabhq_production |            |        20 |            0 |           |               0 |                   0
@@ -102,7 +102,7 @@ If you're running more than one PgBouncer node as recommended, then at this time
 
 As an example here's how you could do it with [HAProxy](https://www.haproxy.org/):
 
-```
+```plaintext
 global
     log /dev/log local0
     log localhost local1 notice
@@ -165,7 +165,7 @@ Refer to your preferred Load Balancer's documentation for further guidance.
 
 1. Run `gitlab-ctl reconfigure`
 
-1. On the node running Unicorn, make sure the following is set in `/etc/gitlab/gitlab.rb`
+1. On the node running Puma, make sure the following is set in `/etc/gitlab/gitlab.rb`
 
    ```ruby
    gitlab_rails['db_host'] = 'PGBOUNCER_HOST'
@@ -179,7 +179,7 @@ Refer to your preferred Load Balancer's documentation for further guidance.
 
 ## Enable Monitoring
 
-> [Introduced](https://gitlab.com/gitlab-org/omnibus-gitlab/issues/3786) in GitLab 12.0.
+> [Introduced](https://gitlab.com/gitlab-org/omnibus-gitlab/-/issues/3786) in GitLab 12.0.
 
 If you enable Monitoring, it must be enabled on **all** PgBouncer servers.
 
@@ -215,7 +215,7 @@ To start a session, run
 ```shell
 # gitlab-ctl pgb-console
 Password for user pgbouncer:
-psql (9.6.8, server 1.7.2/bouncer)
+psql (11.7, server 1.7.2/bouncer)
 Type "help" for help.
 
 pgbouncer=#
@@ -273,3 +273,11 @@ In case you are experiencing any issues connecting through PgBouncer, the first 
 ```
 
 Additionally, you can check the output from `show databases` in the [Administrative console](#administrative-console). In the output, you would expect to see values in the `host` field for the `gitlabhq_production` database. Additionally, `current_connections` should be greater than 1.
+
+### Message: `LOG:  invalid CIDR mask in address`
+
+See the suggested fix [in Geo documentation](../geo/replication/troubleshooting.md#message-log--invalid-cidr-mask-in-address).
+
+### Message: `LOG:  invalid IP mask "md5": Name or service not known`
+
+See the suggested fix [in Geo documentation](../geo/replication/troubleshooting.md#message-log--invalid-ip-mask-md5-name-or-service-not-known).

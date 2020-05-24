@@ -1,23 +1,25 @@
 # Labels API
 
 NOTE: **Note:**
-The `description_html` - was added to response JSON in [GitLab 12.7](https://gitlab.com/gitlab-org/gitlab/merge_requests/21413).
+The `description_html` - was added to response JSON in [GitLab 12.7](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/21413).
 
 ## List labels
 
 Get all labels for a given project.
 
-```
+By default, this request returns 20 results at a time because the API results [are paginated](README.md#pagination).
+
+```plaintext
 GET /projects/:id/labels
 ```
 
 | Attribute     | Type           | Required | Description                                                                                                                                                                  |
 | ---------     | -------        | -------- | ---------------------                                                                                                                                                        |
 | `id`          | integer/string | yes      | The ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user                                                              |
-| `with_counts` | boolean        | no       | Whether or not to include issue and merge request counts. Defaults to `false`. _([Introduced in GitLab 12.2](https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/31543))_ |
+| `with_counts` | boolean        | no       | Whether or not to include issue and merge request counts. Defaults to `false`. _([Introduced in GitLab 12.2](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/31543))_ |
 | `include_ancestor_groups` | boolean | no | Include ancestor groups. Defaults to `true`. |
 
-```bash
+```shell
 curl --header "PRIVATE-TOKEN: <your_access_token>" https://gitlab.example.com/api/v4/projects/1/labels?with_counts=true
 ```
 
@@ -102,17 +104,17 @@ Example response:
 
 Get a single label for a given project.
 
-```
+```plaintext
 GET /projects/:id/labels/:label_id
 ```
 
 | Attribute     | Type           | Required | Description                                                                                                                                                                  |
 | ---------     | -------        | -------- | ---------------------                                                                                                                                                        |
 | `id`          | integer/string | yes      | The ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user                                                              |
-| `label_id` | integer or string | yes | The ID or title of a group's label. |
+| `label_id` | integer or string | yes | The ID or title of a project's label. |
 | `include_ancestor_groups` | boolean | no | Include ancestor groups. Defaults to `true`. |
 
-```bash
+```shell
 curl --header "PRIVATE-TOKEN: <your_access_token>" https://gitlab.example.com/api/v4/projects/1/labels/bug
 ```
 
@@ -139,7 +141,7 @@ Example response:
 
 Creates a new label for the given repository with the given name and color.
 
-```
+```plaintext
 POST /projects/:id/labels
 ```
 
@@ -151,7 +153,7 @@ POST /projects/:id/labels
 | `description` | string  | no       | The description of the label |
 | `priority`    | integer | no       | The priority of the label. Must be greater or equal than zero or `null` to remove the priority. |
 
-```bash
+```shell
 curl --data "name=feature&color=#5843AD" --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/labels"
 ```
 
@@ -178,7 +180,7 @@ Example response:
 
 Deletes a label with a given name.
 
-```
+```plaintext
 DELETE /projects/:id/labels/:label_id
 ```
 
@@ -187,18 +189,18 @@ DELETE /projects/:id/labels/:label_id
 | `id`            | integer/string | yes | The ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user |
 | `label_id` | integer or string | yes | The ID or title of a group's label. |
 
-```bash
+```shell
 curl --request DELETE --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/labels/bug"
 ```
 
-NOTE: **Note:** An older endpoint `DELETE /projects/:id/labels` with `name` in the params is still available, but deprecated.
+NOTE: **Note:** An older endpoint `DELETE /projects/:id/labels` with `name` in the parameters is still available, but deprecated.
 
 ## Edit an existing label
 
 Updates an existing label with new name or new color. At least one parameter
 is required, to update the label.
 
-```
+```plaintext
 PUT /projects/:id/labels/:label_id
 ```
 
@@ -211,7 +213,7 @@ PUT /projects/:id/labels/:label_id
 | `description`   | string  | no                                | The new description of the label |
 | `priority`    | integer | no       | The new priority of the label. Must be greater or equal than zero or `null` to remove the priority. |
 
-```bash
+```shell
 curl --request PUT --data "new_name=docs&color=#8E44AD&description=Documentation" --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/labels/documentation"
 ```
 
@@ -234,15 +236,15 @@ Example response:
 }
 ```
 
-NOTE: **Note:** An older endpoint `PUT /projects/:id/labels` with `name` or `label_id` in the params is still available, but deprecated.
+NOTE: **Note:** An older endpoint `PUT /projects/:id/labels` with `name` or `label_id` in the parameters is still available, but deprecated.
 
 ## Promote a project label to a group label
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/merge_requests/25218) in GitLab 12.3.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/25218) in GitLab 12.3.
 
 Promotes a project label to a group label.
 
-```
+```plaintext
 PUT /projects/:id/labels/:label_id/promote
 ```
 
@@ -251,7 +253,7 @@ PUT /projects/:id/labels/:label_id/promote
 | `id`      | integer/string    | yes      | The ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user |
 | `label_id` | integer or string | yes | The ID or title of a group's label. |
 
-```bash
+```shell
 curl --request PUT --header "PRIVATE-TOKEN: <your_access_token>" "https://gitlab.example.com/api/v4/projects/1/labels/documentation/promote"
 ```
 
@@ -271,7 +273,7 @@ Example response:
 }
 ```
 
-NOTE: **Note:** An older endpoint `PUT /projects/:id/labels/promote` with `name` in the params is still available, but deprecated.
+NOTE: **Note:** An older endpoint `PUT /projects/:id/labels/promote` with `name` in the parameters is still available, but deprecated.
 
 ## Subscribe to a label
 
@@ -279,7 +281,7 @@ Subscribes the authenticated user to a label to receive notifications.
 If the user is already subscribed to the label, the status code `304`
 is returned.
 
-```
+```plaintext
 POST /projects/:id/labels/:label_id/subscribe
 ```
 
@@ -288,7 +290,7 @@ POST /projects/:id/labels/:label_id/subscribe
 | `id`      | integer/string    | yes      | The ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user |
 | `label_id` | integer or string | yes      | The ID or title of a project's label |
 
-```bash
+```shell
 curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" https://gitlab.example.com/api/v4/projects/5/labels/1/subscribe
 ```
 
@@ -317,7 +319,7 @@ Unsubscribes the authenticated user from a label to not receive notifications
 from it. If the user is not subscribed to the label, the
 status code `304` is returned.
 
-```
+```plaintext
 POST /projects/:id/labels/:label_id/unsubscribe
 ```
 
@@ -326,6 +328,6 @@ POST /projects/:id/labels/:label_id/unsubscribe
 | `id`      | integer/string    | yes      | The ID or [URL-encoded path of the project](README.md#namespaced-path-encoding) owned by the authenticated user |
 | `label_id` | integer or string | yes      | The ID or title of a project's label |
 
-```bash
+```shell
 curl --request POST --header "PRIVATE-TOKEN: <your_access_token>" https://gitlab.example.com/api/v4/projects/5/labels/1/unsubscribe
 ```

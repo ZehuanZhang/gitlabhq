@@ -15,9 +15,10 @@ describe 'Updating a Snippet' do
   let(:updated_file_name) { 'Updated file_name' }
   let(:current_user) { snippet.author }
 
+  let(:snippet_gid) { GitlabSchema.id_from_object(snippet).to_s }
   let(:mutation) do
     variables = {
-      id: GitlabSchema.id_from_object(snippet).to_s,
+      id: snippet_gid,
       content: updated_content,
       description: updated_description,
       visibility_level: 'public',
@@ -56,7 +57,8 @@ describe 'Updating a Snippet' do
       it 'returns the updated Snippet' do
         post_graphql_mutation(mutation, current_user: current_user)
 
-        expect(mutation_response['snippet']['content']).to eq(updated_content)
+        expect(mutation_response['snippet']['blob']['richData']).to be_nil
+        expect(mutation_response['snippet']['blob']['plainData']).to match(updated_content)
         expect(mutation_response['snippet']['title']).to eq(updated_title)
         expect(mutation_response['snippet']['description']).to eq(updated_description)
         expect(mutation_response['snippet']['fileName']).to eq(updated_file_name)
@@ -77,7 +79,8 @@ describe 'Updating a Snippet' do
         it 'returns the Snippet with its original values' do
           post_graphql_mutation(mutation, current_user: current_user)
 
-          expect(mutation_response['snippet']['content']).to eq(original_content)
+          expect(mutation_response['snippet']['blob']['richData']).to be_nil
+          expect(mutation_response['snippet']['blob']['plainData']).to match(original_content)
           expect(mutation_response['snippet']['title']).to eq(original_title)
           expect(mutation_response['snippet']['description']).to eq(original_description)
           expect(mutation_response['snippet']['fileName']).to eq(original_file_name)
@@ -88,21 +91,23 @@ describe 'Updating a Snippet' do
   end
 
   describe 'PersonalSnippet' do
-    it_behaves_like 'graphql update actions' do
-      let_it_be(:snippet) do
-        create(:personal_snippet,
-               :private,
-               file_name: original_file_name,
-               title: original_title,
-               content: original_content,
-               description: original_description)
-      end
+    let(:snippet) do
+      create(:personal_snippet,
+             :private,
+             file_name: original_file_name,
+             title: original_title,
+             content: original_content,
+             description: original_description)
     end
+
+    it_behaves_like 'graphql update actions'
+
+    it_behaves_like 'when the snippet is not found'
   end
 
   describe 'ProjectSnippet' do
     let_it_be(:project) { create(:project, :private) }
-    let_it_be(:snippet) do
+    let(:snippet) do
       create(:project_snippet,
              :private,
              project: project,
@@ -140,5 +145,7 @@ describe 'Updating a Snippet' do
         end
       end
     end
+
+    it_behaves_like 'when the snippet is not found'
   end
 end

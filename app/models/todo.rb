@@ -51,10 +51,12 @@ class Todo < ApplicationRecord
   validates :project, presence: true, unless: :group_id
   validates :group, presence: true, unless: :project_id
 
+  scope :for_ids, -> (ids) { where(id: ids) }
   scope :pending, -> { with_state(:pending) }
   scope :done, -> { with_state(:done) }
   scope :for_action, -> (action) { where(action: action) }
   scope :for_author, -> (author) { where(author: author) }
+  scope :for_user, -> (user) { where(user: user) }
   scope :for_project, -> (projects) { where(project: projects) }
   scope :for_undeleted_projects, -> { joins(:project).merge(Project.without_deleted) }
   scope :for_group, -> (group) { where(group: group) }
@@ -108,7 +110,7 @@ class Todo < ApplicationRecord
       base = where.not(state: new_state).except(:order)
       ids = base.pluck(:id)
 
-      base.update_all(state: new_state)
+      base.update_all(state: new_state, updated_at: Time.current)
 
       ids
     end
@@ -179,6 +181,10 @@ class Todo < ApplicationRecord
 
   def for_commit?
     target_type == "Commit"
+  end
+
+  def for_design?
+    target_type == DesignManagement::Design.name
   end
 
   # override to return commits, which are not active record

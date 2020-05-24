@@ -4,14 +4,14 @@ module Clusters
   module Applications
     class Knative < ApplicationRecord
       VERSION = '0.9.0'
-      REPOSITORY = 'https://storage.googleapis.com/triggermesh-charts'
-      METRICS_CONFIG = 'https://storage.googleapis.com/triggermesh-charts/istio-metrics.yaml'
+      REPOSITORY = 'https://charts.gitlab.io'
+      METRICS_CONFIG = 'https://gitlab.com/gitlab-org/charts/knative/-/raw/v0.9.0/vendor/istio-metrics.yml'
       FETCH_IP_ADDRESS_DELAY = 30.seconds
       API_GROUPS_PATH = 'config/knative/api_groups.yml'
 
       self.table_name = 'clusters_applications_knative'
 
-      has_one :serverless_domain_cluster, class_name: 'Serverless::DomainCluster', foreign_key: 'clusters_applications_knative_id', inverse_of: :knative
+      has_one :serverless_domain_cluster, class_name: '::Serverless::DomainCluster', foreign_key: 'clusters_applications_knative_id', inverse_of: :knative
 
       include ::Clusters::Concerns::ApplicationCore
       include ::Clusters::Concerns::ApplicationStatus
@@ -33,6 +33,12 @@ module Clusters
               FETCH_IP_ADDRESS_DELAY, application.name, application.id)
           end
         end
+
+        after_transition any => [:installed, :updated] do |application|
+          application.run_after_commit do
+            ClusterConfigureIstioWorker.perform_async(application.cluster_id)
+          end
+        end
       end
 
       default_value_for :version, VERSION
@@ -41,12 +47,22 @@ module Clusters
 
       scope :for_cluster, -> (cluster) { where(cluster: cluster) }
 
+      has_one :pages_domain, through: :serverless_domain_cluster
+
       def chart
         'knative/knative'
       end
 
       def values
         { "domain" => hostname }.to_yaml
+      end
+
+      def available_domains
+        PagesDomain.instance_serverless
+      end
+
+      def find_available_domain(pages_domain_id)
+        available_domains.find_by(id: pages_domain_id)
       end
 
       def allowed_to_uninstall?
@@ -74,7 +90,7 @@ module Clusters
       end
 
       def ingress_service
-        cluster.kubeclient.get_service('istio-ingressgateway', 'istio-system')
+        cluster.kubeclient.get_service('istio-ingressgateway', Clusters::Kubernetes::ISTIO_SYSTEM_NAMESPACE)
       end
 
       def uninstall_command

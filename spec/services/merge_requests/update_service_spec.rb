@@ -92,6 +92,7 @@ describe MergeRequests::UpdateService, :mailer do
               labels: [],
               mentioned_users: [user2],
               assignees: [user3],
+              milestone: nil,
               total_time_spent: 0,
               description: "FYI #{user2.to_reference}"
             }
@@ -162,7 +163,53 @@ describe MergeRequests::UpdateService, :mailer do
       end
     end
 
-    context 'merge' do
+    context 'after_save callback to store_mentions' do
+      let(:merge_request) { create(:merge_request, title: 'Old title', description: "simple description", source_branch: 'test', source_project: project, author: user) }
+      let(:labels) { create_pair(:label, project: project) }
+      let(:milestone) { create(:milestone, project: project) }
+      let(:req_opts) { { source_branch: 'feature', target_branch: 'master' } }
+
+      subject { MergeRequests::UpdateService.new(project, user, opts).execute(merge_request) }
+
+      context 'when mentionable attributes change' do
+        let(:opts) { { description: "Description with #{user.to_reference}" }.merge(req_opts) }
+
+        it 'saves mentions' do
+          expect(merge_request).to receive(:store_mentions!).and_call_original
+
+          expect { subject }.to change { MergeRequestUserMention.count }.by(1)
+
+          expect(merge_request.referenced_users).to match_array([user])
+        end
+      end
+
+      context 'when mentionable attributes do not change' do
+        let(:opts) { { label_ids: [label.id, label2.id], milestone_id: milestone.id }.merge(req_opts) }
+
+        it 'does not call store_mentions' do
+          expect(merge_request).not_to receive(:store_mentions!).and_call_original
+
+          expect { subject }.not_to change { MergeRequestUserMention.count }
+
+          expect(merge_request.referenced_users).to be_empty
+        end
+      end
+
+      context 'when save fails' do
+        let(:opts) { { title: '', label_ids: labels.map(&:id), milestone_id: milestone.id } }
+
+        it 'does not call store_mentions' do
+          expect(merge_request).not_to receive(:store_mentions!).and_call_original
+
+          expect { subject }.not_to change { MergeRequestUserMention.count }
+
+          expect(merge_request.referenced_users).to be_empty
+          expect(merge_request.valid?).to be false
+        end
+      end
+    end
+
+    shared_examples_for 'correct merge behavior' do
       let(:opts) do
         {
           merge: merge_request.diff_head_sha
@@ -265,6 +312,18 @@ describe MergeRequests::UpdateService, :mailer do
       end
     end
 
+    describe 'merge' do
+      it_behaves_like 'correct merge behavior'
+
+      context 'when merge_orchestration_service feature flag is disabled' do
+        before do
+          stub_feature_flags(merge_orchestration_service: false)
+        end
+
+        it_behaves_like 'correct merge behavior'
+      end
+    end
+
     context 'todos' do
       let!(:pending_todo) { create(:todo, :assigned, user: user, project: project, target: merge_request, author: user2) }
 
@@ -321,6 +380,10 @@ describe MergeRequests::UpdateService, :mailer do
       end
 
       context 'when the milestone is removed' do
+        before do
+          stub_feature_flags(track_resource_milestone_change_events: false)
+        end
+
         let!(:non_subscriber) { create(:user) }
 
         let!(:subscriber) do
@@ -347,6 +410,10 @@ describe MergeRequests::UpdateService, :mailer do
       end
 
       context 'when the milestone is changed' do
+        before do
+          stub_feature_flags(track_resource_milestone_change_events: false)
+        end
+
         let!(:non_subscriber) { create(:user) }
 
         let!(:subscriber) do
@@ -386,7 +453,7 @@ describe MergeRequests::UpdateService, :mailer do
         end
 
         it 'updates updated_at' do
-          expect(merge_request.reload.updated_at).to be > Time.now
+          expect(merge_request.reload.updated_at).to be > Time.current
         end
       end
 

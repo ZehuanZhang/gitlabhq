@@ -11,9 +11,33 @@ module GraphqlHelpers
     underscored_field_name.to_s.camelize(:lower)
   end
 
-  # Run a loader's named resolver
-  def resolve(resolver_class, obj: nil, args: {}, ctx: {})
-    resolver_class.new(object: obj, context: ctx).resolve(args)
+  # Run a loader's named resolver in a way that closely mimics the framework.
+  #
+  # First the `ready?` method is called. If it turns out that the resolver is not
+  # ready, then the early return is returned instead.
+  #
+  # Then the resolve method is called.
+  def resolve(resolver_class, obj: nil, args: {}, ctx: {}, field: nil)
+    resolver = resolver_class.new(object: obj, context: ctx, field: field)
+    ready, early_return = sync_all { resolver.ready?(**args) }
+
+    return early_return unless ready
+
+    resolver.resolve(args)
+  end
+
+  # Eagerly run a loader's named resolver
+  # (syncs any lazy values returned by resolve)
+  def eager_resolve(resolver_class, **opts)
+    sync(resolve(resolver_class, **opts))
+  end
+
+  def sync(value)
+    if GitlabSchema.lazy?(value)
+      GitlabSchema.sync_lazy(value)
+    else
+      value
+    end
   end
 
   # Runs a block inside a BatchLoader::Executor wrapper
@@ -37,12 +61,12 @@ module GraphqlHelpers
   # BatchLoader::GraphQL returns a wrapper, so we need to :sync in order
   # to get the actual values
   def batch_sync(max_queries: nil, &blk)
-    wrapper = proc do
-      lazy_vals = yield
-      lazy_vals.is_a?(Array) ? lazy_vals.map(&:sync) : lazy_vals&.sync
-    end
+    batch(max_queries: max_queries) { sync_all(&blk) }
+  end
 
-    batch(max_queries: max_queries, &wrapper)
+  def sync_all(&blk)
+    lazy_vals = yield
+    lazy_vals.is_a?(Array) ? lazy_vals.map { |val| sync(val) } : sync(lazy_vals)
   end
 
   def graphql_query_for(name, attributes = {}, fields = nil)
@@ -57,10 +81,10 @@ module GraphqlHelpers
     mutation_name = GraphqlHelpers.fieldnamerize(name)
     input_variable_name = "$#{input_variable_name_for_mutation(name)}"
     mutation_field = GitlabSchema.mutation.fields[mutation_name]
-    fields ||= all_graphql_fields_for(mutation_field.type)
+    fields ||= all_graphql_fields_for(mutation_field.type.to_graphql)
 
     query = <<~MUTATION
-      mutation(#{input_variable_name}: #{mutation_field.arguments['input'].type}) {
+      mutation(#{input_variable_name}: #{mutation_field.arguments['input'].type.to_graphql}) {
         #{mutation_name}(input: #{input_variable_name}) {
           #{fields}
         }
@@ -104,15 +128,22 @@ module GraphqlHelpers
     GraphqlHelpers.fieldnamerize(input_type)
   end
 
-  def query_graphql_field(name, attributes = {}, fields = nil)
-    field_params = if attributes.present?
+  def field_with_params(name, attributes = {})
+    namerized = GraphqlHelpers.fieldnamerize(name.to_s)
+    return "#{namerized}" if attributes.blank?
+
+    field_params = if attributes.is_a?(Hash)
                      "(#{attributes_to_graphql(attributes)})"
                    else
-                     ''
+                     "(#{attributes})"
                    end
 
+    "#{namerized}#{field_params}"
+  end
+
+  def query_graphql_field(name, attributes = {}, fields = nil)
     <<~QUERY
-      #{GraphqlHelpers.fieldnamerize(name.to_s)}#{field_params}
+      #{field_with_params(name, attributes)}
       #{wrap_fields(fields || all_graphql_fields_for(name.to_s.classify))}
     QUERY
   end
@@ -128,7 +159,7 @@ module GraphqlHelpers
     FIELDS
   end
 
-  def all_graphql_fields_for(class_name, parent_types = Set.new, max_depth: 3)
+  def all_graphql_fields_for(class_name, parent_types = Set.new, max_depth: 3, excluded: [])
     # pulling _all_ fields can generate a _huge_ query (like complexity 180,000),
     # and significantly increase spec runtime. so limit the depth by default
     return if max_depth <= 0
@@ -136,6 +167,7 @@ module GraphqlHelpers
     allow_unlimited_graphql_complexity
     allow_unlimited_graphql_depth
     allow_high_graphql_recursion
+    allow_high_graphql_transaction_threshold
 
     type = GitlabSchema.types[class_name.to_s]
     return "" unless type
@@ -143,6 +175,7 @@ module GraphqlHelpers
     type.fields.map do |name, field|
       # We can't guess arguments, so skip fields that require them
       next if required_arguments?(field)
+      next if excluded.include?(name)
 
       singular_field_type = field_type(field)
 
@@ -163,14 +196,25 @@ module GraphqlHelpers
 
   def attributes_to_graphql(attributes)
     attributes.map do |name, value|
-      value_str = if value.is_a?(Array)
-                    '["' + value.join('","') + '"]'
-                  else
-                    "\"#{value}\""
-                  end
+      value_str = as_graphql_literal(value)
 
       "#{GraphqlHelpers.fieldnamerize(name.to_s)}: #{value_str}"
     end.join(", ")
+  end
+
+  # Fairly dumb Ruby => GraphQL rendering function. Only suitable for testing.
+  # Use symbol for Enum values
+  def as_graphql_literal(value)
+    case value
+    when Array then "[#{value.map { |v| as_graphql_literal(v) }.join(',')}]"
+    when Integer, Float then value.to_s
+    when String then "\"#{value.gsub(/"/, '\\"')}\""
+    when Symbol then value
+    when nil then 'null'
+    when true then 'true'
+    when false then 'false'
+    else raise ArgumentError, "Cannot represent #{value} as GraphQL literal"
+    end
   end
 
   def post_multiplex(queries, current_user: nil, headers: {})
@@ -212,7 +256,19 @@ module GraphqlHelpers
 
   # Raises an error if no data is found
   def graphql_data
+    # Note that `json_response` is defined as `let(:json_response)` and
+    # therefore, in a spec with multiple queries, will only contain data
+    # from the _first_ query, not subsequent ones
     json_response['data'] || (raise NoData, graphql_errors)
+  end
+
+  def graphql_data_at(*path)
+    graphql_dig_at(graphql_data, *path)
+  end
+
+  def graphql_dig_at(data, *path)
+    keys = path.map { |segment| GraphqlHelpers.fieldnamerize(segment) }
+    data.dig(*keys)
   end
 
   def graphql_errors
@@ -248,6 +304,22 @@ module GraphqlHelpers
     graphql_data.fetch(GraphqlHelpers.fieldnamerize(mutation_name))
   end
 
+  def scalar_fields_of(type_name)
+    GitlabSchema.types[type_name].fields.map do |name, field|
+      next if nested_fields?(field) || required_arguments?(field)
+
+      name
+    end.compact
+  end
+
+  def nested_fields_of(type_name)
+    GitlabSchema.types[type_name].fields.map do |name, field|
+      next if !nested_fields?(field) || required_arguments?(field)
+
+      [name, field]
+    end.compact
+  end
+
   def nested_fields?(field)
     !scalar?(field) && !enum?(field)
   end
@@ -269,7 +341,7 @@ module GraphqlHelpers
   end
 
   def field_type(field)
-    field_type = field.type
+    field_type = field.type.respond_to?(:to_graphql) ? field.type.to_graphql : field.type
 
     # The type could be nested. For example `[GraphQL::STRING_TYPE]`:
     # - List
@@ -295,6 +367,10 @@ module GraphqlHelpers
     allow_any_instance_of(Gitlab::Graphql::QueryAnalyzers::RecursionAnalyzer).to receive(:recursion_threshold).and_return 1000
   end
 
+  def allow_high_graphql_transaction_threshold
+    stub_const("Gitlab::QueryLimiting::Transaction::THRESHOLD", 1000)
+  end
+
   def node_array(data, extract_attribute = nil)
     data.map do |item|
       extract_attribute ? item['node'][extract_attribute] : item['node']
@@ -314,6 +390,40 @@ module GraphqlHelpers
 
   def custom_graphql_error(path, msg)
     a_hash_including('path' => path, 'message' => msg)
+  end
+
+  def type_factory
+    Class.new(Types::BaseObject) do
+      graphql_name 'TestType'
+
+      field :name, GraphQL::STRING_TYPE, null: true
+
+      yield(self) if block_given?
+    end
+  end
+
+  def query_factory
+    Class.new(Types::BaseObject) do
+      graphql_name 'TestQuery'
+
+      yield(self) if block_given?
+    end
+  end
+
+  def execute_query(query_type)
+    schema = Class.new(GraphQL::Schema) do
+      use GraphQL::Pagination::Connections
+      use Gitlab::Graphql::Authorize
+      use Gitlab::Graphql::Pagination::Connections
+
+      query(query_type)
+    end
+
+    schema.execute(
+      query_string,
+      context: { current_user: user },
+      variables: {}
+    )
   end
 end
 

@@ -1,8 +1,9 @@
 import { createLocalVue, mount } from '@vue/test-utils';
 import Vuex from 'vuex';
-import { GlEmptyState, GlLoadingIcon, GlFormInput, GlPagination } from '@gitlab/ui';
+import { GlEmptyState, GlLoadingIcon, GlFormInput, GlPagination, GlDropdown } from '@gitlab/ui';
 import stubChildren from 'helpers/stub_children';
 import ErrorTrackingList from '~/error_tracking/components/error_tracking_list.vue';
+import ErrorTrackingActions from '~/error_tracking/components/error_tracking_actions.vue';
 import errorsList from './list_mock.json';
 
 const localVue = createLocalVue();
@@ -15,11 +16,22 @@ describe('ErrorTrackingList', () => {
 
   const findErrorListTable = () => wrapper.find('table');
   const findErrorListRows = () => wrapper.findAll('tbody tr');
-  const findSortDropdown = () => wrapper.find('.sort-dropdown');
+  const dropdownsArray = () => wrapper.findAll(GlDropdown);
   const findRecentSearchesDropdown = () =>
-    wrapper.find('.filtered-search-history-dropdown-wrapper');
+    dropdownsArray()
+      .at(0)
+      .find(GlDropdown);
+  const findStatusFilterDropdown = () =>
+    dropdownsArray()
+      .at(1)
+      .find(GlDropdown);
+  const findSortDropdown = () =>
+    dropdownsArray()
+      .at(2)
+      .find(GlDropdown);
   const findLoadingIcon = () => wrapper.find(GlLoadingIcon);
   const findPagination = () => wrapper.find(GlPagination);
+  const findErrorActions = () => wrapper.find(ErrorTrackingActions);
 
   function mountComponent({
     errorTrackingEnabled = true,
@@ -31,6 +43,8 @@ describe('ErrorTrackingList', () => {
       store,
       propsData: {
         indexPath: '/path',
+        listPath: '/error_tracking',
+        projectPath: 'project/test',
         enableErrorTrackingLink: '/link',
         userCanEnableErrorTracking,
         errorTrackingEnabled,
@@ -39,9 +53,6 @@ describe('ErrorTrackingList', () => {
       stubs: {
         ...stubChildren(ErrorTrackingList),
         ...stubs,
-      },
-      data() {
-        return { errorSearchQuery: 'search' };
       },
     });
   }
@@ -59,6 +70,9 @@ describe('ErrorTrackingList', () => {
       searchByQuery: jest.fn(),
       sortByField: jest.fn(),
       fetchPaginatedResults: jest.fn(),
+      updateStatus: jest.fn(),
+      removeIgnoredResolvedErrors: jest.fn(),
+      filterByStatus: jest.fn(),
     };
 
     const state = {
@@ -139,6 +153,12 @@ describe('ErrorTrackingList', () => {
       });
     });
 
+    it('each error in the list should have an action button set', () => {
+      findErrorListRows().wrappers.forEach(row => {
+        expect(row.contains(ErrorTrackingActions)).toBe(true);
+      });
+    });
+
     describe('filtering', () => {
       const findSearchBox = () => wrapper.find(GlFormInput);
 
@@ -148,14 +168,21 @@ describe('ErrorTrackingList', () => {
       });
 
       it('it searches by query', () => {
+        findSearchBox().vm.$emit('input', 'search');
         findSearchBox().trigger('keyup.enter');
-        expect(actions.searchByQuery.mock.calls[0][1]).toEqual(wrapper.vm.errorSearchQuery);
+        expect(actions.searchByQuery.mock.calls[0][1]).toBe('search');
       });
 
       it('it sorts by fields', () => {
-        const findSortItem = () => wrapper.find('.dropdown-item');
+        const findSortItem = () => findSortDropdown().find('.dropdown-item');
         findSortItem().trigger('click');
         expect(actions.sortByField).toHaveBeenCalled();
+      });
+
+      it('it filters by status', () => {
+        const findStatusFilter = () => findStatusFilterDropdown().find('.dropdown-item');
+        findStatusFilter().trigger('click');
+        expect(actions.filterByStatus).toHaveBeenCalled();
       });
     });
   });
@@ -201,7 +228,85 @@ describe('ErrorTrackingList', () => {
       expect(wrapper.find(GlEmptyState).exists()).toBe(true);
       expect(findLoadingIcon().exists()).toBe(false);
       expect(findErrorListTable().exists()).toBe(false);
-      expect(findSortDropdown().exists()).toBe(false);
+      expect(dropdownsArray().length).toBe(0);
+    });
+  });
+
+  describe('When the ignore button on an error is clicked', () => {
+    beforeEach(() => {
+      store.state.list.loading = false;
+      store.state.list.errors = errorsList;
+
+      mountComponent({
+        stubs: {
+          GlTable: false,
+          GlLink: false,
+          GlDeprecatedButton: false,
+        },
+      });
+    });
+
+    it('sends the "ignored" status and error ID', () => {
+      findErrorActions().vm.$emit('update-issue-status', {
+        errorId: errorsList[0].id,
+        status: 'ignored',
+      });
+      expect(actions.updateStatus).toHaveBeenCalledWith(
+        expect.anything(),
+        {
+          endpoint: `/project/test/-/error_tracking/${errorsList[0].id}.json`,
+          status: 'ignored',
+        },
+        undefined,
+      );
+    });
+
+    it('calls an action to remove the item from the list', () => {
+      findErrorActions().vm.$emit('update-issue-status', { errorId: '1', status: undefined });
+      expect(actions.removeIgnoredResolvedErrors).toHaveBeenCalledWith(
+        expect.anything(),
+        '1',
+        undefined,
+      );
+    });
+  });
+
+  describe('When the resolve button on an error is clicked', () => {
+    beforeEach(() => {
+      store.state.list.loading = false;
+      store.state.list.errors = errorsList;
+
+      mountComponent({
+        stubs: {
+          GlTable: false,
+          GlLink: false,
+          GlDeprecatedButton: false,
+        },
+      });
+    });
+
+    it('sends "resolved" status and error ID', () => {
+      findErrorActions().vm.$emit('update-issue-status', {
+        errorId: errorsList[0].id,
+        status: 'resolved',
+      });
+      expect(actions.updateStatus).toHaveBeenCalledWith(
+        expect.anything(),
+        {
+          endpoint: `/project/test/-/error_tracking/${errorsList[0].id}.json`,
+          status: 'resolved',
+        },
+        undefined,
+      );
+    });
+
+    it('calls an action to remove the item from the list', () => {
+      findErrorActions().vm.$emit('update-issue-status', { errorId: '1', status: undefined });
+      expect(actions.removeIgnoredResolvedErrors).toHaveBeenCalledWith(
+        expect.anything(),
+        '1',
+        undefined,
+      );
     });
   });
 

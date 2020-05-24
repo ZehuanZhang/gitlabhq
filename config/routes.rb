@@ -19,12 +19,12 @@ Rails.application.routes.draw do
 
   draw :sherlock
   draw :development
-  draw :ci
 
   use_doorkeeper do
     controllers applications: 'oauth/applications',
                 authorized_applications: 'oauth/authorized_applications',
-                authorizations: 'oauth/authorizations'
+                authorizations: 'oauth/authorizations',
+                token_info: 'oauth/token_info'
   end
 
   # This prefixless path is required because Jira gets confused if we set it up with a path
@@ -44,17 +44,6 @@ Rails.application.routes.draw do
 
   use_doorkeeper_openid_connect
 
-  # Autocomplete
-  get '/autocomplete/users' => 'autocomplete#users'
-  get '/autocomplete/users/:id' => 'autocomplete#user'
-  get '/autocomplete/projects' => 'autocomplete#projects'
-  get '/autocomplete/award_emojis' => 'autocomplete#award_emojis'
-  get '/autocomplete/merge_request_target_branches' => 'autocomplete#merge_request_target_branches'
-
-  Gitlab.ee do
-    get '/autocomplete/project_groups' => 'autocomplete#project_groups'
-  end
-
   # Sign up
   get 'users/sign_up/welcome' => 'registrations#welcome'
   patch 'users/sign_up/update_registration' => 'registrations#update_registration'
@@ -70,7 +59,22 @@ Rails.application.routes.draw do
   # Health check
   get 'health_check(/:checks)' => 'health_check#index', as: :health_check
 
+  # Begin of the /-/ scope.
+  # Use this scope for all new global routes.
   scope path: '-' do
+    # Autocomplete
+    get '/autocomplete/users' => 'autocomplete#users'
+    get '/autocomplete/users/:id' => 'autocomplete#user'
+    get '/autocomplete/projects' => 'autocomplete#projects'
+    get '/autocomplete/award_emojis' => 'autocomplete#award_emojis'
+    get '/autocomplete/merge_request_target_branches' => 'autocomplete#merge_request_target_branches'
+
+    Gitlab.ee do
+      get '/autocomplete/project_groups' => 'autocomplete#project_groups'
+      get '/autocomplete/project_routes' => 'autocomplete#project_routes'
+      get '/autocomplete/namespace_routes' => 'autocomplete#namespace_routes'
+    end
+
     # '/-/health' implemented by BasicHealthCheck middleware
     get 'liveness' => 'health#liveness'
     get 'readiness' => 'health#readiness'
@@ -120,12 +124,14 @@ Rails.application.routes.draw do
       draw :country
       draw :country_state
       draw :subscription
-    end
+      draw :analytics
 
-    Gitlab.ee do
-      constraints(-> (*) { Gitlab::Analytics.any_features_enabled? }) do
-        draw :analytics
+      scope '/push_from_secondary/:geo_node_id' do
+        draw :git_http
       end
+
+      # Used for survey responses
+      resources :survey_responses, only: :index
     end
 
     if ENV['GITLAB_CHAOS_SECRET'] || Rails.env.development? || Rails.env.test?
@@ -137,7 +143,32 @@ Rails.application.routes.draw do
         get :kill
       end
     end
+
+    # Notification settings
+    resources :notification_settings, only: [:create, :update]
+
+    resources :invites, only: [:show], constraints: { id: /[A-Za-z0-9_-]+/ } do
+      member do
+        post :accept
+        match :decline, via: [:get, :post]
+      end
+    end
+
+    resources :sent_notifications, only: [], constraints: { id: /\h{32}/ } do
+      member do
+        get :unsubscribe
+      end
+    end
+
+    # Spam reports
+    resources :abuse_reports, only: [:new, :create]
+
+    # JWKS (JSON Web Key Set) endpoint
+    # Used by third parties to verify CI_JOB_JWT, placeholder route
+    # in case we decide to move away from doorkeeper-openid_connect
+    get 'jwks' => 'doorkeeper/openid_connect/discovery#keys'
   end
+  # End of the /-/ scope.
 
   concern :clusterable do
     resources :clusters, only: [:index, :new, :show, :update, :destroy] do
@@ -168,31 +199,51 @@ Rails.application.routes.draw do
     end
   end
 
+  # Deprecated routes.
+  # Will be removed as part of https://gitlab.com/gitlab-org/gitlab/-/issues/210024
+  scope as: :deprecated do
+    # Autocomplete
+    get '/autocomplete/users' => 'autocomplete#users'
+    get '/autocomplete/users/:id' => 'autocomplete#user'
+    get '/autocomplete/projects' => 'autocomplete#projects'
+    get '/autocomplete/award_emojis' => 'autocomplete#award_emojis'
+    get '/autocomplete/merge_request_target_branches' => 'autocomplete#merge_request_target_branches'
+
+    Gitlab.ee do
+      get '/autocomplete/project_groups' => 'autocomplete#project_groups'
+      get '/autocomplete/project_routes' => 'autocomplete#project_routes'
+      get '/autocomplete/namespace_routes' => 'autocomplete#namespace_routes'
+    end
+
+    resources :invites, only: [:show], constraints: { id: /[A-Za-z0-9_-]+/ } do
+      member do
+        post :accept
+        match :decline, via: [:get, :post]
+      end
+    end
+
+    resources :sent_notifications, only: [], constraints: { id: /\h{32}/ } do
+      member do
+        get :unsubscribe
+      end
+    end
+
+    resources :abuse_reports, only: [:new, :create]
+  end
+
+  resources :groups, only: [:index, :new, :create] do
+    post :preview_markdown
+  end
+
+  resources :projects, only: [:index, :new, :create]
+
+  get '/projects/:id' => 'projects#resolve'
+
+  draw :git_http
   draw :api
   draw :sidekiq
   draw :help
   draw :snippets
-
-  # Invites
-  resources :invites, only: [:show], constraints: { id: /[A-Za-z0-9_-]+/ } do
-    member do
-      post :accept
-      match :decline, via: [:get, :post]
-    end
-  end
-
-  resources :sent_notifications, only: [], constraints: { id: /\h{32}/ } do
-    member do
-      get :unsubscribe
-    end
-  end
-
-  # Spam reports
-  resources :abuse_reports, only: [:new, :create]
-
-  # Notification settings
-  resources :notification_settings, only: [:create, :update]
-
   draw :google_api
   draw :import
   draw :uploads

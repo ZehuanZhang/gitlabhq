@@ -7,6 +7,7 @@ describe Environment, :use_clean_rails_memory_store_caching do
   using RSpec::Parameterized::TableSyntax
   include RepoHelpers
   include StubENV
+  include CreateEnvironmentsHelpers
 
   let(:project) { create(:project, :repository) }
 
@@ -16,6 +17,7 @@ describe Environment, :use_clean_rails_memory_store_caching do
 
   it { is_expected.to belong_to(:project).required }
   it { is_expected.to have_many(:deployments) }
+  it { is_expected.to have_many(:metrics_dashboard_annotations) }
 
   it { is_expected.to delegate_method(:stop_action).to(:last_deployment) }
   it { is_expected.to delegate_method(:manual_actions).to(:last_deployment) }
@@ -111,6 +113,72 @@ describe Environment, :use_clean_rails_memory_store_caching do
       it 'prevents wildcard injection' do
         is_expected.to be_empty
       end
+    end
+  end
+
+  describe '.auto_stoppable' do
+    subject { described_class.auto_stoppable(limit) }
+
+    let(:limit) { 100 }
+
+    context 'when environment is auto-stoppable' do
+      let!(:environment) { create(:environment, :auto_stoppable) }
+
+      it { is_expected.to eq([environment]) }
+    end
+
+    context 'when environment is not auto-stoppable' do
+      let!(:environment) { create(:environment) }
+
+      it { is_expected.to be_empty }
+    end
+  end
+
+  describe '.stop_actions' do
+    subject { environments.stop_actions }
+
+    let_it_be(:project) { create(:project, :repository) }
+    let_it_be(:user) { create(:user) }
+    let(:environments) { Environment.all }
+
+    before_all do
+      project.add_developer(user)
+      project.repository.add_branch(user, 'review/feature-1', 'master')
+      project.repository.add_branch(user, 'review/feature-2', 'master')
+    end
+
+    shared_examples_for 'correct filtering' do
+      it 'returns stop actions for available environments only' do
+        expect(subject.count).to eq(1)
+        expect(subject.first.name).to eq('stop_review_app')
+        expect(subject.first.ref).to eq('review/feature-1')
+      end
+    end
+
+    before do
+      create_review_app(user, project, 'review/feature-1')
+      create_review_app(user, project, 'review/feature-2')
+    end
+
+    it 'returns stop actions for environments' do
+      expect(subject.count).to eq(2)
+      expect(subject).to match_array(Ci::Build.where(name: 'stop_review_app'))
+    end
+
+    context 'when one of the stop actions has already been executed' do
+      before do
+        Ci::Build.where(ref: 'review/feature-2').find_by_name('stop_review_app').enqueue!
+      end
+
+      it_behaves_like 'correct filtering'
+    end
+
+    context 'when one of the deployments does not have stop action' do
+      before do
+        Deployment.where(ref: 'review/feature-2').update_all(on_stop: nil)
+      end
+
+      it_behaves_like 'correct filtering'
     end
   end
 
@@ -255,26 +323,6 @@ describe Environment, :use_clean_rails_memory_store_caching do
 
         expect(env.update_merge_request_metrics?).to eq(expected_value)
       end
-    end
-  end
-
-  describe '#first_deployment_for' do
-    let(:project)       { create(:project, :repository) }
-    let!(:deployment)   { create(:deployment, :succeed, environment: environment, ref: commit.parent.id) }
-    let!(:deployment1)  { create(:deployment, :succeed, environment: environment, ref: commit.id) }
-    let(:head_commit)   { project.commit }
-    let(:commit)        { project.commit.parent }
-
-    it 'returns deployment id for the environment', :sidekiq_might_not_need_inline do
-      expect(environment.first_deployment_for(commit.id)).to eq deployment1
-    end
-
-    it 'return nil when no deployment is found' do
-      expect(environment.first_deployment_for(head_commit.id)).to eq nil
-    end
-
-    it 'returns a UTF-8 ref', :sidekiq_might_not_need_inline do
-      expect(environment.first_deployment_for(commit.id).ref).to be_utf8
     end
   end
 
@@ -449,7 +497,7 @@ describe Environment, :use_clean_rails_memory_store_caching do
   describe '#reset_auto_stop' do
     subject { environment.reset_auto_stop }
 
-    let(:environment) { create(:environment, :auto_stopped) }
+    let(:environment) { create(:environment, :auto_stoppable) }
 
     it 'nullifies the auto_stop_at' do
       expect { subject }.to change(environment, :auto_stop_at).from(Time).to(nil)
@@ -1013,7 +1061,7 @@ describe Environment, :use_clean_rails_memory_store_caching do
       end
 
       context 'when time window arguments are provided' do
-        let(:metric_params) { [1552642245.067, Time.now] }
+        let(:metric_params) { [1552642245.067, Time.current] }
 
         it 'queries with the expected parameters' do
           expect(environment.prometheus_adapter)
@@ -1197,6 +1245,14 @@ describe Environment, :use_clean_rails_memory_store_caching do
     end
   end
 
+  describe '.for_id_and_slug' do
+    subject { described_class.for_id_and_slug(environment.id, environment.slug) }
+
+    let(:environment) { create(:environment) }
+
+    it { is_expected.not_to be_nil }
+  end
+
   describe '.find_or_create_by_name' do
     it 'finds an existing environment if it exists' do
       env = create(:environment)
@@ -1209,6 +1265,71 @@ describe Environment, :use_clean_rails_memory_store_caching do
 
       expect(env).to be_an_instance_of(described_class)
       expect(env).to be_persisted
+    end
+  end
+
+  describe '#elastic_stack_available?' do
+    let!(:cluster) { create(:cluster, :project, :provided_by_user, projects: [project]) }
+    let!(:deployment) { create(:deployment, :success, environment: environment, project: project, cluster: cluster) }
+
+    context 'when app does not exist' do
+      it 'returns false' do
+        expect(environment.elastic_stack_available?).to be(false)
+      end
+    end
+
+    context 'when app exists' do
+      let!(:application) { create(:clusters_applications_elastic_stack, cluster: cluster) }
+
+      it 'returns false' do
+        expect(environment.elastic_stack_available?).to be(false)
+      end
+    end
+
+    context 'when app is installed' do
+      let!(:application) { create(:clusters_applications_elastic_stack, :installed, cluster: cluster) }
+
+      it 'returns true' do
+        expect(environment.elastic_stack_available?).to be(true)
+      end
+    end
+
+    context 'when app is updated' do
+      let!(:application) { create(:clusters_applications_elastic_stack, :updated, cluster: cluster) }
+
+      it 'returns true' do
+        expect(environment.elastic_stack_available?).to be(true)
+      end
+    end
+  end
+
+  describe '#destroy' do
+    it 'remove the deployment refs from gitaly' do
+      deployment = create(:deployment, :success, environment: environment, project: project)
+      deployment.create_ref
+
+      expect { environment.destroy }.to change { project.commit(deployment.ref_path) }.to(nil)
+    end
+  end
+
+  describe '.count_by_state' do
+    context 'when environments are not empty' do
+      let!(:environment1) { create(:environment, project: project, state: 'stopped') }
+      let!(:environment2) { create(:environment, project: project, state: 'available') }
+      let!(:environment3) { create(:environment, project: project, state: 'stopped') }
+
+      it 'returns the environments count grouped by state' do
+        expect(project.environments.count_by_state).to eq({ stopped: 2, available: 1 })
+      end
+
+      it 'returns the environments count grouped by state with zero value' do
+        environment2.update(state: 'stopped')
+        expect(project.environments.count_by_state).to eq({ stopped: 3, available: 0 })
+      end
+    end
+
+    it 'returns zero state counts when environments are empty' do
+      expect(project.environments.count_by_state).to eq({ stopped: 0, available: 0 })
     end
   end
 end

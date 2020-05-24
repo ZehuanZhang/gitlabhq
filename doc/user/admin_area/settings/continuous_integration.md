@@ -4,7 +4,7 @@ type: reference
 
 # Continuous Integration and Deployment Admin settings **(CORE ONLY)**
 
-In this area, you will find settings for Auto DevOps, Runners and job artifacts.
+In this area, you will find settings for Auto DevOps, Runners, and job artifacts.
 You can find it in the **Admin Area > Settings > CI/CD**.
 
 ![Admin Area settings button](../img/admin_area_settings_button.png)
@@ -32,7 +32,7 @@ The maximum size of the [job artifacts](../../../administration/job_artifacts.md
 can be set at:
 
 - The instance level.
-- [From GitLab 12.4](https://gitlab.com/gitlab-org/gitlab/issues/21688), the project and group level.
+- [From GitLab 12.4](https://gitlab.com/gitlab-org/gitlab/-/issues/21688), the project and group level.
 
 The value is:
 
@@ -53,7 +53,7 @@ To change it at the:
   1. Change the value of **maximum artifacts size (in MB)**.
   1. Press **Save changes** for the changes to take effect.
 
-- [Project level](../../project/pipelines/settings.md) (this will override the instance and group settings):
+- [Project level](../../../ci/pipelines/settings.md) (this will override the instance and group settings):
 
   1. Go to the project's **Settings > CI / CD > General Pipelines**.
   1. Change the value of **maximum artifacts size (in MB)**.
@@ -86,8 +86,7 @@ artifacts, as described in the [troubleshooting documentation](../../../administ
 
 ## Shared Runners pipeline minutes quota **(STARTER ONLY)**
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab/merge_requests/1078)
-in GitLab Starter 8.16.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/1078) in GitLab Starter 8.16.
 
 If you have enabled shared Runners for your GitLab instance, you can limit their
 usage by setting a maximum number of pipeline minutes that a group can use on
@@ -117,7 +116,7 @@ Once saved, you can see the build quota in the group admin view.
 The quota can also be viewed in the project admin view if shared Runners
 are enabled.
 
-![Project admin info](img/admin_project_quota_view.png)
+![Project admin information](img/admin_project_quota_view.png)
 
 You can see an overview of the pipeline minutes quota of all projects of
 a group in the **Usage Quotas** page available to the group page settings list.
@@ -143,7 +142,7 @@ for example: <code>15 days</code>, <code>1 month</code>, <code>2 years</code>.
 
 ## Default CI configuration path
 
-> [Introduced](https://gitlab.com/gitlab-org/gitlab/merge_requests/18073) in GitLab 12.5.
+> [Introduced](https://gitlab.com/gitlab-org/gitlab/-/merge_requests/18073) in GitLab 12.5.
 
 The default CI configuration file path for new projects can be set in the Admin
 Area of your GitLab instance (`.gitlab-ci.yml` if not set):
@@ -152,7 +151,7 @@ Area of your GitLab instance (`.gitlab-ci.yml` if not set):
 1. Input the new path in the **Default CI configuration path** field.
 1. Hit **Save changes** for the changes to take effect.
 
-It is also possible to specify a [custom CI configuration path for a specific project](../../project/pipelines/settings.md#custom-ci-configuration-path).
+It is also possible to specify a [custom CI configuration path for a specific project](../../../ci/pipelines/settings.md#custom-ci-configuration-path).
 
 <!-- ## Troubleshooting
 
@@ -170,7 +169,7 @@ but commented out to help encourage others to add to it in the future. -->
 
 CAUTION: **Caution:**
 This feature is being re-evaluated in favor of a different
-[compliance solution](https://gitlab.com/gitlab-org/gitlab/issues/34830).
+[compliance solution](https://gitlab.com/gitlab-org/gitlab/-/issues/34830).
 We recommend that users who haven't yet implemented this feature wait for
 the new solution.
 
@@ -191,3 +190,16 @@ To set required pipeline configuration:
 1. Click **Save changes**.
 
 ![Required pipeline](img/admin_required_pipeline.png)
+
+## Package Registry configuration **(PREMIUM ONLY)**
+
+GitLab administrators can disable the forwarding of NPM requests to [npmjs.com](https://www.npmjs.com/).
+
+To disable it:
+
+1. Go to **Admin Area > Settings > CI/CD**.
+1. Expand the **Package Registry** section.
+1. Uncheck **Enable forwarding of NPM package requests to npmjs.org**.
+1. Click **Save changes**.
+
+![NPM package requests forwarding](img/admin_package_registry_npm_package_requests_forward.png)

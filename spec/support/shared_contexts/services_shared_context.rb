@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 Service.available_services_names.each do |service|
-  shared_context service do
+  RSpec.shared_context service do
     let(:dashed_service) { service.dasherize }
     let(:service_method) { "#{service}_service".to_sym }
     let(:service_klass) { "#{service}_service".classify.constantize }
@@ -31,9 +31,7 @@ Service.available_services_names.each do |service|
     let(:licensed_features) do
       {
         'github' => :github_project_service_integration,
-        'jenkins' => :jenkins_integration,
-        'jenkins_deprecated' => :jenkins_integration,
-        'alerts' => :incident_management
+        'jenkins' => :jenkins_integration
       }
     end
 

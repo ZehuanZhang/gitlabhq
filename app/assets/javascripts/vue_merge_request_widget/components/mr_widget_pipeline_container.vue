@@ -1,5 +1,5 @@
 <script>
-import _ from 'underscore';
+import { isNumber } from 'lodash';
 import ArtifactsApp from './artifacts_list_app.vue';
 import Deployment from './deployment/deployment.vue';
 import MrWidgetContainer from './mr_widget_container.vue';
@@ -67,7 +67,7 @@ export default {
       return this.mr.visualReviewAppAvailable && this.glFeatures.anonymousVisualReviewFeedback;
     },
     showMergeTrainPositionIndicator() {
-      return _.isNumber(this.mr.mergeTrainIndex);
+      return isNumber(this.mr.mergeTrainIndex);
     },
   },
 };
@@ -79,11 +79,12 @@ export default {
       :pipeline-coverage-delta="mr.pipelineCoverageDelta"
       :ci-status="mr.ciStatus"
       :has-ci="mr.hasCI"
+      :pipeline-must-succeed="mr.onlyAllowMergeIfPipelineSucceeds"
       :source-branch="branch"
       :source-branch-link="branchLink"
       :troubleshooting-docs-path="mr.troubleshootingDocsPath"
     />
-    <template v-slot:footer>
+    <template #footer>
       <div v-if="mr.exposedArtifactsPath" class="js-exposed-artifacts">
         <artifacts-app :endpoint="mr.exposedArtifactsPath" />
       </div>

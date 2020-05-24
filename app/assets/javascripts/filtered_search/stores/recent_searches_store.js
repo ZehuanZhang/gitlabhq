@@ -1,15 +1,13 @@
-import _ from 'underscore';
+import { uniq } from 'lodash';
 
 class RecentSearchesStore {
   constructor(initialState = {}, allowedKeys) {
-    this.state = Object.assign(
-      {
-        isLocalStorageAvailable: true,
-        recentSearches: [],
-        allowedKeys,
-      },
-      initialState,
-    );
+    this.state = {
+      isLocalStorageAvailable: true,
+      recentSearches: [],
+      allowedKeys,
+      ...initialState,
+    };
   }
 
   addRecentSearch(newSearch) {
@@ -20,7 +18,7 @@ class RecentSearchesStore {
 
   setRecentSearches(searches = []) {
     const trimmedSearches = searches.map(search => search.trim());
-    this.state.recentSearches = _.uniq(trimmedSearches).slice(0, 5);
+    this.state.recentSearches = uniq(trimmedSearches).slice(0, 5);
     return this.state.recentSearches;
   }
 }

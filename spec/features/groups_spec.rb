@@ -82,8 +82,8 @@ describe 'Group' do
           expect(page).to have_selector('#group_create_chat_team')
         end
 
-        it 'checks the checkbox by default' do
-          expect(find('#group_create_chat_team')['checked']).to eq(true)
+        it 'unchecks the checkbox by default' do
+          expect(find('#group_create_chat_team')['checked']).to eq(false)
         end
 
         it 'updates the team URL on graph path update', :js do
@@ -259,6 +259,42 @@ describe 'Group' do
       wait_for_requests
 
       expect(page).to have_link('Project overview')
+    end
+  end
+
+  describe 'new subgroup / project button' do
+    let(:group) { create(:group, project_creation_level: Gitlab::Access::NO_ONE_PROJECT_ACCESS, subgroup_creation_level: Gitlab::Access::OWNER_SUBGROUP_ACCESS) }
+
+    it 'new subgroup button is displayed without project creation permission' do
+      visit group_path(group)
+
+      page.within '.group-buttons' do
+        expect(page).to have_link('New subgroup')
+      end
+    end
+
+    it 'new subgroup button is displayed together with new project button when having project creation permission' do
+      group.update!(project_creation_level: Gitlab::Access::MAINTAINER_PROJECT_ACCESS)
+      visit group_path(group)
+
+      page.within '.group-buttons' do
+        expect(page).to have_css("li[data-text='New subgroup']", visible: false)
+        expect(page).to have_css("li[data-text='New project']", visible: false)
+      end
+    end
+
+    it 'new project button is displayed without subgroup creation permission' do
+      group.update!(project_creation_level: Gitlab::Access::MAINTAINER_PROJECT_ACCESS)
+      user = create(:user)
+
+      group.add_maintainer(user)
+      sign_out(:user)
+      sign_in(user)
+
+      visit group_path(group)
+      page.within '.group-buttons' do
+        expect(page).to have_link('New project')
+      end
     end
   end
 

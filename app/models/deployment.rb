@@ -5,7 +5,9 @@ class Deployment < ApplicationRecord
   include IidRoutes
   include AfterCommitQueue
   include UpdatedAtFilterable
+  include Importable
   include Gitlab::Utils::StrongMemoize
+  include FastDestroyAll
 
   belongs_to :project, required: true
   belongs_to :environment, required: true
@@ -17,7 +19,9 @@ class Deployment < ApplicationRecord
   has_many :merge_requests,
     through: :deployment_merge_requests
 
-  has_internal_id :iid, scope: :project, init: ->(s) do
+  has_one :deployment_cluster
+
+  has_internal_id :iid, scope: :project, track_if: -> { !importing? }, init: ->(s) do
     Deployment.where(project: s.project).maximum(:iid) if s&.project
   end
 
@@ -27,10 +31,20 @@ class Deployment < ApplicationRecord
   validate :valid_ref, on: :create
 
   delegate :name, to: :environment, prefix: true
+  delegate :kubernetes_namespace, to: :deployment_cluster, allow_nil: true
 
   scope :for_environment, -> (environment) { where(environment_id: environment) }
+  scope :for_environment_name, -> (name) do
+    joins(:environment).where(environments: { name: name })
+  end
+
+  scope :for_status, -> (status) { where(status: status) }
 
   scope :visible, -> { where(status: %i[running success failed canceled]) }
+  scope :stoppable, -> { where.not(on_stop: nil).where.not(deployable_id: nil).success }
+  scope :active, -> { where(status: %i[created running]) }
+  scope :older_than, -> (deployment) { where('id < ?', deployment.id) }
+  scope :with_deployable, -> { includes(:deployable).where('deployable_id IS NOT NULL') }
 
   state_machine :status, initial: :created do
     event :run do
@@ -50,7 +64,7 @@ class Deployment < ApplicationRecord
     end
 
     before_transition any => [:success, :failed, :canceled] do |deployment|
-      deployment.finished_at = Time.now
+      deployment.finished_at = Time.current
     end
 
     after_transition any => :success do |deployment|
@@ -62,6 +76,14 @@ class Deployment < ApplicationRecord
     after_transition any => [:success, :failed, :canceled] do |deployment|
       deployment.run_after_commit do
         Deployments::FinishedWorker.perform_async(id)
+      end
+    end
+
+    after_transition any => :running do |deployment|
+      next unless deployment.project.forward_deployment_enabled?
+
+      deployment.run_after_commit do
+        Deployments::ForwardDeploymentWorker.perform_async(id)
       end
     end
   end
@@ -92,6 +114,26 @@ class Deployment < ApplicationRecord
     success.find_by!(iid: iid)
   end
 
+  class << self
+    ##
+    # FastDestroyAll concerns
+    def begin_fast_destroy
+      preload(:project).find_each.map do |deployment|
+        [deployment.project, deployment.ref_path]
+      end
+    end
+
+    ##
+    # FastDestroyAll concerns
+    def finalize_fast_destroy(params)
+      by_project = params.group_by(&:shift)
+
+      by_project.each do |project, ref_paths|
+        project.repository.delete_refs(*ref_paths.flatten)
+      end
+    end
+  end
+
   def commit
     project.commit(sha)
   end
@@ -114,7 +156,7 @@ class Deployment < ApplicationRecord
   end
 
   def create_ref
-    project.repository.create_ref(ref, ref_path)
+    project.repository.create_ref(sha, ref_path)
   end
 
   def invalidate_cache
@@ -208,7 +250,14 @@ class Deployment < ApplicationRecord
   end
 
   def link_merge_requests(relation)
-    select = relation.select(['merge_requests.id', id]).to_sql
+    # NOTE: relation.select will perform column deduplication,
+    # when id == environment_id it will outputs 2 columns instead of 3
+    # i.e.:
+    # MergeRequest.select(1, 2).to_sql #=> SELECT 1, 2 FROM "merge_requests"
+    # MergeRequest.select(1, 1).to_sql #=> SELECT 1 FROM "merge_requests"
+    select = relation.select('merge_requests.id',
+                             "#{id} as deployment_id",
+                             "#{environment_id} as environment_id").to_sql
 
     # We don't use `Gitlab::Database.bulk_insert` here so that we don't need to
     # first pluck lots of IDs into memory.
@@ -217,7 +266,7 @@ class Deployment < ApplicationRecord
     # for the same deployment, only inserting any missing merge requests.
     DeploymentMergeRequest.connection.execute(<<~SQL)
       INSERT INTO #{DeploymentMergeRequest.table_name}
-      (merge_request_id, deployment_id)
+      (merge_request_id, deployment_id, environment_id)
       #{select}
       ON CONFLICT DO NOTHING
     SQL
@@ -252,11 +301,11 @@ class Deployment < ApplicationRecord
     errors.add(:ref, _('The branch or tag does not exist'))
   end
 
-  private
-
   def ref_path
     File.join(environment.ref_path, 'deployments', iid.to_s)
   end
+
+  private
 
   def legacy_finished_at
     self.created_at if success? && !read_attribute(:finished_at)

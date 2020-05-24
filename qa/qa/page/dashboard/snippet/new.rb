@@ -5,14 +5,38 @@ module QA
     module Dashboard
       module Snippet
         class New < Page::Base
+          view 'app/assets/javascripts/snippets/components/edit.vue' do
+            element :submit_button
+          end
+
+          view 'app/assets/javascripts/snippets/components/snippet_description_edit.vue' do
+            element :snippet_description_field
+            element :description_placeholder, required: true
+          end
+
+          view 'app/assets/javascripts/snippets/components/snippet_title.vue' do
+            element :snippet_title, required: true
+          end
+
+          view 'app/assets/javascripts/snippets/components/snippet_blob_edit.vue' do
+            element :snippet_file_name
+          end
+
           view 'app/views/shared/form_elements/_description.html.haml' do
             element :issuable_form_description
           end
 
           view 'app/views/shared/snippets/_form.html.haml' do
+            element :snippet_description_field
+            element :description_placeholder
             element :snippet_title
             element :snippet_file_name
-            element :create_snippet_button
+            element :submit_button
+          end
+
+          view 'app/views/projects/_zen.html.haml' do
+            # This 'element' is here only to ensure the changes in the view source aren't mistakenly changed
+            element :_, "qa_selector = local_assigns.fetch(:qa_selector, '')" # rubocop:disable QA/ElementWithPattern
           end
 
           def fill_title(title)
@@ -20,7 +44,8 @@ module QA
           end
 
           def fill_description(description)
-            fill_element :issuable_form_description, description
+            click_element :description_placeholder
+            fill_element :snippet_description_field, description
           end
 
           def set_visibility(visibility)
@@ -38,13 +63,14 @@ module QA
           end
 
           def click_create_snippet_button
-            click_element :create_snippet_button
+            wait_until(reload: false) { !find_element(:submit_button).disabled? }
+            click_element :submit_button
           end
 
           private
 
           def text_area
-            find('#editor>textarea', visible: false)
+            find('#editor textarea', visible: false)
           end
         end
       end

@@ -4,12 +4,13 @@ import {
   GlAvatar,
   GlIcon,
   GlSprintf,
-  GlButton,
   GlModal,
   GlAlert,
   GlLoadingIcon,
   GlDropdown,
   GlDropdownItem,
+  GlButton,
+  GlTooltipDirective,
 } from '@gitlab/ui';
 import TimeAgoTooltip from '~/vue_shared/components/time_ago_tooltip.vue';
 
@@ -22,13 +23,16 @@ export default {
     GlAvatar,
     GlIcon,
     GlSprintf,
-    GlButton,
     GlModal,
     GlAlert,
     GlLoadingIcon,
     GlDropdown,
     GlDropdownItem,
     TimeAgoTooltip,
+    GlButton,
+  },
+  directives: {
+    GlTooltip: GlTooltipDirective,
   },
   apollo: {
     canCreateSnippet: {
@@ -43,7 +47,7 @@ export default {
       update(data) {
         return this.snippet.project
           ? data.project.userPermissions.createSnippet
-          : data.currentUser.userPermissions.createSnippet;
+          : data.currentUser?.userPermissions.createSnippet;
       },
     },
   },
@@ -67,17 +71,18 @@ export default {
           condition: this.snippet.userPermissions.updateSnippet,
           text: __('Edit'),
           href: this.editLink,
-          click: undefined,
-          variant: 'outline-info',
-          cssClass: undefined,
+          disabled: this.snippet.blob.binary,
+          title: this.snippet.blob.binary
+            ? __('Snippets with non-text files can only be edited via Git.')
+            : undefined,
         },
         {
           condition: this.snippet.userPermissions.adminSnippet,
           text: __('Delete'),
-          href: undefined,
           click: this.showDeleteModal,
-          variant: 'outline-danger',
-          cssClass: 'btn-inverted btn-danger ml-2',
+          variant: 'danger',
+          category: 'secondary',
+          cssClass: 'ml-2',
         },
         {
           condition: this.canCreateSnippet,
@@ -85,9 +90,9 @@ export default {
           href: this.snippet.project
             ? `${this.snippet.project.webUrl}/snippets/new`
             : '/snippets/new',
-          click: undefined,
-          variant: 'outline-success',
-          cssClass: 'btn-inverted btn-success ml-2',
+          variant: 'success',
+          category: 'secondary',
+          cssClass: 'ml-2',
         },
       ];
     },
@@ -122,7 +127,7 @@ export default {
   },
   methods: {
     redirectToSnippets() {
-      window.location.pathname = 'dashboard/snippets';
+      window.location.pathname = `${this.snippet.project?.fullPath || 'dashboard'}/snippets`;
     },
     closeDeleteModal() {
       this.$refs.deleteModal.hide();
@@ -137,7 +142,10 @@ export default {
           mutation: DeleteSnippetMutation,
           variables: { id: this.snippet.id },
         })
-        .then(() => {
+        .then(({ data }) => {
+          if (data?.destroySnippet?.errors.length) {
+            throw new Error(data?.destroySnippet?.errors[0]);
+          }
           this.isDeleting = false;
           this.errorMessage = undefined;
           this.closeDeleteModal();
@@ -165,7 +173,7 @@ export default {
         <gl-icon :name="visibilityLevelIcon" :size="14" />
       </div>
       <div class="creator">
-        <gl-sprintf message="Authored %{timeago} by %{author}">
+        <gl-sprintf :message="__('Authored %{timeago} by %{author}')">
           <template #timeago>
             <time-ago-tooltip
               :time="snippet.createdAt"
@@ -184,18 +192,28 @@ export default {
     </div>
 
     <div class="detail-page-header-actions">
-      <div class="d-none d-sm-block">
+      <div class="d-none d-sm-flex">
         <template v-for="(action, index) in personalSnippetActions">
-          <gl-button
+          <div
             v-if="action.condition"
             :key="index"
-            :variant="action.variant"
-            :class="action.cssClass"
-            :href="action.href || undefined"
-            @click="action.click ? action.click() : undefined"
+            v-gl-tooltip
+            :title="action.title"
+            class="d-inline-block"
           >
-            {{ action.text }}
-          </gl-button>
+            <gl-button
+              :disabled="action.disabled"
+              :variant="action.variant"
+              :category="action.category"
+              :class="action.cssClass"
+              :href="action.href"
+              data-qa-selector="snippet_action_button"
+              :data-qa-action="action.text"
+              @click="action.click ? action.click() : undefined"
+            >
+              {{ action.text }}
+            </gl-button>
+          </div>
         </template>
       </div>
       <div class="d-block d-sm-none dropdown">
@@ -203,7 +221,9 @@ export default {
           <gl-dropdown-item
             v-for="(action, index) in personalSnippetActions"
             :key="index"
-            :href="action.href || undefined"
+            :disabled="action.disabled"
+            :title="action.title"
+            :href="action.href"
             @click="action.click ? action.click() : undefined"
             >{{ action.text }}</gl-dropdown-item
           >
@@ -218,7 +238,7 @@ export default {
         errorMessage
       }}</gl-alert>
 
-      <gl-sprintf message="Are you sure you want to delete %{name}?">
+      <gl-sprintf :message="__('Are you sure you want to delete %{name}?')">
         <template #name
           ><strong>{{ snippet.title }}</strong></template
         >
@@ -228,6 +248,7 @@ export default {
         <gl-button @click="closeDeleteModal">{{ __('Cancel') }}</gl-button>
         <gl-button
           variant="danger"
+          category="primary"
           :disabled="isDeleting"
           data-qa-selector="delete_snippet_button"
           @click="deleteSnippet"

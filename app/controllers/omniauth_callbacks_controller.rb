@@ -2,9 +2,13 @@
 
 class OmniauthCallbacksController < Devise::OmniauthCallbacksController
   include AuthenticatesWithTwoFactor
+  include Authenticates2FAForAdminMode
   include Devise::Controllers::Rememberable
   include AuthHelper
   include InitializesCurrentUserMode
+  include KnownSignIn
+
+  after_action :verify_known_sign_in
 
   protect_from_forgery except: [:kerberos, :saml, :cas3, :failure], with: :exception, prepend: true
 
@@ -86,6 +90,14 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
 
   private
 
+  def after_omniauth_failure_path_for(scope)
+    if Feature.enabled?(:user_mode_in_session)
+      return new_admin_session_path if current_user_mode.admin_mode_requested?
+    end
+
+    super
+  end
+
   def omniauth_flow(auth_module, identity_linker: nil)
     if fragment = request.env.dig('omniauth.params', 'redirect_fragment').presence
       store_redirect_fragment(fragment)
@@ -97,7 +109,7 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
       log_audit_event(current_user, with: oauth['provider'])
 
       if Feature.enabled?(:user_mode_in_session)
-        return admin_mode_flow if current_user_mode.admin_mode_requested?
+        return admin_mode_flow(auth_module::User) if current_user_mode.admin_mode_requested?
       end
 
       identity_linker ||= auth_module::IdentityLinker.new(current_user, oauth, session)
@@ -245,13 +257,19 @@ class OmniauthCallbacksController < Devise::OmniauthCallbacksController
     end
   end
 
-  def admin_mode_flow
-    if omniauth_identity_matches_current_user?
+  def admin_mode_flow(auth_user_class)
+    auth_user = build_auth_user(auth_user_class)
+
+    return fail_admin_mode_invalid_credentials unless omniauth_identity_matches_current_user?
+
+    if current_user.two_factor_enabled? && !auth_user.bypass_two_factor?
+      admin_mode_prompt_for_two_factor(current_user)
+    else
+      # Can only reach here if the omniauth identity matches current user
+      # and current_user is an admin that requested admin mode
       current_user_mode.enable_admin_mode!(skip_password_validation: true)
 
       redirect_to stored_location_for(:redirect) || admin_root_path, notice: _('Admin mode enabled')
-    else
-      fail_admin_mode_invalid_credentials
     end
   end
 

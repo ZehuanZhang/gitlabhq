@@ -6,6 +6,8 @@ import { __ } from '~/locale';
 import createFlash from '~/flash';
 import PanelResizer from '~/vue_shared/components/panel_resizer.vue';
 import glFeatureFlagsMixin from '~/vue_shared/mixins/gl_feature_flags_mixin';
+import { isSingleViewStyle } from '~/helpers/diffs_helper';
+import { updateHistory } from '~/lib/utils/url_utility';
 import eventHub from '../../notes/event_hub';
 import CompareVersions from './compare_versions.vue';
 import DiffFile from './diff_file.vue';
@@ -48,6 +50,11 @@ export default {
     endpointBatch: {
       type: String,
       required: true,
+    },
+    endpointCoverage: {
+      type: String,
+      required: false,
+      default: '',
     },
     projectPath: {
       type: String,
@@ -94,6 +101,7 @@ export default {
 
     return {
       treeWidth,
+      diffFilesLength: 0,
     };
   },
   computed: {
@@ -105,7 +113,6 @@ export default {
       mergeRequestDiffs: state => state.diffs.mergeRequestDiffs,
       mergeRequestDiff: state => state.diffs.mergeRequestDiff,
       commit: state => state.diffs.commit,
-      targetBranchName: state => state.diffs.targetBranchName,
       renderOverflowWarning: state => state.diffs.renderOverflowWarning,
       numTotalFiles: state => state.diffs.realSize,
       numVisibleFiles: state => state.diffs.size,
@@ -116,18 +123,8 @@ export default {
     ...mapState('diffs', ['showTreeList', 'isLoading', 'startVersion']),
     ...mapGetters('diffs', ['isParallelView', 'currentDiffIndex']),
     ...mapGetters(['isNotesFetched', 'getNoteableData']),
-    targetBranch() {
-      return {
-        branchName: this.targetBranchName,
-        versionIndex: -1,
-        path: '',
-      };
-    },
     canCurrentUserFork() {
       return this.currentUser.can_fork === true && this.currentUser.can_create_merge_request;
-    },
-    showCompareVersions() {
-      return this.mergeRequestDiffs && this.mergeRequestDiff;
     },
     renderDiffFiles() {
       return (
@@ -144,7 +141,24 @@ export default {
     },
   },
   watch: {
+    commit(newCommit, oldCommit) {
+      const commitChangedAfterRender = newCommit && !this.isLoading;
+      const commitIsDifferent = oldCommit && newCommit.id !== oldCommit.id;
+      const url = window?.location ? String(window.location) : '';
+
+      if (commitChangedAfterRender && commitIsDifferent) {
+        updateHistory({
+          title: document.title,
+          url: url.replace(oldCommit.id, newCommit.id),
+        });
+        this.refetchDiffData();
+        this.adjustView();
+      }
+    },
     diffViewType() {
+      if (this.needsReload() || this.needsFirstLoad()) {
+        this.refetchDiffData();
+      }
       this.adjustView();
     },
     shouldShow() {
@@ -158,15 +172,13 @@ export default {
     },
     isLoading: 'adjustView',
     showTreeList: 'adjustView',
-    retrievingBatches(newVal) {
-      if (!newVal) this.unwatchDiscussions();
-    },
   },
   mounted() {
     this.setBaseConfig({
       endpoint: this.endpoint,
       endpointMetadata: this.endpointMetadata,
       endpointBatch: this.endpointBatch,
+      endpointCoverage: this.endpointCoverage,
       projectPath: this.projectPath,
       dismissEndpoint: this.dismissEndpoint,
       showSuggestPopover: this.showSuggestPopover,
@@ -193,6 +205,16 @@ export default {
       () => `${this.diffFiles.length}:${this.$store.state.notes.discussions.length}`,
       () => this.setDiscussions(),
     );
+
+    this.unwatchRetrievingBatches = this.$watch(
+      () => `${this.retrievingBatches}:${this.$store.state.notes.discussions.length}`,
+      () => {
+        if (!this.retrievingBatches && this.$store.state.notes.discussions.length) {
+          this.unwatchDiscussions();
+          this.unwatchRetrievingBatches();
+        }
+      },
+    );
   },
   beforeDestroy() {
     eventHub.$off('fetchDiffData', this.fetchData);
@@ -202,10 +224,12 @@ export default {
   methods: {
     ...mapActions(['startTaskList']),
     ...mapActions('diffs', [
+      'moveToNeighboringCommit',
       'setBaseConfig',
       'fetchDiffFiles',
       'fetchDiffFilesMeta',
       'fetchDiffFilesBatch',
+      'fetchCoverageFiles',
       'startRenderDiffsQueue',
       'assignDiscussionsToDiff',
       'setHighlightedRow',
@@ -224,10 +248,21 @@ export default {
         { timeout: 1000 },
       );
     },
+    needsReload() {
+      return (
+        this.glFeatures.singleMrDiffView &&
+        this.diffFiles.length &&
+        isSingleViewStyle(this.diffFiles[0])
+      );
+    },
+    needsFirstLoad() {
+      return this.glFeatures.singleMrDiffView && !this.diffFiles.length;
+    },
     fetchData(toggleTree = true) {
       if (this.glFeatures.diffsBatchLoad) {
         this.fetchDiffFilesMeta()
-          .then(() => {
+          .then(({ real_size }) => {
+            this.diffFilesLength = parseInt(real_size, 10);
             if (toggleTree) this.hideTreeListIfJustOneFile();
 
             this.startDiffRendering();
@@ -237,19 +272,28 @@ export default {
           });
 
         this.fetchDiffFilesBatch()
+          .then(() => {
+            // Guarantee the discussions are assigned after the batch finishes.
+            // Just watching the length of the discussions or the diff files
+            // isn't enough, because with split diff loading, neither will
+            // change when loading the other half of the diff files.
+            this.setDiscussions();
+          })
           .then(() => this.startDiffRendering())
           .catch(() => {
             createFlash(__('Something went wrong on our end. Please try again!'));
           });
       } else {
         this.fetchDiffFiles()
-          .then(() => {
+          .then(({ real_size }) => {
+            this.diffFilesLength = parseInt(real_size, 10);
             if (toggleTree) {
               this.hideTreeListIfJustOneFile();
             }
 
             requestIdleCallback(
               () => {
+                this.setDiscussions();
                 this.startRenderDiffsQueue();
               },
               { timeout: 1000 },
@@ -258,6 +302,10 @@ export default {
           .catch(() => {
             createFlash(__('Something went wrong on our end. Please try again!'));
           });
+      }
+
+      if (this.endpointCoverage) {
+        this.fetchCoverageFiles();
       }
 
       if (!this.isNotesFetched) {
@@ -297,9 +345,16 @@ export default {
             break;
         }
       });
+
+      if (this.commit && this.glFeatures.mrCommitNeighborNav) {
+        Mousetrap.bind('c', () => this.moveToNeighboringCommit({ direction: 'next' }));
+        Mousetrap.bind('x', () => this.moveToNeighboringCommit({ direction: 'previous' }));
+      }
     },
     removeEventListeners() {
       Mousetrap.unbind(['[', 'k', ']', 'j']);
+      Mousetrap.unbind('c');
+      Mousetrap.unbind('x');
     },
     jumpToFile(step) {
       const targetIndex = this.currentDiffIndex + step;
@@ -322,13 +377,12 @@ export default {
 
 <template>
   <div v-show="shouldShow">
-    <div v-if="isLoading" class="loading"><gl-loading-icon /></div>
+    <div v-if="isLoading" class="loading"><gl-loading-icon size="lg" /></div>
     <div v-else id="diffs" :class="{ active: shouldShow }" class="diffs tab-pane">
       <compare-versions
         :merge-request-diffs="mergeRequestDiffs"
-        :merge-request-diff="mergeRequestDiff"
-        :target-branch="targetBranch"
         :is-limited-container="isLimitedContainer"
+        :diff-files-length="diffFilesLength"
       />
 
       <hidden-files-warning
@@ -341,7 +395,7 @@ export default {
 
       <div
         :data-can-create-note="getNoteableData.current_user.can_create_note"
-        class="files d-flex prepend-top-default"
+        class="files d-flex"
       >
         <div
           v-show="showTreeList"
@@ -365,7 +419,7 @@ export default {
           }"
         >
           <commit-widget v-if="commit" :commit="commit" />
-          <div v-if="isBatchLoading" class="loading"><gl-loading-icon /></div>
+          <div v-if="isBatchLoading" class="loading"><gl-loading-icon size="lg" /></div>
           <template v-else-if="renderDiffFiles">
             <diff-file
               v-for="file in diffFiles"

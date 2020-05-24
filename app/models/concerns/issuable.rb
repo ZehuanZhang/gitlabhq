@@ -91,6 +91,7 @@ module Issuable
     validate :description_max_length_for_new_records_is_valid, on: :update
 
     before_validation :truncate_description_on_import!
+    after_save :store_mentions!, if: :any_mentionable_attributes_changed?
 
     scope :authored, ->(user) { where(author_id: user) }
     scope :recent, -> { reorder(id: :desc) }
@@ -108,12 +109,37 @@ module Issuable
       where("NOT EXISTS (SELECT TRUE FROM #{to_ability_name}_assignees WHERE #{to_ability_name}_id = #{to_ability_name}s.id)")
     end
     scope :assigned_to, ->(u) do
-      where("EXISTS (SELECT TRUE FROM #{to_ability_name}_assignees WHERE user_id = ? AND #{to_ability_name}_id = #{to_ability_name}s.id)", u.id)
+      assignees_table = Arel::Table.new("#{to_ability_name}_assignees")
+      sql = assignees_table.project('true').where(assignees_table[:user_id].in(u)).where(Arel::Nodes::SqlLiteral.new("#{to_ability_name}_id = #{to_ability_name}s.id"))
+      where("EXISTS (#{sql.to_sql})")
     end
     # rubocop:enable GitlabSecurity/SqlInjection
 
+    scope :not_assigned_to, ->(users) do
+      assignees_table = Arel::Table.new("#{to_ability_name}_assignees")
+      sql = assignees_table.project('true')
+                .where(assignees_table[:user_id].in(users))
+                .where(Arel::Nodes::SqlLiteral.new("#{to_ability_name}_id = #{to_ability_name}s.id"))
+      where(sql.exists.not)
+    end
+
+    scope :without_particular_labels, ->(label_names) do
+      labels_table = Label.arel_table
+      label_links_table = LabelLink.arel_table
+      issuables_table = klass.arel_table
+      inner_query = label_links_table.project('true')
+                        .join(labels_table, Arel::Nodes::InnerJoin).on(labels_table[:id].eq(label_links_table[:label_id]))
+                        .where(label_links_table[:target_type].eq(name)
+                                   .and(label_links_table[:target_id].eq(issuables_table[:id]))
+                                   .and(labels_table[:title].in(label_names)))
+                        .exists.not
+
+      where(inner_query)
+    end
+
     scope :without_label, -> { joins("LEFT OUTER JOIN label_links ON label_links.target_type = '#{name}' AND label_links.target_id = #{table_name}.id").where(label_links: { id: nil }) }
-    scope :any_label, -> { joins(:label_links).group(:id) }
+    scope :with_label_ids, ->(label_ids) { joins(:label_links).where(label_links: { label_id: label_ids }) }
+    scope :any_label, -> { joins(:label_links).distinct }
     scope :join_project, -> { joins(:project) }
     scope :inc_notes_with_associations, -> { includes(notes: [:project, :author, :award_emoji]) }
     scope :references_project, -> { references(:project) }
@@ -127,6 +153,23 @@ module Issuable
     participant :assignees
 
     strip_attributes :title
+
+    class << self
+      def labels_hash
+        issue_labels = Hash.new { |h, k| h[k] = [] }
+
+        relation = unscoped.where(id: self.select(:id)).eager_load(:labels)
+        relation.pluck(:id, 'labels.title').each do |issue_id, label|
+          issue_labels[issue_id] << label if label.present?
+        end
+
+        issue_labels
+      end
+
+      def locking_enabled?
+        false
+      end
+    end
 
     # We want to use optimistic lock for cases when only title or description are involved
     # http://api.rubyonrails.org/classes/ActiveRecord/Locking/Optimistic.html
@@ -243,7 +286,7 @@ module Issuable
                 Gitlab::Database.nulls_last_order('highest_priority', direction))
     end
 
-    def order_labels_priority(direction = 'ASC', excluded_labels: [], extra_select_columns: [])
+    def order_labels_priority(direction = 'ASC', excluded_labels: [], extra_select_columns: [], with_cte: false)
       params = {
         target_type: name,
         target_column: "#{table_name}.id",
@@ -253,13 +296,15 @@ module Issuable
 
       highest_priority = highest_label_priority(params).to_sql
 
-      select_columns = [
-        "#{table_name}.*",
-        "(#{highest_priority}) AS highest_priority"
-      ] + extra_select_columns
+      # When using CTE make sure to select the same columns that are on the group_by clause.
+      # This prevents errors when ignored columns are present in the database.
+      issuable_columns = with_cte ? issue_grouping_columns(use_cte: with_cte) : "#{table_name}.*"
 
-      select(select_columns.join(', '))
-        .group(arel_table[:id])
+      extra_select_columns = extra_select_columns.unshift("(#{highest_priority}) AS highest_priority")
+
+      select(issuable_columns)
+        .select(extra_select_columns)
+        .group(issue_grouping_columns(use_cte: with_cte))
         .reorder(Gitlab::Database.nulls_last_order('highest_priority', direction))
     end
 
@@ -285,6 +330,18 @@ module Issuable
       end
 
       grouping_columns
+    end
+
+    # Includes all table keys in group by clause when sorting
+    # preventing errors in postgres when using CTE search optimisation
+    #
+    # Returns an array of arel columns
+    def issue_grouping_columns(use_cte: false)
+      if use_cte
+        attribute_names.map { |attr| arel_table[attr.to_sym] }
+      else
+        arel_table[:id]
+      end
     end
 
     def to_ability_name
@@ -456,5 +513,4 @@ module Issuable
   end
 end
 
-Issuable.prepend_if_ee('EE::Issuable') # rubocop: disable Cop/InjectEnterpriseEditionModule
-Issuable::ClassMethods.prepend_if_ee('EE::Issuable::ClassMethods')
+Issuable.prepend_if_ee('EE::Issuable')

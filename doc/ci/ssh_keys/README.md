@@ -37,7 +37,7 @@ with any type of [executor](https://docs.gitlab.com/runner/executors/)
 NOTE: **Note:**
 The private key will not be displayed in the job log, unless you enable
 [debug logging](../variables/README.md#debug-logging). You might also want to
-check the [visibility of your pipelines](../../user/project/pipelines/settings.md#visibility-of-pipelines).
+check the [visibility of your pipelines](../pipelines/settings.md#visibility-of-pipelines).
 
 ## SSH keys when using the Docker executor
 
@@ -114,11 +114,11 @@ SSH key.
 You can generate the SSH key from the machine that GitLab Runner is installed
 on, and use that key for all projects that are run on this machine.
 
-1. First, you need to login to the server that runs your jobs.
+1. First, log in to the server that runs your jobs.
 
-1. Then from the terminal login as the `gitlab-runner` user:
+1. Then, from the terminal, log in as the `gitlab-runner` user:
 
-   ```
+   ```shell
    sudo su - gitlab-runner
    ```
 
@@ -132,9 +132,9 @@ on, and use that key for all projects that are run on this machine.
    If you are accessing a private GitLab repository you need to add it as a
    [deploy key](../../ssh/README.md#deploy-keys).
 
-Once done, try to login to the remote server in order to accept the fingerprint:
+Once done, try to log in to the remote server in order to accept the fingerprint:
 
-```bash
+```shell
 ssh example.com
 ```
 
@@ -150,7 +150,7 @@ connection would fail if the public keys would not match).
 To find out the host keys of your server, run the `ssh-keyscan` command from a
 trusted network (ideally, from the private server itself):
 
-```sh
+```shell
 ## Use the domain name
 ssh-keyscan example.com
 
@@ -182,7 +182,7 @@ before_script:
   ## Assuming you created the SSH_KNOWN_HOSTS variable, uncomment the
   ## following two lines.
   ##
-  - echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+  - echo "$SSH_KNOWN_HOSTS" >> ~/.ssh/known_hosts
   - chmod 644 ~/.ssh/known_hosts
 
   ##
@@ -199,16 +199,14 @@ before_script:
   ## WARNING: Use this only with the Docker executor, if you use it with shell
   ## you will overwrite your user's SSH config.
   ##
-  #- '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+  #- '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" >> ~/.ssh/config'
 ```
 
 ## Example project
 
-We have set up an [Example SSH Project][ssh-example-repo] for your convenience
+We have set up an [Example SSH Project](https://gitlab.com/gitlab-examples/ssh-private-key/) for your convenience
 that runs on [GitLab.com](https://gitlab.com) using our publicly available
 [shared runners](../runners/README.md).
 
 Want to hack on it? Simply fork it, commit and push your changes. Within a few
 moments the changes will be picked by a public runner and the job will begin.
-
-[ssh-example-repo]: https://gitlab.com/gitlab-examples/ssh-private-key/

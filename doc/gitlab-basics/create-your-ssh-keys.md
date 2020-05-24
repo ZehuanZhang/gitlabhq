@@ -1,18 +1,17 @@
 ---
 type: howto
 ---
-
-# Create and add your SSH public key
+# Create and add your SSH key pair
 
 It is best practice to use [Git over SSH instead of Git over HTTP](https://git-scm.com/book/en/v2/Git-on-the-Server-The-Protocols).
 In order to use SSH, you will need to:
 
-1. [Create an SSH key pair](#creating-your-ssh-key-pair) on your local computer.
-1. [Add the key to GitLab](#adding-your-ssh-public-key-to-gitlab).
+1. Create an SSH key pair
+1. Add your SSH public key to GitLab
 
 ## Creating your SSH key pair
 
-1. Go to your [command line](start-using-git.md#open-a-shell).
+1. Go to your [command line](start-using-git.md#command-shell).
 1. Follow the [instructions](../ssh/README.md#generating-a-new-ssh-key-pair) to generate
    your SSH key pair.
 

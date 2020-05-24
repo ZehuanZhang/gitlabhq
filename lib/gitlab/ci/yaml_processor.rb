@@ -57,7 +57,7 @@ module Gitlab
           when: job[:when] || 'on_success',
           environment: job[:environment_name],
           coverage_regex: job[:coverage],
-          yaml_variables: transform_to_yaml_variables(job_variables(name)),
+          yaml_variables: transform_to_yaml_variables(job[:variables]),
           needs_attributes: job.dig(:needs, :job),
           interruptible: job[:interruptible],
           only: job[:only],
@@ -65,6 +65,7 @@ module Gitlab
           rules: job[:rules],
           cache: job[:cache],
           resource_group_key: job[:resource_group],
+          scheduling_type: job[:scheduling_type],
           options: {
             image: job[:image],
             services: job[:services],
@@ -141,15 +142,9 @@ module Gitlab
           validate_job_stage!(name, job)
           validate_job_dependencies!(name, job)
           validate_job_needs!(name, job)
+          validate_dynamic_child_pipeline_dependencies!(name, job)
           validate_job_environment!(name, job)
         end
-      end
-
-      def job_variables(name)
-        job_variables = @jobs.dig(name.to_sym, :variables)
-
-        @variables.to_h
-          .merge(job_variables.to_h)
       end
 
       def transform_to_yaml_variables(variables)
@@ -162,42 +157,55 @@ module Gitlab
         return unless job[:stage]
 
         unless job[:stage].is_a?(String) && job[:stage].in?(@stages)
-          raise ValidationError, "#{name} job: stage parameter should be #{@stages.join(", ")}"
+          raise ValidationError, "#{name} job: chosen stage does not exist; available stages are #{@stages.join(", ")}"
         end
       end
 
       def validate_job_dependencies!(name, job)
         return unless job[:dependencies]
 
-        stage_index = @stages.index(job[:stage])
-
         job[:dependencies].each do |dependency|
-          raise ValidationError, "#{name} job: undefined dependency: #{dependency}" unless @jobs[dependency.to_sym]
+          validate_job_dependency!(name, dependency)
+        end
+      end
 
-          dependency_stage_index = @stages.index(@jobs[dependency.to_sym][:stage])
+      def validate_dynamic_child_pipeline_dependencies!(name, job)
+        return unless includes = job.dig(:trigger, :include)
 
-          unless dependency_stage_index.present? && dependency_stage_index < stage_index
-            raise ValidationError, "#{name} job: dependency #{dependency} is not defined in prior stages"
-          end
+        Array(includes).each do |included|
+          next unless included.is_a?(Hash)
+          next unless dependency = included[:job]
+
+          validate_job_dependency!(name, dependency)
         end
       end
 
       def validate_job_needs!(name, job)
-        return unless job.dig(:needs, :job)
+        return unless needs = job.dig(:needs, :job)
 
-        stage_index = @stages.index(job[:stage])
-
-        job.dig(:needs, :job).each do |need|
-          need_job_name = need[:name]
-
-          raise ValidationError, "#{name} job: undefined need: #{need_job_name}" unless @jobs[need_job_name.to_sym]
-
-          needs_stage_index = @stages.index(@jobs[need_job_name.to_sym][:stage])
-
-          unless needs_stage_index.present? && needs_stage_index < stage_index
-            raise ValidationError, "#{name} job: need #{need_job_name} is not defined in prior stages"
-          end
+        needs.each do |need|
+          validate_job_dependency!(name, need[:name], 'need')
         end
+      end
+
+      def validate_job_dependency!(name, dependency, dependency_type = 'dependency')
+        unless @jobs[dependency.to_sym]
+          raise ValidationError, "#{name} job: undefined #{dependency_type}: #{dependency}"
+        end
+
+        job_stage_index = stage_index(name)
+        dependency_stage_index = stage_index(dependency)
+
+        # A dependency might be defined later in the configuration
+        # with a stage that does not exist
+        unless dependency_stage_index.present? && dependency_stage_index < job_stage_index
+          raise ValidationError, "#{name} job: #{dependency_type} #{dependency} is not defined in prior stages"
+        end
+      end
+
+      def stage_index(name)
+        stage = @jobs.dig(name.to_sym, :stage)
+        @stages.index(stage)
       end
 
       def validate_job_environment!(name, job)

@@ -14,6 +14,7 @@ module QA
           element :dropdown_toggle
           element :download_email_patches
           element :download_plain_diff
+          element :open_in_web_ide_button
         end
 
         view 'app/assets/javascripts/vue_merge_request_widget/components/mr_widget_pipeline.vue' do
@@ -55,7 +56,7 @@ module QA
           element :diffs_tab
         end
 
-        view 'app/assets/javascripts/diffs/components/diff_line_gutter_content.vue' do
+        view 'app/assets/javascripts/diffs/components/diff_table_cell.vue' do
           element :diff_comment
         end
 
@@ -73,7 +74,7 @@ module QA
         end
 
         def add_comment_to_diff(text)
-          wait(interval: 5) do
+          wait_until(sleep_interval: 5) do
             has_text?("No newline at end of file")
           end
           all_elements(:new_diff_line, minimum: 1).first.hover
@@ -140,12 +141,12 @@ module QA
 
         def mark_to_squash
           # The squash checkbox is disabled on load
-          wait do
+          wait_until do
             has_element?(:squash_checkbox)
           end
 
           # The squash checkbox is enabled via JS
-          wait(reload: false) do
+          wait_until(reload: false) do
             !find_element(:squash_checkbox).disabled?
           end
 
@@ -154,6 +155,8 @@ module QA
 
         def merge!
           click_element :merge_button if ready_to_merge?
+
+          finished_loading?
 
           raise "Merge did not appear to be successful" unless merged?
         end
@@ -164,30 +167,30 @@ module QA
 
         def ready_to_merge?
           # The merge button is disabled on load
-          wait do
+          wait_until do
             has_element?(:merge_button)
           end
 
           # The merge button is enabled via JS
-          wait(reload: false) do
+          wait_until(reload: false) do
             !find_element(:merge_button).disabled?
           end
         end
 
         def rebase!
           # The rebase button is disabled on load
-          wait do
+          wait_until do
             has_element?(:mr_rebase_button)
           end
 
           # The rebase button is enabled via JS
-          wait(reload: false) do
+          wait_until(reload: false) do
             !find_element(:mr_rebase_button).disabled?
           end
 
           click_element :mr_rebase_button
 
-          success = wait do
+          success = wait_until do
             has_text?('Fast-forward merge without a merge commit')
           end
 
@@ -209,13 +212,17 @@ module QA
         end
 
         def wait_for_merge_request_error_message
-          wait(max: 30, reload: false) do
+          wait_until(max_duration: 30, reload: false) do
             has_element?(:merge_request_error_content)
           end
         end
 
         def wait_for_loading
           finished_loading? && has_no_element?(:skeleton_note)
+        end
+
+        def click_open_in_web_ide
+          click_element :open_in_web_ide_button
         end
       end
     end

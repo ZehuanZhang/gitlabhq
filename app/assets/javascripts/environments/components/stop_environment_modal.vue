@@ -1,5 +1,5 @@
 <script>
-/* eslint-disable @gitlab/vue-i18n/no-bare-strings */
+/* eslint-disable @gitlab/vue-require-i18n-strings */
 import { GlTooltipDirective } from '@gitlab/ui';
 import DeprecatedModal2 from '~/vue_shared/components/deprecated_modal_2.vue';
 import { s__, sprintf } from '~/locale';
@@ -60,13 +60,12 @@ export default {
     footer-primary-button-variant="danger"
     @submit="onSubmit"
   >
-    <template slot="header">
+    <template #header>
       <h4 class="modal-title d-flex mw-100">
         Stopping
-        <span v-gl-tooltip :title="environment.name" class="text-truncate ml-1 mr-1 flex-fill">{{
-          environment.name
-        }}</span>
-        ?
+        <span v-gl-tooltip :title="environment.name" class="text-truncate ml-1 mr-1 flex-fill">
+          {{ environment.name }}?
+        </span>
       </h4>
     </template>
 

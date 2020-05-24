@@ -2,17 +2,6 @@
 - page_title _("Metrics and profiling")
 - @content_class = "limit-container-width" unless fluid_layout
 
-%section.settings.as-influx.no-animate#js-influx-settings{ class: ('expanded' if expanded_by_default?) }
-  .settings-header
-    %h4
-      = _('Metrics - Influx')
-    %button.btn.btn-default.js-settings-toggle{ type: 'button' }
-      = expanded_by_default? ? _('Collapse') : _('Expand')
-    %p
-      = _('Enable and configure InfluxDB metrics.')
-  .settings-content
-    = render 'influx'
-
 %section.settings.as-prometheus.no-animate#js-prometheus-settings{ class: ('expanded' if expanded_by_default?) }
   .settings-header
     %h4
@@ -47,6 +36,8 @@
   .settings-content
     = render 'performance_bar'
 
+.js-self-monitoring-settings{ data: self_monitoring_project_data }
+
 %section.settings.as-usage.no-animate#js-usage-settings{ class: ('expanded' if expanded_by_default?) }
   .settings-header#usage-statistics
     %h4
@@ -57,5 +48,7 @@
       = _('Enable or disable version check and usage ping.')
   .settings-content
     = render 'usage'
+
+= render_if_exists 'admin/application_settings/seat_link_setting', expanded: expanded_by_default?
 
 = render_if_exists 'admin/application_settings/pseudonymizer_settings', expanded: expanded_by_default?

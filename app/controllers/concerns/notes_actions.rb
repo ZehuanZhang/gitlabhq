@@ -13,7 +13,7 @@ module NotesActions
   end
 
   def index
-    current_fetched_at = Time.now.to_i
+    current_fetched_at = Time.current.to_i
 
     notes_json = { notes: [], last_fetched_at: current_fetched_at }
 
@@ -29,7 +29,7 @@ module NotesActions
     end
 
     notes = prepare_notes_for_rendering(notes)
-    notes = notes.select { |n| n.visible_for?(current_user) }
+    notes = notes.select { |n| n.readable_by?(current_user) }
 
     notes_json[:notes] =
       if use_note_serializer?

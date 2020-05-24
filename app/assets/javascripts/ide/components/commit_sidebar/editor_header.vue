@@ -24,24 +24,18 @@ export default {
     discardModalTitle() {
       return sprintf(__('Discard changes to %{path}?'), { path: this.activeFile.path });
     },
-    actionButtonText() {
-      return this.activeFile.staged ? __('Unstage') : __('Stage');
-    },
-    isStaged() {
-      return !this.activeFile.changed && this.activeFile.staged;
+    canDiscard() {
+      return this.activeFile.changed || this.activeFile.staged;
     },
   },
   methods: {
     ...mapActions(['stageChange', 'unstageChange', 'discardFileChanges']),
-    actionButtonClicked() {
-      if (this.activeFile.staged) {
-        this.unstageChange(this.activeFile.path);
-      } else {
-        this.stageChange(this.activeFile.path);
-      }
-    },
     showDiscardModal() {
       this.$refs.discardModal.show();
+    },
+    discardChanges(path) {
+      this.unstageChange(path);
+      this.discardFileChanges(path);
     },
   },
 };
@@ -59,25 +53,13 @@ export default {
     <changed-file-icon :file="activeFile" :is-centered="false" />
     <div class="ml-auto">
       <button
-        v-if="!isStaged"
+        v-if="canDiscard"
         ref="discardButton"
         type="button"
         class="btn btn-remove btn-inverted append-right-8"
         @click="showDiscardModal"
       >
-        {{ __('Discard') }}
-      </button>
-      <button
-        ref="actionButton"
-        :class="{
-          'btn-success': !isStaged,
-          'btn-warning': isStaged,
-        }"
-        type="button"
-        class="btn btn-inverted"
-        @click="actionButtonClicked"
-      >
-        {{ actionButtonText }}
+        {{ __('Discard changes') }}
       </button>
     </div>
     <gl-modal
@@ -87,7 +69,7 @@ export default {
       :ok-title="__('Discard changes')"
       :modal-id="discardModalId"
       :title="discardModalTitle"
-      @ok="discardFileChanges(activeFile.path)"
+      @ok="discardChanges(activeFile.path)"
     >
       {{ __("You will lose all changes you've made to this file. This action cannot be undone.") }}
     </gl-modal>

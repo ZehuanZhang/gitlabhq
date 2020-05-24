@@ -8,18 +8,17 @@ describe Projects::BlobController do
   let(:project) { create(:project, :public, :repository) }
 
   describe "GET show" do
+    def request
+      get(:show, params: { namespace_id: project.namespace, project_id: project, id: id })
+    end
+
     render_views
 
     context 'with file path' do
       before do
         expect(::Gitlab::GitalyClient).to receive(:allow_ref_name_caching).and_call_original
 
-        get(:show,
-            params: {
-              namespace_id: project.namespace,
-              project_id: project,
-              id: id
-            })
+        request
       end
 
       context "valid branch, valid file" do
@@ -33,7 +32,7 @@ describe Projects::BlobController do
 
         it 'redirects' do
           expect(subject)
-              .to redirect_to("/#{project.full_path}/tree/master")
+              .to redirect_to("/#{project.full_path}/-/tree/master")
         end
       end
 
@@ -115,7 +114,7 @@ describe Projects::BlobController do
 
         it 'redirects' do
           expect(subject)
-            .to redirect_to("/#{project.full_path}/tree/markdown/doc")
+            .to redirect_to("/#{project.full_path}/-/tree/markdown/doc")
         end
       end
     end
@@ -232,7 +231,7 @@ describe Projects::BlobController do
       end
 
       it 'redirects to blob show' do
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
       end
     end
 
@@ -246,7 +245,7 @@ describe Projects::BlobController do
       end
 
       it 'redirects to blob show' do
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
       end
     end
   end

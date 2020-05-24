@@ -144,7 +144,7 @@ module SystemNotes
     #
     # Returns Boolean
     def cross_reference_disallowed?(mentioner)
-      return true if noteable.is_a?(ExternalIssue) && !noteable.project.jira_tracker_active?
+      return true if noteable.is_a?(ExternalIssue) && !noteable.project&.external_references_supported?
       return false unless mentioner.is_a?(MergeRequest)
       return false unless noteable.is_a?(Commit)
 
@@ -225,7 +225,12 @@ module SystemNotes
 
       action = status == 'reopened' ? 'opened' : status
 
-      create_note(NoteSummary.new(noteable, project, author, body, action: action))
+      # A state event which results in a synthetic note will be
+      # created by EventCreateService if change event tracking
+      # is enabled.
+      unless state_change_tracking_enabled?
+        create_note(NoteSummary.new(noteable, project, author, body, action: action))
+      end
     end
 
     # Check if a cross reference to a noteable from a mentioner already exists
@@ -282,6 +287,18 @@ module SystemNotes
       create_note(NoteSummary.new(noteable, project, author, body, action: action))
     end
 
+    def close_after_error_tracking_resolve
+      body = _('resolved the corresponding error and closed the issue.')
+
+      create_note(NoteSummary.new(noteable, project, author, body, action: 'closed'))
+    end
+
+    def auto_resolve_prometheus_alert
+      body = 'automatically closed this issue because the alert resolved.'
+
+      create_note(NoteSummary.new(noteable, project, author, body, action: 'closed'))
+    end
+
     private
 
     def cross_reference_note_content(gfm_reference)
@@ -305,6 +322,11 @@ module SystemNotes
 
     def self.cross_reference?(note_text)
       note_text =~ /\A#{cross_reference_note_prefix}/i
+    end
+
+    def state_change_tracking_enabled?
+      noteable.respond_to?(:resource_state_events) &&
+        ::Feature.enabled?(:track_resource_state_change_events, noteable.project)
     end
   end
 end

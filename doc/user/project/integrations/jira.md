@@ -37,7 +37,7 @@ configured. Therefore, you will not have to explicitly associate
 a GitLab project with any single Jira project.
 
 If you have one Jira instance, you can pre-fill the settings page with a default
-template. See the [Services Templates][services-templates] docs.
+template. See the [Services Templates](services_templates.md) docs.
 
 In order to enable the Jira service in GitLab, you need to first configure the project in Jira and then enter the correct values in GitLab.
 
@@ -45,17 +45,17 @@ In order to enable the Jira service in GitLab, you need to first configure the p
 
 #### Jira Server
 
-When connecting to **Jira Server**, which supports basic authentication, a **username and password** are required. Note that connecting to Jira Server via CAS is not possible. [Set up a user in Jira Server](jira_server_configuration.md) first and then proceed to [Configuring GitLab](#configuring-gitlab).
+**Jira Server** supports basic authentication. When connecting, a **username and password** are required. Note that connecting to Jira Server via CAS is not possible. [Set up a user in Jira Server](jira_server_configuration.md) first and then proceed to [Configuring GitLab](#configuring-gitlab).
 
 #### Jira Cloud
 
-When connecting to **Jira Cloud**, which supports authentication via API token, an **email and API token**, are required. [Set up a user in Jira Cloud](jira_cloud_configuration.md) first and then proceed to [Configuring GitLab](#configuring-gitlab).
+**Jira Cloud** supports authentication through an API token. When connecting to **Jira Cloud**, an **email and API token** are required. [Set up a user in Jira Cloud](jira_cloud_configuration.md) first and then proceed to [Configuring GitLab](#configuring-gitlab).
 
 ### Configuring GitLab
 
 > **Notes:**
 >
-> - The currently supported Jira versions are `v6.x` and `v7.x.`. GitLab 7.8 or
+> - The currently supported Jira versions are `v6.x, v7.x, v8.x` . GitLab 7.8 or
 >   higher is required.
 > - GitLab 8.14 introduced a new way to integrate with Jira which greatly simplified
 >   the configuration options you have to enter. If you are using an older version,
@@ -65,14 +65,14 @@ When connecting to **Jira Cloud**, which supports authentication via API token, 
 >   a value of `fromDialog`.
 
 To enable the Jira integration in a project, navigate to the
-[Integrations page](project_services.md#accessing-the-project-services), click
+[Integrations page](overview.md#accessing-integrations), click
 the **Jira** service, and fill in the required details on the page as described
 in the table below.
 
 | Field | Description |
 | ----- | ----------- |
-| `Web URL` | The base URL to the Jira instance web interface which is being linked to this GitLab project. E.g., `https://Jira.example.com`. |
-| `Jira API URL` | The base URL to the Jira instance API. Web URL value will be used if not set. E.g., `https://jira-api.example.com`. |
+| `Web URL` | The base URL to the Jira instance web interface which is being linked to this GitLab project. E.g., `https://jira.example.com`. |
+| `Jira API URL` | The base URL to the Jira instance API. Web URL value will be used if not set. E.g., `https://jira-api.example.com`. Leave this field blank (or use the same value of `Web URL`) if using **Jira Cloud**. |
 | `Username/Email` | Created when [configuring Jira step](#configuring-jira). Use `username` for **Jira Server** or `email` for **Jira Cloud**. |
 | `Password/API token` |Created in [configuring Jira step](#configuring-jira). Use `password` for **Jira Server** or `API token` for **Jira Cloud**. |
 | `Transition ID` | This is the ID of a transition that moves issues to the desired state. It is possible to insert transition ids separated by `,` or `;` which means the issue will be moved to each state after another using the given order.  **Closing Jira issues via commits or Merge Requests won't work if you don't set the ID correctly.** |
@@ -101,7 +101,7 @@ When you reference a Jira issue, it will always link back to the source commit/M
 
 To disable the automated commenting on Jira issues:
 
-1. Open the [Integrations page](project_services.md#accessing-the-project-services) and select **Jira**.
+1. Open the [Integrations page](overview.md#accessing-integrations) and select **Jira**.
 1. In the **Event Action** section, uncheck **Comment**.
 
 ## Jira issues
@@ -119,7 +119,7 @@ link back to GitLab. This means that in comments in merge requests and commits
 referencing an issue, e.g., `PROJECT-7`, will add a comment in Jira issue in the
 format:
 
-```
+```plaintext
 USER mentioned this issue in RESOURCE_NAME of [PROJECT_NAME|LINK_TO_COMMENT]:
 ENTITY_TITLE
 ```
@@ -134,7 +134,7 @@ ENTITY_TITLE
 
 For example, the following commit will reference the Jira issue with `PROJECT-1` as its ID:
 
-```bash
+```shell
 git commit -m "PROJECT-1 Fix spelling and grammar"
 ```
 
@@ -212,5 +212,3 @@ which may lead to a `401 unauthorized` error when testing your Jira integration.
 If CAPTCHA has been triggered, you will not be able to use Jira's REST API to
 authenticate with the Jira site. You will need to log in to your Jira instance
 and complete the CAPTCHA.
-
-[services-templates]: services_templates.md

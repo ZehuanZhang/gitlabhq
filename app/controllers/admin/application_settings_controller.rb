@@ -3,12 +3,14 @@
 class Admin::ApplicationSettingsController < Admin::ApplicationController
   include InternalRedirect
 
-  before_action :set_application_setting
-  before_action :whitelist_query_limiting, only: [:usage_data]
+  # NOTE: Use @application_setting in this controller when you need to access
+  # application_settings after it has been modified. This is because the
+  # ApplicationSetting model uses Gitlab::ProcessMemoryCache for caching and the
+  # cache might be stale immediately after an update.
+  # https://gitlab.com/gitlab-org/gitlab-foss/-/merge_requests/30233
+  before_action :set_application_setting, except: :integrations
 
-  before_action do
-    push_frontend_feature_flag(:self_monitoring_project)
-  end
+  before_action :whitelist_query_limiting, only: [:usage_data]
 
   VALID_SETTING_PANELS = %w(general integrations repository
                             ci_cd reporting metrics_and_profiling
@@ -25,8 +27,13 @@ class Admin::ApplicationSettingsController < Admin::ApplicationController
     define_method(action) { perform_update if submitted? }
   end
 
-  def show
-    render :general
+  def integrations
+    if Feature.enabled?(:instance_level_integrations)
+      @integrations = Service.find_or_initialize_instances.sort_by(&:title)
+    else
+      set_application_setting
+      perform_update if submitted?
+    end
   end
 
   def update
@@ -36,7 +43,7 @@ class Admin::ApplicationSettingsController < Admin::ApplicationController
   def usage_data
     respond_to do |format|
       format.html do
-        usage_data_json = JSON.pretty_generate(Gitlab::UsageData.data)
+        usage_data_json = Gitlab::Json.pretty_generate(Gitlab::UsageData.data)
 
         render html: Gitlab::Highlight.highlight('payload.json', usage_data_json, language: 'json')
       end
@@ -58,10 +65,10 @@ class Admin::ApplicationSettingsController < Admin::ApplicationController
   end
 
   def clear_repository_check_states
-    RepositoryCheck::ClearWorker.perform_async
+    RepositoryCheck::ClearWorker.perform_async # rubocop:disable CodeReuse/Worker
 
     redirect_to(
-      admin_application_settings_path,
+      general_admin_application_settings_path,
       notice: _('Started asynchronous removal of all repository check states.')
     )
   end
@@ -73,10 +80,9 @@ class Admin::ApplicationSettingsController < Admin::ApplicationController
     redirect_to ::Gitlab::LetsEncrypt.terms_of_service_url
   end
 
+  # Specs are in spec/requests/self_monitoring_project_spec.rb
   def create_self_monitoring_project
-    return self_monitoring_project_not_implemented unless Feature.enabled?(:self_monitoring_project)
-
-    job_id = SelfMonitoringProjectCreateWorker.perform_async
+    job_id = SelfMonitoringProjectCreateWorker.perform_async # rubocop:disable CodeReuse/Worker
 
     render status: :accepted, json: {
       job_id: job_id,
@@ -84,9 +90,8 @@ class Admin::ApplicationSettingsController < Admin::ApplicationController
     }
   end
 
+  # Specs are in spec/requests/self_monitoring_project_spec.rb
   def status_create_self_monitoring_project
-    return self_monitoring_project_not_implemented unless Feature.enabled?(:self_monitoring_project)
-
     job_id = params[:job_id].to_s
 
     unless job_id.length <= PARAM_JOB_ID_MAX_SIZE
@@ -96,39 +101,72 @@ class Admin::ApplicationSettingsController < Admin::ApplicationController
       }
     end
 
-    if Gitlab::CurrentSettings.instance_administration_project_id.present?
-      render status: :ok, json: self_monitoring_data
-
-    elsif SelfMonitoringProjectCreateWorker.in_progress?(job_id)
+    if SelfMonitoringProjectCreateWorker.in_progress?(job_id) # rubocop:disable CodeReuse/Worker
       ::Gitlab::PollingInterval.set_header(response, interval: 3_000)
 
-      render status: :accepted, json: { message: _('Job is in progress') }
-
-    else
-      render status: :bad_request, json: {
-        message: _('Self-monitoring project does not exist. Please check logs ' \
-          'for any error messages')
+      return render status: :accepted, json: {
+        message: _('Job to create self-monitoring project is in progress')
       }
     end
+
+    if @application_setting.self_monitoring_project_id.present?
+      return render status: :ok, json: self_monitoring_data
+    end
+
+    render status: :bad_request, json: {
+      message: _('Self-monitoring project does not exist. Please check logs ' \
+        'for any error messages')
+    }
+  end
+
+  # Specs are in spec/requests/self_monitoring_project_spec.rb
+  def delete_self_monitoring_project
+    job_id = SelfMonitoringProjectDeleteWorker.perform_async # rubocop:disable CodeReuse/Worker
+
+    render status: :accepted, json: {
+      job_id: job_id,
+      monitor_status: status_delete_self_monitoring_project_admin_application_settings_path
+    }
+  end
+
+  # Specs are in spec/requests/self_monitoring_project_spec.rb
+  def status_delete_self_monitoring_project
+    job_id = params[:job_id].to_s
+
+    unless job_id.length <= PARAM_JOB_ID_MAX_SIZE
+      return render status: :bad_request, json: {
+        message: _('Parameter "job_id" cannot exceed length of %{job_id_max_size}' %
+          { job_id_max_size: PARAM_JOB_ID_MAX_SIZE })
+      }
+    end
+
+    if SelfMonitoringProjectDeleteWorker.in_progress?(job_id) # rubocop:disable CodeReuse/Worker
+      ::Gitlab::PollingInterval.set_header(response, interval: 3_000)
+
+      return render status: :accepted, json: {
+        message: _('Job to delete self-monitoring project is in progress')
+      }
+    end
+
+    if @application_setting.self_monitoring_project_id.nil?
+      return render status: :ok, json: {
+        message: _('Self-monitoring project has been successfully deleted')
+      }
+    end
+
+    render status: :bad_request, json: {
+      message: _('Self-monitoring project was not deleted. Please check logs ' \
+        'for any error messages')
+    }
   end
 
   private
 
   def self_monitoring_data
     {
-      project_id: Gitlab::CurrentSettings.instance_administration_project_id,
-      project_full_path: Gitlab::CurrentSettings.instance_administration_project&.full_path
+      project_id: @application_setting.self_monitoring_project_id,
+      project_full_path: @application_setting.self_monitoring_project&.full_path
     }
-  end
-
-  def self_monitoring_project_not_implemented
-    render(
-      status: :not_implemented,
-      json: {
-        message: _('Self-monitoring is not enabled on this GitLab server, contact your administrator.'),
-        documentation_url: help_page_path('administration/monitoring/gitlab_instance_administration_project/index')
-      }
-    )
   end
 
   def set_application_setting
@@ -154,6 +192,7 @@ class Admin::ApplicationSettingsController < Admin::ApplicationController
     params[:application_setting][:import_sources]&.delete("")
     params[:application_setting][:restricted_visibility_levels]&.delete("")
     params[:application_setting].delete(:elasticsearch_aws_secret_access_key) if params[:application_setting][:elasticsearch_aws_secret_access_key].blank?
+    params[:application_setting][:required_instance_ci_template] = nil if params[:application_setting][:required_instance_ci_template].blank?
     # TODO Remove domain_blacklist_raw in APIv5 (See https://gitlab.com/gitlab-org/gitlab-foss/issues/67204)
     params.delete(:domain_blacklist_raw) if params[:domain_blacklist_file]
     params.delete(:domain_blacklist_raw) if params[:domain_blacklist]
@@ -179,6 +218,8 @@ class Admin::ApplicationSettingsController < Admin::ApplicationController
       :lets_encrypt_terms_of_service_accepted,
       :domain_blacklist_file,
       :raw_blob_request_limit,
+      :namespace_storage_size_limit,
+      :issues_create_limit,
       disabled_oauth_sign_in_sources: [],
       import_sources: [],
       repository_storages: [],
@@ -199,7 +240,7 @@ class Admin::ApplicationSettingsController < Admin::ApplicationController
       session[:ask_for_usage_stats_consent] = current_user.requires_usage_stats_consent?
     end
 
-    redirect_path = referer_path(request) || admin_application_settings_path
+    redirect_path = referer_path(request) || general_admin_application_settings_path
 
     respond_to do |format|
       if successful
@@ -214,6 +255,8 @@ class Admin::ApplicationSettingsController < Admin::ApplicationController
 
   def render_update_error
     action = valid_setting_panels.include?(action_name) ? action_name : :general
+
+    flash[:alert] = _('Application settings update failed')
 
     render action
   end

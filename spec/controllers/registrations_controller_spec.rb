@@ -30,7 +30,7 @@ describe RegistrationsController do
 
       it 'renders new template and sets the resource variable' do
         expect(subject).to render_template(:new)
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
         expect(assigns(:resource)).to be_a(User)
       end
     end
@@ -48,7 +48,7 @@ describe RegistrationsController do
 
       it 'renders new template and sets the resource variable' do
         subject
-        expect(response).to have_gitlab_http_status(302)
+        expect(response).to have_gitlab_http_status(:found)
         expect(response).to redirect_to(new_user_session_path(anchor: 'register-pane'))
       end
     end
@@ -139,19 +139,9 @@ describe RegistrationsController do
         expect(flash[:alert]).to eq(_('There was an error with the reCAPTCHA. Please solve the reCAPTCHA again.'))
       end
 
-      it 'redirects to the dashboard when the recaptcha is solved' do
+      it 'redirects to the dashboard when the reCAPTCHA is solved' do
         post(:create, params: user_params)
 
-        expect(flash[:notice]).to eq(I18n.t('devise.registrations.signed_up'))
-      end
-
-      it 'does not require reCAPTCHA if disabled by feature flag' do
-        stub_feature_flags(registrations_recaptcha: false)
-
-        post(:create, params: user_params)
-
-        expect(controller).not_to receive(:verify_recaptcha)
-        expect(flash[:alert]).to be_nil
         expect(flash[:notice]).to eq(I18n.t('devise.registrations.signed_up'))
       end
     end
@@ -200,7 +190,7 @@ describe RegistrationsController do
               .and_call_original
             expect(Gitlab::AuthLogger).to receive(:error).with(auth_log_attributes).once
             expect { post(:create, params: user_params, session: session_params) }.not_to change(User, :count)
-            expect(response).to have_gitlab_http_status(200)
+            expect(response).to have_gitlab_http_status(:ok)
             expect(response.body).to be_empty
           end
         end
@@ -294,8 +284,6 @@ describe RegistrationsController do
     end
 
     it "logs a 'User Created' message" do
-      stub_feature_flags(registrations_recaptcha: false)
-
       expect(Gitlab::AppLogger).to receive(:info).with(/\AUser Created: username=new_username email=new@user.com.+\z/).and_call_original
 
       post(:create, params: user_params)
@@ -305,6 +293,23 @@ describe RegistrationsController do
       post(:create, params: { new_user: base_user_params })
 
       expect(subject.current_user).not_to be_nil
+    end
+
+    context 'with the experimental signup flow enabled and the user is part of the experimental group' do
+      before do
+        stub_experiment(signup_flow: true)
+        stub_experiment_for_user(signup_flow: true)
+      end
+
+      let(:base_user_params) { { first_name: 'First', last_name: 'Last', username: 'new_username', email: 'new@user.com', password: 'Any_password' } }
+
+      it 'sets name from first and last name' do
+        post :create, params: { new_user: base_user_params }
+
+        expect(User.last.first_name).to eq(base_user_params[:first_name])
+        expect(User.last.last_name).to eq(base_user_params[:last_name])
+        expect(User.last.name).to eq("#{base_user_params[:first_name]} #{base_user_params[:last_name]}")
+      end
     end
   end
 
@@ -317,7 +322,7 @@ describe RegistrationsController do
 
     def expect_failure(message)
       expect(flash[:alert]).to eq(message)
-      expect(response.status).to eq(303)
+      expect(response).to have_gitlab_http_status(:see_other)
       expect(response).to redirect_to profile_account_path
     end
 
@@ -331,7 +336,7 @@ describe RegistrationsController do
 
     def expect_success
       expect(flash[:notice]).to eq s_('Profiles|Account scheduled for removal.')
-      expect(response.status).to eq(303)
+      expect(response).to have_gitlab_http_status(:see_other)
       expect(response).to redirect_to new_user_session_path
     end
 
@@ -395,7 +400,49 @@ describe RegistrationsController do
         label: anything,
         property: 'experimental_group'
       )
-      patch :update_registration, params: { user: { name: 'New name', role: 'software_developer', setup_for_company: 'false' } }
+      patch :update_registration, params: { user: { role: 'software_developer', setup_for_company: 'false' } }
+    end
+  end
+
+  describe '#welcome' do
+    subject { get :welcome }
+
+    context 'signup_flow experiment enabled' do
+      before do
+        stub_experiment_for_user(signup_flow: true)
+      end
+
+      it 'renders the devise_experimental_separate_sign_up_flow layout' do
+        sign_in(create(:user))
+
+        expected_layout = Gitlab.ee? ? :checkout : :devise_experimental_separate_sign_up_flow
+
+        expect(subject).to render_template(expected_layout)
+      end
+
+      context '2FA is required from group' do
+        before do
+          user = create(:user, require_two_factor_authentication_from_group: true)
+          sign_in(user)
+        end
+
+        it 'does not perform a redirect' do
+          expect(subject).not_to redirect_to(profile_two_factor_auth_path)
+        end
+      end
+    end
+
+    context 'signup_flow experiment disabled' do
+      before do
+        sign_in(create(:user))
+        stub_experiment_for_user(signup_flow: false)
+      end
+
+      it 'renders the devise layout' do
+        expected_layout = Gitlab.ee? ? :checkout : :devise
+
+        expect(subject).to render_template(expected_layout)
+      end
     end
   end
 end

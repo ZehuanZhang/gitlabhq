@@ -1,11 +1,11 @@
 <script>
 import { GlLink, GlTooltipDirective } from '@gitlab/ui';
-import _ from 'underscore';
+import { escape } from 'lodash';
 import { __, sprintf } from '~/locale';
 import popover from '~/vue_shared/directives/popover';
 
 const popoverTitle = sprintf(
-  _.escape(
+  escape(
     __(
       `This pipeline makes use of a predefined CI/CD configuration enabled by %{strongStart}Auto DevOps.%{strongEnd}`,
     ),
@@ -49,7 +49,7 @@ export default {
             href="${this.autoDevopsHelpPath}"
             target="_blank"
             rel="noopener noreferrer nofollow">
-            ${_.escape(__('Learn more about Auto DevOps'))}
+            ${escape(__('Learn more about Auto DevOps'))}
           </a>`,
       };
     },
@@ -58,7 +58,11 @@ export default {
 </script>
 <template>
   <div class="table-section section-10 d-none d-sm-none d-md-block pipeline-tags">
-    <gl-link :href="pipeline.path" class="js-pipeline-url-link js-onboarding-pipeline-item">
+    <gl-link
+      :href="pipeline.path"
+      class="js-pipeline-url-link js-onboarding-pipeline-item"
+      data-qa-selector="pipeline_url_link"
+    >
       <span class="pipeline-id">#{{ pipeline.id }}</span>
     </gl-link>
     <div class="label-container">

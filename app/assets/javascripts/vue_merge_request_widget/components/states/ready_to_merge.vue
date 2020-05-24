@@ -1,6 +1,6 @@
 <script>
-import _ from 'underscore';
-import { GlIcon } from '@gitlab/ui';
+import { isEmpty } from 'lodash';
+import { GlIcon, GlDeprecatedButton, GlSprintf, GlLink } from '@gitlab/ui';
 import successSvg from 'icons/_icon_status_success.svg';
 import warningSvg from 'icons/_icon_status_warning.svg';
 import readyToMergeMixin from 'ee_else_ce/vue_merge_request_widget/mixins/ready_to_merge';
@@ -26,6 +26,9 @@ export default {
     CommitEdit,
     CommitMessageDropdown,
     GlIcon,
+    GlSprintf,
+    GlLink,
+    GlDeprecatedButton,
     MergeImmediatelyConfirmationDialog: () =>
       import(
         'ee_component/vue_merge_request_widget/components/merge_immediately_confirmation_dialog.vue'
@@ -50,12 +53,12 @@ export default {
   },
   computed: {
     isAutoMergeAvailable() {
-      return !_.isEmpty(this.mr.availableAutoMergeStrategies);
+      return !isEmpty(this.mr.availableAutoMergeStrategies);
     },
     status() {
       const { pipeline, isPipelineFailed, hasCI, ciStatus } = this.mr;
 
-      if (hasCI && !ciStatus) {
+      if ((hasCI && !ciStatus) || this.hasPipelineMustSucceedConflict) {
         return 'failed';
       } else if (this.isAutoMergeAvailable) {
         return 'pending';
@@ -67,18 +70,13 @@ export default {
 
       return 'success';
     },
-    mergeButtonClass() {
-      const defaultClass = 'btn btn-sm btn-success accept-merge-request';
-      const failedClass = `${defaultClass} btn-danger`;
-      const inActionClass = `${defaultClass} btn-info`;
-
+    mergeButtonVariant() {
       if (this.status === 'failed') {
-        return failedClass;
+        return 'danger';
       } else if (this.status === 'pending') {
-        return inActionClass;
+        return 'info';
       }
-
-      return defaultClass;
+      return 'success';
     },
     iconClass() {
       if (
@@ -100,6 +98,9 @@ export default {
       }
 
       return __('Merge');
+    },
+    hasPipelineMustSucceedConflict() {
+      return !this.mr.hasCI && this.mr.onlyAllowMergeIfPipelineSucceeds;
     },
     isRemoveSourceBranchButtonDisabled() {
       return this.isMergeButtonDisabled;
@@ -146,8 +147,14 @@ export default {
         auto_merge_strategy: useAutoMerge ? this.mr.preferredAutoMergeStrategy : undefined,
         should_remove_source_branch: this.removeSourceBranch === true,
         squash: this.squashBeforeMerge,
-        squash_commit_message: this.squashCommitMessage,
       };
+
+      // If users can't alter the squash message (e.g. for 1-commit merge requests),
+      // we shouldn't send the commit message because that would make the backend
+      // do unnecessary work.
+      if (this.shouldShowSquashBeforeMerge) {
+        options.squash_commit_message = this.squashCommitMessage;
+      }
 
       this.isMakingRequest = true;
       this.service
@@ -156,7 +163,7 @@ export default {
         .then(data => {
           const hasError = data.status === 'failed' || data.status === 'hook_validation_error';
 
-          if (_.includes(AUTO_MERGE_STRATEGIES, data.status)) {
+          if (AUTO_MERGE_STRATEGIES.includes(data.status)) {
             eventHub.$emit('MRWidgetUpdateRequested');
           } else if (data.status === 'success') {
             this.initiateMergePolling();
@@ -261,16 +268,16 @@ export default {
       <div class="media-body">
         <div class="mr-widget-body-controls media space-children">
           <span class="btn-group">
-            <button
+            <gl-deprecated-button
+              size="sm"
+              class="qa-merge-button accept-merge-request"
+              :variant="mergeButtonVariant"
               :disabled="isMergeButtonDisabled"
-              :class="mergeButtonClass"
-              type="button"
-              class="qa-merge-button"
+              :loading="isMakingRequest"
               @click="handleMergeButtonClick(isAutoMergeAvailable)"
             >
-              <i v-if="isMakingRequest" class="fa fa-spinner fa-spin" aria-hidden="true"></i>
               {{ mergeButtonText }}
-            </button>
+            </gl-deprecated-button>
             <button
               v-if="shouldShowMergeImmediatelyDropdown"
               :disabled="isMergeButtonDisabled"
@@ -341,9 +348,19 @@ export default {
               />
             </template>
             <template v-else>
-              <span class="bold js-resolve-mr-widget-items-message">
-                {{ mergeDisabledText }}
-              </span>
+              <div class="bold js-resolve-mr-widget-items-message">
+                <gl-sprintf
+                  v-if="hasPipelineMustSucceedConflict"
+                  :message="pipelineMustSucceedConflictText"
+                >
+                  <template #link="{ content }">
+                    <gl-link :href="mr.pipelineMustSucceedDocsPath" target="_blank">
+                      {{ content }}
+                    </gl-link>
+                  </template>
+                </gl-sprintf>
+                <gl-sprintf v-else :message="mergeDisabledText" />
+              </div>
             </template>
           </div>
         </div>

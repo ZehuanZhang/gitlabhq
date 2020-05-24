@@ -40,10 +40,6 @@ describe Admin::UsersController, "routing" do
     expect(get("/admin/users/1/edit")).to route_to('admin/users#edit', id: '1')
   end
 
-  it "to #show" do
-    expect(get("/admin/users/1")).to route_to('admin/users#show', id: '1')
-  end
-
   it "to #update" do
     expect(put("/admin/users/1")).to route_to('admin/users#update', id: '1')
   end
@@ -117,13 +113,6 @@ describe Admin::HookLogsController, 'routing' do
   end
 end
 
-# admin_logs GET    /admin/logs(.:format) admin/logs#show
-describe Admin::LogsController, "routing" do
-  it "to #show" do
-    expect(get("/admin/logs")).to route_to('admin/logs#show')
-  end
-end
-
 # admin_background_jobs GET    /admin/background_jobs(.:format) admin/background_jobs#show
 describe Admin::BackgroundJobsController, "routing" do
   it "to #show" do
@@ -159,5 +148,19 @@ describe Admin::GroupsController, "routing" do
 
   it "to #edit" do
     expect(get("/admin/groups/#{name}/edit")).to route_to('admin/groups#edit', id: name)
+  end
+end
+
+describe Admin::SessionsController, "routing" do
+  it "to #new" do
+    expect(get("/admin/session/new")).to route_to('admin/sessions#new')
+  end
+
+  it "to #create" do
+    expect(post("/admin/session")).to route_to('admin/sessions#create')
+  end
+
+  it "to #destroy" do
+    expect(post("/admin/session/destroy")).to route_to('admin/sessions#destroy')
   end
 end

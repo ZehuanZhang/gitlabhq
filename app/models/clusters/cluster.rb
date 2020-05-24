@@ -11,19 +11,22 @@ module Clusters
     self.table_name = 'clusters'
 
     APPLICATIONS = {
-      Applications::Helm.application_name => Applications::Helm,
-      Applications::Ingress.application_name => Applications::Ingress,
-      Applications::CertManager.application_name => Applications::CertManager,
-      Applications::Crossplane.application_name => Applications::Crossplane,
-      Applications::Prometheus.application_name => Applications::Prometheus,
-      Applications::Runner.application_name => Applications::Runner,
-      Applications::Jupyter.application_name => Applications::Jupyter,
-      Applications::Knative.application_name => Applications::Knative,
-      Applications::ElasticStack.application_name => Applications::ElasticStack
+      Clusters::Applications::Helm.application_name => Clusters::Applications::Helm,
+      Clusters::Applications::Ingress.application_name => Clusters::Applications::Ingress,
+      Clusters::Applications::CertManager.application_name => Clusters::Applications::CertManager,
+      Clusters::Applications::Crossplane.application_name => Clusters::Applications::Crossplane,
+      Clusters::Applications::Prometheus.application_name => Clusters::Applications::Prometheus,
+      Clusters::Applications::Runner.application_name => Clusters::Applications::Runner,
+      Clusters::Applications::Jupyter.application_name => Clusters::Applications::Jupyter,
+      Clusters::Applications::Knative.application_name => Clusters::Applications::Knative,
+      Clusters::Applications::ElasticStack.application_name => Clusters::Applications::ElasticStack,
+      Clusters::Applications::Fluentd.application_name => Clusters::Applications::Fluentd
     }.freeze
     DEFAULT_ENVIRONMENT = '*'
     KUBE_INGRESS_BASE_DOMAIN = 'KUBE_INGRESS_BASE_DOMAIN'
     APPLICATIONS_ASSOCIATIONS = APPLICATIONS.values.map(&:association_name).freeze
+
+    self.reactive_cache_work_type = :external_dependency
 
     belongs_to :user
     belongs_to :management_project, class_name: '::Project', optional: true
@@ -31,6 +34,8 @@ module Clusters
     has_many :cluster_projects, class_name: 'Clusters::Project'
     has_many :projects, through: :cluster_projects, class_name: '::Project'
     has_one :cluster_project, -> { order(id: :desc) }, class_name: 'Clusters::Project'
+    has_many :deployment_clusters
+    has_many :deployments, inverse_of: :cluster
 
     has_many :cluster_groups, class_name: 'Clusters::Group'
     has_many :groups, through: :cluster_groups, class_name: '::Group'
@@ -56,8 +61,10 @@ module Clusters
     has_one_cluster_application :jupyter
     has_one_cluster_application :knative
     has_one_cluster_application :elastic_stack
+    has_one_cluster_application :fluentd
 
     has_many :kubernetes_namespaces
+    has_many :metrics_dashboard_annotations, class_name: 'Metrics::Dashboard::Annotation', inverse_of: :cluster
 
     accepts_nested_attributes_for :provider_gcp, update_only: true
     accepts_nested_attributes_for :provider_aws, update_only: true
@@ -121,6 +128,7 @@ module Clusters
     scope :managed, -> { where(managed: true) }
     scope :with_persisted_applications, -> { eager_load(*APPLICATIONS_ASSOCIATIONS) }
     scope :default_environment, -> { where(environment_scope: DEFAULT_ENVIRONMENT) }
+    scope :with_management_project, -> { where.not(management_project: nil) }
 
     scope :for_project_namespace, -> (namespace_id) { joins(:projects).where(projects: { namespace_id: namespace_id }) }
 
@@ -198,10 +206,16 @@ module Clusters
       end
     end
 
+    def nodes
+      with_reactive_cache do |data|
+        data[:nodes]
+      end
+    end
+
     def calculate_reactive_cache
       return unless enabled?
 
-      { connection_status: retrieve_connection_status }
+      { connection_status: retrieve_connection_status, nodes: retrieve_nodes }
     end
 
     def persisted_applications
@@ -209,9 +223,17 @@ module Clusters
     end
 
     def applications
-      APPLICATIONS_ASSOCIATIONS.map do |association_name|
-        public_send(association_name) || public_send("build_#{association_name}") # rubocop:disable GitlabSecurity/PublicSend
+      APPLICATIONS.each_value.map do |application_class|
+        find_or_build_application(application_class)
       end
+    end
+
+    def find_or_build_application(application_class)
+      raise ArgumentError, "#{application_class} is not in APPLICATIONS" unless APPLICATIONS.value?(application_class)
+
+      association_name = application_class.association_name
+
+      public_send(association_name) || public_send("build_#{association_name}") # rubocop:disable GitlabSecurity/PublicSend
     end
 
     def provider
@@ -248,9 +270,13 @@ module Clusters
       platform_kubernetes.kubeclient if kubernetes?
     end
 
-    def kubernetes_namespace_for(environment)
+    def kubernetes_namespace_for(environment, deployable: environment.last_deployable)
+      if deployable && environment.project_id != deployable.project_id
+        raise ArgumentError, 'environment.project_id must match deployable.project_id'
+      end
+
       managed_namespace(environment) ||
-        ci_configured_namespace(environment) ||
+        ci_configured_namespace(deployable) ||
         default_namespace(environment)
     end
 
@@ -289,6 +315,12 @@ module Clusters
       end
     end
 
+    def serverless_domain
+      strong_memoize(:serverless_domain) do
+        self.application_knative&.serverless_domain_cluster
+      end
+    end
+
     private
 
     def unique_management_project_environment_scope
@@ -299,7 +331,7 @@ module Clusters
         .where.not(id: id)
 
       if duplicate_management_clusters.any?
-        errors.add(:environment_scope, "cannot add duplicated environment scope")
+        errors.add(:environment_scope, 'cannot add duplicated environment scope')
       end
     end
 
@@ -311,8 +343,11 @@ module Clusters
       ).execute&.namespace
     end
 
-    def ci_configured_namespace(environment)
-      environment.last_deployable&.expanded_kubernetes_namespace
+    def ci_configured_namespace(deployable)
+      # YAML configuration of namespaces not supported for managed clusters
+      return if managed?
+
+      deployable&.expanded_kubernetes_namespace
     end
 
     def default_namespace(environment)
@@ -327,30 +362,53 @@ module Clusters
     end
 
     def retrieve_connection_status
-      kubeclient.core_client.discover
-    rescue *Gitlab::Kubernetes::Errors::CONNECTION
-      :unreachable
-    rescue *Gitlab::Kubernetes::Errors::AUTHENTICATION
-      :authentication_failure
-    rescue Kubeclient::HttpError => e
-      kubeclient_error_status(e.message)
-    rescue => e
-      Gitlab::ErrorTracking.track_exception(e, cluster_id: id)
-
-      :unknown_failure
-    else
-      :connected
+      result = ::Gitlab::Kubernetes::KubeClient.graceful_request(id) { kubeclient.core_client.discover }
+      result[:status]
     end
 
-    # KubeClient uses the same error class
-    # For connection errors (eg. timeout) and
-    # for Kubernetes errors.
-    def kubeclient_error_status(message)
-      if message&.match?(/timed out|timeout/i)
-        :unreachable
-      else
-        :authentication_failure
+    def retrieve_nodes
+      result = ::Gitlab::Kubernetes::KubeClient.graceful_request(id) { kubeclient.get_nodes }
+      cluster_nodes = result[:response].to_a
+
+      result = ::Gitlab::Kubernetes::KubeClient.graceful_request(id) { kubeclient.metrics_client.get_nodes }
+      nodes_metrics = result[:response].to_a
+
+      cluster_nodes.inject([]) do |memo, node|
+        sliced_node = filter_relevant_node_attributes(node)
+
+        matched_node_metric = nodes_metrics.find { |node_metric| node_metric.metadata.name == node.metadata.name }
+
+        sliced_node_metrics = matched_node_metric ? filter_relevant_node_metrics_attributes(matched_node_metric) : {}
+
+        memo << sliced_node.merge(sliced_node_metrics)
       end
+    end
+
+    def filter_relevant_node_attributes(node)
+      {
+        'metadata' => {
+          'name' => node.metadata.name
+        },
+        'status' => {
+          'capacity' => {
+            'cpu' => node.status.capacity.cpu,
+            'memory' => node.status.capacity.memory
+          },
+          'allocatable' => {
+            'cpu' => node.status.allocatable.cpu,
+            'memory' => node.status.allocatable.memory
+          }
+        }
+      }
+    end
+
+    def filter_relevant_node_metrics_attributes(node_metrics)
+      {
+        'usage' => {
+          'cpu' => node_metrics.usage.cpu,
+          'memory' => node_metrics.usage.memory
+        }
+      }
     end
 
     # To keep backward compatibility with AUTO_DEVOPS_DOMAIN
@@ -373,7 +431,7 @@ module Clusters
 
     def restrict_modification
       if provider&.on_creation?
-        errors.add(:base, "cannot modify during creation")
+        errors.add(:base, _('Cannot modify provider during creation'))
         return false
       end
 

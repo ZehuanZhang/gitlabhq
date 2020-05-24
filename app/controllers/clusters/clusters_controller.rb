@@ -12,30 +12,25 @@ class Clusters::ClustersController < Clusters::BaseController
   before_action :authorize_update_cluster!, only: [:update]
   before_action :authorize_admin_cluster!, only: [:destroy, :clear_cache]
   before_action :update_applications_status, only: [:cluster_status]
-  before_action only: [:show] do
-    push_frontend_feature_flag(:enable_cluster_application_elastic_stack)
-    push_frontend_feature_flag(:enable_cluster_application_crossplane)
-  end
 
   helper_method :token_in_session
 
   STATUS_POLLING_INTERVAL = 10_000
 
   def index
-    finder = ClusterAncestorsFinder.new(clusterable.subject, current_user)
-    clusters = finder.execute
+    @clusters = cluster_list
 
-    # Note: We are paginating through an array here but this should OK as:
-    #
-    # In CE, we can have a maximum group nesting depth of 21, so including
-    # project cluster, we can have max 22 clusters for a group hierarchy.
-    # In EE (Premium) we can have any number, as multiple clusters are
-    # supported, but the number of clusters are fairly low currently.
-    #
-    # See https://gitlab.com/gitlab-org/gitlab-foss/issues/55260 also.
-    @clusters = Kaminari.paginate_array(clusters).page(params[:page]).per(20)
+    respond_to do |format|
+      format.html
+      format.json do
+        serializer = ClusterSerializer.new(current_user: current_user)
 
-    @has_ancestor_clusters = finder.has_ancestor_clusters?
+        render json: {
+          clusters: serializer.with_pagination(request, response).represent_list(@clusters),
+          has_ancestor_clusters: @has_ancestor_clusters
+        }
+      end
+    end
   end
 
   def new
@@ -161,6 +156,23 @@ class Clusters::ClustersController < Clusters::BaseController
   end
 
   private
+
+  def cluster_list
+    finder = ClusterAncestorsFinder.new(clusterable.subject, current_user)
+    clusters = finder.execute
+
+    @has_ancestor_clusters = finder.has_ancestor_clusters?
+
+    # Note: We are paginating through an array here but this should OK as:
+    #
+    # In CE, we can have a maximum group nesting depth of 21, so including
+    # project cluster, we can have max 22 clusters for a group hierarchy.
+    # In EE (Premium) we can have any number, as multiple clusters are
+    # supported, but the number of clusters are fairly low currently.
+    #
+    # See https://gitlab.com/gitlab-org/gitlab-foss/issues/55260 also.
+    Kaminari.paginate_array(clusters).page(params[:page]).per(20)
+  end
 
   def destroy_params
     params.permit(:cleanup)

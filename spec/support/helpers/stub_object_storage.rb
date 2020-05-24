@@ -45,7 +45,7 @@ module StubObjectStorage
   def stub_external_diffs_object_storage(uploader = described_class, **params)
     stub_object_storage_uploader(config: Gitlab.config.external_diffs.object_store,
                                  uploader: uploader,
-                                 remote_directory: 'external_diffs',
+                                 remote_directory: 'external-diffs',
                                  **params)
   end
 
@@ -67,6 +67,13 @@ module StubObjectStorage
     stub_object_storage_uploader(config: Gitlab.config.uploads.object_store,
                                  uploader: uploader,
                                  remote_directory: 'uploads',
+                                 **params)
+  end
+
+  def stub_terraform_state_object_storage(uploader = described_class, **params)
+    stub_object_storage_uploader(config: Gitlab.config.terraform_state.object_store,
+                                 uploader: uploader,
+                                 remote_directory: 'terraform_state',
                                  **params)
   end
 

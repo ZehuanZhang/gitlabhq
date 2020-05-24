@@ -44,7 +44,6 @@ describe('Issuable component', () => {
         baseUrl: TEST_BASE_URL,
         ...props,
       },
-      attachToDocument: true,
     });
   };
 
@@ -121,6 +120,10 @@ describe('Issuable component', () => {
       ${'downvotes'}             | ${findDownvotes}
     `('does not render $desc', ({ finder }) => {
       expect(finder().exists()).toBe(false);
+    });
+
+    it('show relative reference path', () => {
+      expect(wrapper.find('.js-ref-path').text()).toBe(issuable.references.relative);
     });
 
     it('does not have closed text', () => {

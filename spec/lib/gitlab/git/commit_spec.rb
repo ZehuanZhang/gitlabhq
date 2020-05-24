@@ -57,7 +57,7 @@ describe Gitlab::Git::Commit, :seed_helper do
     it { expect(@commit.different_committer?).to be_truthy }
     it { expect(@commit.parents).to eq(@gitlab_parents) }
     it { expect(@commit.parent_id).to eq(@parents.first.oid) }
-    it { expect(@commit.no_commit_message).to eq("--no commit message") }
+    it { expect(@commit.no_commit_message).to eq("No commit message") }
 
     after do
       # Erase the new commit so other tests get the original repo
@@ -159,6 +159,26 @@ describe Gitlab::Git::Commit, :seed_helper do
 
       it "returns nil for nonexisting ids" do
         expect(described_class.find(repository, "+123_4532530XYZ")).to be_nil
+      end
+
+      it "returns nil for id started with dash" do
+        expect(described_class.find(repository, "-HEAD")).to be_nil
+      end
+
+      it "returns nil for id containing colon" do
+        expect(described_class.find(repository, "HEAD:")).to be_nil
+      end
+
+      it "returns nil for id containing space" do
+        expect(described_class.find(repository, "HE AD")).to be_nil
+      end
+
+      it "returns nil for id containing tab" do
+        expect(described_class.find(repository, "HE\tAD")).to be_nil
+      end
+
+      it "returns nil for id containing NULL" do
+        expect(described_class.find(repository, "HE\x00AD")).to be_nil
       end
 
       context 'with broken repo' do

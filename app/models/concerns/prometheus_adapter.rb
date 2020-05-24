@@ -5,12 +5,11 @@ module PrometheusAdapter
 
   included do
     include ReactiveCaching
-    # We can't prepend outside of this model due to the use of `included`, so this must stay here.
-    prepend_if_ee('EE::PrometheusAdapter') # rubocop: disable Cop/InjectEnterpriseEditionModule
 
     self.reactive_cache_lease_timeout = 30.seconds
     self.reactive_cache_refresh_interval = 30.seconds
     self.reactive_cache_lifetime = 1.minute
+    self.reactive_cache_work_type = :external_dependency
 
     def prometheus_client
       raise NotImplementedError
@@ -21,7 +20,7 @@ module PrometheusAdapter
       raise NotImplemented
     end
 
-    # This is a heavy-weight check if a prometheus is properly configured and accesible from GitLab.
+    # This is a heavy-weight check if a prometheus is properly configured and accessible from GitLab.
     # This actually sends a request to an external service and often it could take a long time,
     # Please consider using `configured?` instead if the process is running on unicorn/puma threads.
     def can_query?
@@ -45,7 +44,7 @@ module PrometheusAdapter
       {
         success: true,
         data: data,
-        last_update: Time.now.utc
+        last_update: Time.current.utc
       }
     rescue Gitlab::PrometheusClient::Error => err
       { success: false, result: err.message }
@@ -57,6 +56,13 @@ module PrometheusAdapter
 
     def build_query_args(*args)
       args.map { |arg| arg.respond_to?(:id) ? arg.id : arg }
+    end
+
+    def clear_prometheus_reactive_cache!(query_name, *args)
+      query_class = query_klass_for(query_name)
+      query_args = build_query_args(*args)
+
+      clear_reactive_cache!(query_class.name, *query_args)
     end
   end
 end

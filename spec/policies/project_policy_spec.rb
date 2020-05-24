@@ -5,19 +5,19 @@ require 'spec_helper'
 describe ProjectPolicy do
   include ExternalAuthorizationServiceHelpers
   include_context 'ProjectPolicy context'
-  set(:guest) { create(:user) }
-  set(:reporter) { create(:user) }
-  set(:developer) { create(:user) }
-  set(:maintainer) { create(:user) }
-  set(:owner) { create(:user) }
-  set(:admin) { create(:admin) }
+  let_it_be(:guest) { create(:user) }
+  let_it_be(:reporter) { create(:user) }
+  let_it_be(:developer) { create(:user) }
+  let_it_be(:maintainer) { create(:user) }
+  let_it_be(:owner) { create(:user) }
+  let_it_be(:admin) { create(:admin) }
   let(:project) { create(:project, :public, namespace: owner.namespace) }
 
   let(:base_guest_permissions) do
     %i[
       read_project read_board read_list read_wiki read_issue
       read_project_for_iids read_issue_iid read_label
-      read_milestone read_project_snippet read_project_member read_note
+      read_milestone read_snippet read_project_member read_note
       create_project create_issue create_note upload_file create_merge_request_in
       award_emoji read_release
     ]
@@ -25,10 +25,11 @@ describe ProjectPolicy do
 
   let(:base_reporter_permissions) do
     %i[
-      download_code fork_project create_project_snippet update_issue
+      download_code fork_project create_snippet update_issue
       admin_issue admin_label admin_list read_commit_status read_build
       read_container_image read_pipeline read_environment read_deployment
-      read_merge_request download_wiki_code read_sentry_issue
+      read_merge_request download_wiki_code read_sentry_issue read_metrics_dashboard_annotation
+      metrics_dashboard
     ]
   end
 
@@ -41,18 +42,20 @@ describe ProjectPolicy do
       admin_tag admin_milestone admin_merge_request update_merge_request create_commit_status
       update_commit_status create_build update_build create_pipeline
       update_pipeline create_merge_request_from create_wiki push_code
-      resolve_note create_container_image update_container_image destroy_container_image
+      resolve_note create_container_image update_container_image destroy_container_image daily_statistics
       create_environment update_environment create_deployment update_deployment create_release update_release
+      create_metrics_dashboard_annotation delete_metrics_dashboard_annotation update_metrics_dashboard_annotation
     ]
   end
 
   let(:base_maintainer_permissions) do
     %i[
-      push_to_delete_protected_branch update_project_snippet
-      admin_project_snippet admin_project_member admin_note admin_wiki admin_project
+      push_to_delete_protected_branch update_snippet
+      admin_snippet admin_project_member admin_note admin_wiki admin_project
       admin_commit_status admin_build admin_container_image
       admin_pipeline admin_environment admin_deployment destroy_release add_cluster
-      daily_statistics
+      read_deploy_token create_deploy_token destroy_deploy_token
+      admin_terraform_state
     ]
   end
 
@@ -119,147 +122,12 @@ describe ProjectPolicy do
     expect(Ability).not_to be_allowed(user, :read_issue, project)
   end
 
-  context 'wiki feature' do
-    let(:permissions) { %i(read_wiki create_wiki update_wiki admin_wiki download_wiki_code) }
+  it_behaves_like 'model with wiki policies' do
+    let(:container) { project }
+    let_it_be(:user) { owner }
 
-    subject { described_class.new(owner, project) }
-
-    context 'when the feature is disabled' do
-      before do
-        project.project_feature.update_attribute(:wiki_access_level, ProjectFeature::DISABLED)
-      end
-
-      it 'does not include the wiki permissions' do
-        expect_disallowed(*permissions)
-      end
-
-      context 'when there is an external wiki' do
-        it 'does not include the wiki permissions' do
-          allow(project).to receive(:has_external_wiki?).and_return(true)
-
-          expect_disallowed(*permissions)
-        end
-      end
-    end
-
-    describe 'read_wiki' do
-      subject { described_class.new(user, project) }
-
-      member_roles = %i[guest developer]
-      stranger_roles = %i[anonymous non_member]
-
-      user_roles = stranger_roles + member_roles
-
-      # When a user is anonymous, their `current_user == nil`
-      let(:user) { create(:user) unless user_role == :anonymous }
-
-      before do
-        project.visibility = project_visibility
-        project.project_feature.update_attribute(:wiki_access_level, wiki_access_level)
-        project.add_user(user, user_role) if member_roles.include?(user_role)
-      end
-
-      title = ->(project_visibility, wiki_access_level, user_role) do
-        [
-          "project is #{Gitlab::VisibilityLevel.level_name project_visibility}",
-          "wiki is #{ProjectFeature.str_from_access_level wiki_access_level}",
-          "user is #{user_role}"
-        ].join(', ')
-      end
-
-      describe 'Situations where :read_wiki is always false' do
-        where(case_names: title,
-              project_visibility: Gitlab::VisibilityLevel.options.values,
-              wiki_access_level: [ProjectFeature::DISABLED],
-              user_role: user_roles)
-
-        with_them do
-          it { is_expected.to be_disallowed(:read_wiki) }
-        end
-      end
-
-      describe 'Situations where :read_wiki is always true' do
-        where(case_names: title,
-              project_visibility: [Gitlab::VisibilityLevel::PUBLIC],
-              wiki_access_level: [ProjectFeature::ENABLED],
-              user_role: user_roles)
-
-        with_them do
-          it { is_expected.to be_allowed(:read_wiki) }
-        end
-      end
-
-      describe 'Situations where :read_wiki requires project membership' do
-        context 'the wiki is private, and the user is a member' do
-          where(case_names: title,
-                project_visibility: [Gitlab::VisibilityLevel::PUBLIC,
-                                     Gitlab::VisibilityLevel::INTERNAL],
-                wiki_access_level: [ProjectFeature::PRIVATE],
-                user_role: member_roles)
-
-          with_them do
-            it { is_expected.to be_allowed(:read_wiki) }
-          end
-        end
-
-        context 'the wiki is private, and the user is not member' do
-          where(case_names: title,
-                project_visibility: [Gitlab::VisibilityLevel::PUBLIC,
-                                     Gitlab::VisibilityLevel::INTERNAL],
-                wiki_access_level: [ProjectFeature::PRIVATE],
-                user_role: stranger_roles)
-
-          with_them do
-            it { is_expected.to be_disallowed(:read_wiki) }
-          end
-        end
-
-        context 'the wiki is enabled, and the user is a member' do
-          where(case_names: title,
-                project_visibility: [Gitlab::VisibilityLevel::PRIVATE],
-                wiki_access_level: [ProjectFeature::ENABLED],
-                user_role: member_roles)
-
-          with_them do
-            it { is_expected.to be_allowed(:read_wiki) }
-          end
-        end
-
-        context 'the wiki is enabled, and the user is not a member' do
-          where(case_names: title,
-                project_visibility: [Gitlab::VisibilityLevel::PRIVATE],
-                wiki_access_level: [ProjectFeature::ENABLED],
-                user_role: stranger_roles)
-
-          with_them do
-            it { is_expected.to be_disallowed(:read_wiki) }
-          end
-        end
-      end
-
-      describe 'Situations where :read_wiki prohibits anonymous access' do
-        context 'the user is not anonymous' do
-          where(case_names: title,
-                project_visibility: [Gitlab::VisibilityLevel::INTERNAL],
-                wiki_access_level: [ProjectFeature::ENABLED, ProjectFeature::PUBLIC],
-                user_role: user_roles.reject { |u| u == :anonymous })
-
-          with_them do
-            it { is_expected.to be_allowed(:read_wiki) }
-          end
-        end
-
-        context 'the user is not anonymous' do
-          where(case_names: title,
-                project_visibility: [Gitlab::VisibilityLevel::INTERNAL],
-                wiki_access_level: [ProjectFeature::ENABLED, ProjectFeature::PUBLIC],
-                user_role: %i[anonymous])
-
-          with_them do
-            it { is_expected.to be_disallowed(:read_wiki) }
-          end
-        end
-      end
+    def set_access_level(access_level)
+      project.project_feature.update_attribute(:wiki_access_level, access_level)
     end
   end
 
@@ -407,7 +275,8 @@ describe ProjectPolicy do
   it_behaves_like 'project policies as developer'
   it_behaves_like 'project policies as maintainer'
   it_behaves_like 'project policies as owner'
-  it_behaves_like 'project policies as admin'
+  it_behaves_like 'project policies as admin with admin mode'
+  it_behaves_like 'project policies as admin without admin mode'
 
   context 'when a public project has merge requests allowing access' do
     include ProjectForksHelper
@@ -438,7 +307,7 @@ describe ProjectPolicy do
       expect_allowed(*maintainer_abilities)
     end
 
-    it 'dissallows abilities to a maintainer if the merge request was closed' do
+    it 'disallows abilities to a maintainer if the merge request was closed' do
       target_project.add_developer(user)
       merge_request.close!
 
@@ -482,10 +351,24 @@ describe ProjectPolicy do
         expect(described_class.new(developer, project)).to be_allowed(:read_project)
       end
 
-      it 'does not check the external service for admins and allows access' do
-        expect(::Gitlab::ExternalAuthorization).not_to receive(:access_allowed?)
+      context 'with an admin' do
+        context 'when admin mode is enabled', :enable_admin_mode do
+          it 'does not check the external service and allows access' do
+            expect(::Gitlab::ExternalAuthorization).not_to receive(:access_allowed?)
 
-        expect(described_class.new(admin, project)).to be_allowed(:read_project)
+            expect(described_class.new(admin, project)).to be_allowed(:read_project)
+          end
+        end
+
+        context 'when admin mode is disabled' do
+          it 'checks the external service and allows access' do
+            external_service_allow_access(admin, project)
+
+            expect(::Gitlab::ExternalAuthorization).to receive(:access_allowed?)
+
+            expect(described_class.new(admin, project)).to be_allowed(:read_project)
+          end
+        end
       end
 
       it 'prevents all but seeing a public project in a list when access is denied' do
@@ -508,6 +391,34 @@ describe ProjectPolicy do
     end
   end
 
+  context 'forking a project' do
+    subject { described_class.new(current_user, project) }
+
+    context 'anonymous user' do
+      let(:current_user) { nil }
+
+      it { is_expected.to be_disallowed(:fork_project) }
+    end
+
+    context 'project member' do
+      let_it_be(:project) { create(:project, :private) }
+
+      context 'guest' do
+        let(:current_user) { guest }
+
+        it { is_expected.to be_disallowed(:fork_project) }
+      end
+
+      %w(reporter developer maintainer).each do |role|
+        context role do
+          let(:current_user) { send(role) }
+
+          it { is_expected.to be_allowed(:fork_project) }
+        end
+      end
+    end
+  end
+
   describe 'update_max_artifacts_size' do
     subject { described_class.new(current_user, project) }
 
@@ -520,7 +431,13 @@ describe ProjectPolicy do
     context 'admin' do
       let(:current_user) { admin }
 
-      it { expect_allowed(:update_max_artifacts_size) }
+      context 'when admin mode is enabled', :enable_admin_mode do
+        it { expect_allowed(:update_max_artifacts_size) }
+      end
+
+      context 'when admin mode is disabled' do
+        it { expect_disallowed(:update_max_artifacts_size) }
+      end
     end
 
     %w(guest reporter developer maintainer owner).each do |role|
@@ -529,6 +446,300 @@ describe ProjectPolicy do
 
         it { expect_disallowed(:update_max_artifacts_size) }
       end
+    end
+  end
+
+  context 'alert bot' do
+    let(:current_user) { User.alert_bot }
+
+    subject { described_class.new(current_user, project) }
+
+    it { is_expected.to be_allowed(:reporter_access) }
+
+    context 'within a private project' do
+      let(:project) { create(:project, :private) }
+
+      it { is_expected.to be_allowed(:admin_issue) }
+    end
+  end
+
+  describe 'read_prometheus_alerts' do
+    subject { described_class.new(current_user, project) }
+
+    context 'with admin' do
+      let(:current_user) { admin }
+
+      context 'when admin mode is enabled', :enable_admin_mode do
+        it { is_expected.to be_allowed(:read_prometheus_alerts) }
+      end
+
+      context 'when admin mode is disabled' do
+        it { is_expected.to be_disallowed(:read_prometheus_alerts) }
+      end
+    end
+
+    context 'with owner' do
+      let(:current_user) { owner }
+
+      it { is_expected.to be_allowed(:read_prometheus_alerts) }
+    end
+
+    context 'with maintainer' do
+      let(:current_user) { maintainer }
+
+      it { is_expected.to be_allowed(:read_prometheus_alerts) }
+    end
+
+    context 'with developer' do
+      let(:current_user) { developer }
+
+      it { is_expected.to be_disallowed(:read_prometheus_alerts) }
+    end
+
+    context 'with reporter' do
+      let(:current_user) { reporter }
+
+      it { is_expected.to be_disallowed(:read_prometheus_alerts) }
+    end
+
+    context 'with guest' do
+      let(:current_user) { guest }
+
+      it { is_expected.to be_disallowed(:read_prometheus_alerts) }
+    end
+
+    context 'with anonymous' do
+      let(:current_user) { nil }
+
+      it { is_expected.to be_disallowed(:read_prometheus_alerts) }
+    end
+  end
+
+  describe 'metrics_dashboard feature' do
+    subject { described_class.new(current_user, project) }
+
+    context 'public project' do
+      let(:project) { create(:project, :public) }
+
+      context 'feature private' do
+        context 'with reporter' do
+          let(:current_user) { reporter }
+
+          it { is_expected.to be_allowed(:metrics_dashboard) }
+          it { is_expected.to be_allowed(:read_prometheus) }
+          it { is_expected.to be_allowed(:read_deployment) }
+          it { is_expected.to be_allowed(:read_metrics_user_starred_dashboard) }
+          it { is_expected.to be_allowed(:create_metrics_user_starred_dashboard) }
+        end
+
+        context 'with guest' do
+          let(:current_user) { guest }
+
+          it { is_expected.to be_disallowed(:metrics_dashboard) }
+        end
+
+        context 'with anonymous' do
+          let(:current_user) { nil }
+
+          it { is_expected.to be_disallowed(:metrics_dashboard) }
+        end
+      end
+
+      context 'feature enabled' do
+        before do
+          project.project_feature.update(metrics_dashboard_access_level: ProjectFeature::ENABLED)
+        end
+
+        context 'with reporter' do
+          let(:current_user) { reporter }
+
+          it { is_expected.to be_allowed(:metrics_dashboard) }
+          it { is_expected.to be_allowed(:read_prometheus) }
+          it { is_expected.to be_allowed(:read_deployment) }
+          it { is_expected.to be_allowed(:read_metrics_user_starred_dashboard) }
+          it { is_expected.to be_allowed(:create_metrics_user_starred_dashboard) }
+        end
+
+        context 'with guest' do
+          let(:current_user) { guest }
+
+          it { is_expected.to be_allowed(:metrics_dashboard) }
+          it { is_expected.to be_allowed(:read_prometheus) }
+          it { is_expected.to be_allowed(:read_deployment) }
+          it { is_expected.to be_allowed(:read_metrics_user_starred_dashboard) }
+          it { is_expected.to be_allowed(:create_metrics_user_starred_dashboard) }
+        end
+
+        context 'with anonymous' do
+          let(:current_user) { nil }
+
+          it { is_expected.to be_allowed(:metrics_dashboard) }
+          it { is_expected.to be_allowed(:read_prometheus) }
+          it { is_expected.to be_allowed(:read_deployment) }
+          it { is_expected.to be_disallowed(:read_metrics_user_starred_dashboard) }
+          it { is_expected.to be_disallowed(:create_metrics_user_starred_dashboard) }
+        end
+      end
+    end
+
+    context 'internal project' do
+      let(:project) { create(:project, :internal) }
+
+      context 'feature private' do
+        context 'with reporter' do
+          let(:current_user) { reporter }
+
+          it { is_expected.to be_allowed(:metrics_dashboard) }
+          it { is_expected.to be_allowed(:read_prometheus) }
+          it { is_expected.to be_allowed(:read_deployment) }
+          it { is_expected.to be_allowed(:read_metrics_user_starred_dashboard) }
+          it { is_expected.to be_allowed(:create_metrics_user_starred_dashboard) }
+        end
+
+        context 'with guest' do
+          let(:current_user) { guest }
+
+          it { is_expected.to be_disallowed(:metrics_dashboard) }
+        end
+
+        context 'with anonymous' do
+          let(:current_user) { nil }
+
+          it { is_expected.to be_disallowed(:metrics_dashboard)}
+        end
+      end
+
+      context 'feature enabled' do
+        before do
+          project.project_feature.update(metrics_dashboard_access_level: ProjectFeature::ENABLED)
+        end
+
+        context 'with reporter' do
+          let(:current_user) { reporter }
+
+          it { is_expected.to be_allowed(:metrics_dashboard) }
+          it { is_expected.to be_allowed(:read_prometheus) }
+          it { is_expected.to be_allowed(:read_deployment) }
+          it { is_expected.to be_allowed(:read_metrics_user_starred_dashboard) }
+          it { is_expected.to be_allowed(:create_metrics_user_starred_dashboard) }
+        end
+
+        context 'with guest' do
+          let(:current_user) { guest }
+
+          it { is_expected.to be_allowed(:metrics_dashboard) }
+          it { is_expected.to be_allowed(:read_prometheus) }
+          it { is_expected.to be_allowed(:read_deployment) }
+          it { is_expected.to be_allowed(:read_metrics_user_starred_dashboard) }
+          it { is_expected.to be_allowed(:create_metrics_user_starred_dashboard) }
+        end
+
+        context 'with anonymous' do
+          let(:current_user) { nil }
+
+          it { is_expected.to be_disallowed(:metrics_dashboard) }
+        end
+      end
+    end
+
+    context 'private project' do
+      let(:project) { create(:project, :private) }
+
+      context 'feature private' do
+        context 'with reporter' do
+          let(:current_user) { reporter }
+
+          it { is_expected.to be_allowed(:metrics_dashboard) }
+          it { is_expected.to be_allowed(:read_prometheus) }
+          it { is_expected.to be_allowed(:read_deployment) }
+          it { is_expected.to be_allowed(:read_metrics_user_starred_dashboard) }
+          it { is_expected.to be_allowed(:create_metrics_user_starred_dashboard) }
+        end
+
+        context 'with guest' do
+          let(:current_user) { guest }
+
+          it { is_expected.to be_disallowed(:metrics_dashboard) }
+        end
+
+        context 'with anonymous' do
+          let(:current_user) { nil }
+
+          it { is_expected.to be_disallowed(:metrics_dashboard) }
+        end
+      end
+
+      context 'feature enabled' do
+        context 'with reporter' do
+          let(:current_user) { reporter }
+
+          it { is_expected.to be_allowed(:metrics_dashboard) }
+          it { is_expected.to be_allowed(:read_prometheus) }
+          it { is_expected.to be_allowed(:read_deployment) }
+          it { is_expected.to be_allowed(:read_metrics_user_starred_dashboard) }
+          it { is_expected.to be_allowed(:create_metrics_user_starred_dashboard) }
+        end
+
+        context 'with guest' do
+          let(:current_user) { guest }
+
+          it { is_expected.to be_disallowed(:metrics_dashboard) }
+        end
+
+        context 'with anonymous' do
+          let(:current_user) { nil }
+
+          it { is_expected.to be_disallowed(:metrics_dashboard) }
+        end
+      end
+    end
+
+    context 'feature disabled' do
+      before do
+        project.project_feature.update(metrics_dashboard_access_level: ProjectFeature::DISABLED)
+      end
+
+      context 'with reporter' do
+        let(:current_user) { reporter }
+
+        it { is_expected.to be_disallowed(:metrics_dashboard) }
+      end
+
+      context 'with guest' do
+        let(:current_user) { guest }
+
+        it { is_expected.to be_disallowed(:metrics_dashboard) }
+      end
+
+      context 'with anonymous' do
+        let(:current_user) { nil }
+
+        it { is_expected.to be_disallowed(:metrics_dashboard) }
+      end
+    end
+  end
+
+  context 'deploy token access' do
+    let!(:project_deploy_token) do
+      create(:project_deploy_token, project: project, deploy_token: deploy_token)
+    end
+
+    subject { described_class.new(deploy_token, project) }
+
+    context 'a deploy token with read_package_registry scope' do
+      let(:deploy_token) { create(:deploy_token, read_package_registry: true) }
+
+      it { is_expected.to be_allowed(:read_package) }
+      it { is_expected.to be_allowed(:read_project) }
+      it { is_expected.to be_disallowed(:create_package) }
+    end
+
+    context 'a deploy token with write_package_registry scope' do
+      let(:deploy_token) { create(:deploy_token, write_package_registry: true) }
+
+      it { is_expected.to be_allowed(:create_package) }
+      it { is_expected.to be_allowed(:read_project) }
+      it { is_expected.to be_disallowed(:destroy_package) }
     end
   end
 end

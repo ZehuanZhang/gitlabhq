@@ -3,13 +3,13 @@
 require 'spec_helper'
 
 describe API::ProjectExport, :clean_gitlab_redis_cache do
-  set(:project) { create(:project) }
-  set(:project_none) { create(:project) }
-  set(:project_started) { create(:project) }
+  let_it_be(:project) { create(:project) }
+  let_it_be(:project_none) { create(:project) }
+  let_it_be(:project_started) { create(:project) }
   let(:project_finished) { create(:project, :with_export) }
   let(:project_after_export) { create(:project, :with_export) }
-  set(:user) { create(:user) }
-  set(:admin) { create(:admin) }
+  let_it_be(:user) { create(:user) }
+  let_it_be(:admin) { create(:admin) }
 
   let(:path) { "/projects/#{project.id}/export" }
   let(:path_none) { "/projects/#{project_none.id}/export" }
@@ -27,12 +27,9 @@ describe API::ProjectExport, :clean_gitlab_redis_cache do
 
   before do
     allow_any_instance_of(Gitlab::ImportExport).to receive(:storage_path).and_return(export_path)
-
-    # simulate exporting work directory
-    FileUtils.mkdir_p File.join(project_started.export_path, 'securerandom-hex')
-
-    # simulate in after export action
-    FileUtils.touch File.join(project_after_export.import_export_shared.lock_files_path, SecureRandom.hex)
+    allow_next_instance_of(ProjectExportWorker) do |job|
+      allow(job).to receive(:jid).and_return(SecureRandom.hex(8))
+    end
   end
 
   after do
@@ -45,19 +42,6 @@ describe API::ProjectExport, :clean_gitlab_redis_cache do
     end
 
     it_behaves_like '404 response'
-  end
-
-  shared_examples_for 'when rate limit is exceeded' do
-    before do
-      allow(::Gitlab::ApplicationRateLimiter).to receive(:throttled?).and_return(true)
-    end
-
-    it 'prevents requesting project export' do
-      request
-
-      expect(response).to have_gitlab_http_status(429)
-      expect(json_response['message']['error']).to eq('This endpoint has been requested too many times. Try again later.')
-    end
   end
 
   describe 'GET /projects/:project_id/export' do
@@ -77,33 +61,47 @@ describe API::ProjectExport, :clean_gitlab_redis_cache do
       it 'is none' do
         get api(path_none, user)
 
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
         expect(response).to match_response_schema('public_api/v4/project/export_status')
         expect(json_response['export_status']).to eq('none')
       end
 
-      it 'is started' do
-        get api(path_started, user)
+      context 'when project export has started' do
+        before do
+          create(:project_export_job, project: project_started, status: 1)
+        end
 
-        expect(response).to have_gitlab_http_status(200)
-        expect(response).to match_response_schema('public_api/v4/project/export_status')
-        expect(json_response['export_status']).to eq('started')
+        it 'returns status started' do
+          get api(path_started, user)
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(response).to match_response_schema('public_api/v4/project/export_status')
+          expect(json_response['export_status']).to eq('started')
+        end
       end
 
-      it 'is after_export' do
-        get api(path_after_export, user)
+      context 'when project export has finished' do
+        it 'returns status finished' do
+          get api(path_finished, user)
 
-        expect(response).to have_gitlab_http_status(200)
-        expect(response).to match_response_schema('public_api/v4/project/export_status')
-        expect(json_response['export_status']).to eq('after_export_action')
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(response).to match_response_schema('public_api/v4/project/export_status')
+          expect(json_response['export_status']).to eq('finished')
+        end
       end
 
-      it 'is finished' do
-        get api(path_finished, user)
+      context 'when project export is being regenerated' do
+        before do
+          create(:project_export_job, project: project_finished, status: 1)
+        end
 
-        expect(response).to have_gitlab_http_status(200)
-        expect(response).to match_response_schema('public_api/v4/project/export_status')
-        expect(json_response['export_status']).to eq('finished')
+        it 'returns status regeneration_in_progress' do
+          get api(path_finished, user)
+
+          expect(response).to have_gitlab_http_status(:ok)
+          expect(response).to match_response_schema('public_api/v4/project/export_status')
+          expect(json_response['export_status']).to eq('regeneration_in_progress')
+        end
       end
     end
 
@@ -185,7 +183,7 @@ describe API::ProjectExport, :clean_gitlab_redis_cache do
       it 'downloads' do
         get api(download_path_finished, user)
 
-        expect(response).to have_gitlab_http_status(200)
+        expect(response).to have_gitlab_http_status(:ok)
       end
     end
 
@@ -194,7 +192,7 @@ describe API::ProjectExport, :clean_gitlab_redis_cache do
         it 'downloads' do
           get api(download_path_export_action, user)
 
-          expect(response).to have_gitlab_http_status(200)
+          expect(response).to have_gitlab_http_status(:ok)
         end
       end
 
@@ -236,7 +234,16 @@ describe API::ProjectExport, :clean_gitlab_redis_cache do
         context 'when rate limit is exceeded' do
           let(:request) { get api(download_path, admin) }
 
-          include_examples 'when rate limit is exceeded'
+          before do
+            allow(::Gitlab::ApplicationRateLimiter).to receive(:throttled?).and_return(true)
+          end
+
+          it 'prevents requesting project export' do
+            request
+
+            expect(response).to have_gitlab_http_status(:too_many_requests)
+            expect(json_response['message']['error']).to eq('This endpoint has been requested too many times. Try again later.')
+          end
         end
       end
 
@@ -324,7 +331,7 @@ describe API::ProjectExport, :clean_gitlab_redis_cache do
 
           post(api(path, user), params: { 'upload[url]' => 'http://gitlab.com' })
 
-          expect(response).to have_gitlab_http_status(202)
+          expect(response).to have_gitlab_http_status(:accepted)
         end
       end
 
@@ -334,7 +341,7 @@ describe API::ProjectExport, :clean_gitlab_redis_cache do
 
           post api(path, user)
 
-          expect(response).to have_gitlab_http_status(202)
+          expect(response).to have_gitlab_http_status(:accepted)
         end
       end
     end
@@ -349,10 +356,17 @@ describe API::ProjectExport, :clean_gitlab_redis_cache do
 
         it_behaves_like 'post project export start'
 
-        context 'when rate limit is exceeded' do
-          let(:request) { post api(path, admin) }
+        context 'when rate limit is exceeded across projects' do
+          it 'prevents requesting project export' do
+            post api(path_none, admin)
 
-          include_examples 'when rate limit is exceeded'
+            expect(response).not_to have_gitlab_http_status(:too_many_requests)
+
+            post api(path, admin)
+
+            expect(response).to have_gitlab_http_status(:too_many_requests)
+            expect(json_response['message']['error']).to eq('This endpoint has been requested too many times. Try again later.')
+          end
         end
       end
 
@@ -400,10 +414,12 @@ describe API::ProjectExport, :clean_gitlab_redis_cache do
         it 'starts', :sidekiq_might_not_need_inline do
           params = { description: "Foo" }
 
-          expect_any_instance_of(Projects::ImportExport::ExportService).to receive(:execute)
+          expect_next_instance_of(Projects::ImportExport::ExportService) do |service|
+            expect(service).to receive(:execute)
+          end
           post api(path, project.owner), params: params
 
-          expect(response).to have_gitlab_http_status(202)
+          expect(response).to have_gitlab_http_status(:accepted)
         end
       end
     end

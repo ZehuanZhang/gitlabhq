@@ -8,6 +8,8 @@ module API
 
     BRANCH_ENDPOINT_REQUIREMENTS = API::NAMESPACE_OR_PROJECT_REQUIREMENTS.merge(branch: API::NO_SLASH_URL_PART_REGEX)
 
+    after_validation { content_type "application/json" }
+
     before do
       require_repository_enabled!
       authorize! :download_code, user_project
@@ -57,7 +59,7 @@ module API
           requires :branch, type: String, desc: 'The name of the branch'
         end
         head do
-          user_project.repository.branch_exists?(params[:branch]) ? status(204) : status(404)
+          user_project.repository.branch_exists?(params[:branch]) ? no_content! : not_found!
         end
         get do
           branch = find_branch!(params[:branch])

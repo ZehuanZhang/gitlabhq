@@ -13,8 +13,12 @@ module Ci
     belongs_to :pipeline
 
     has_many :statuses, class_name: 'CommitStatus', foreign_key: :stage_id
+    has_many :latest_statuses, -> { ordered.latest }, class_name: 'CommitStatus', foreign_key: :stage_id
+    has_many :processables, class_name: 'Ci::Processable', foreign_key: :stage_id
     has_many :builds, foreign_key: :stage_id
     has_many :bridges, foreign_key: :stage_id
+
+    scope :ordered, -> { order(position: :asc) }
 
     with_options unless: :importing? do
       validates :project, presence: true
@@ -39,8 +43,7 @@ module Ci
 
     state_machine :status, initial: :created do
       event :enqueue do
-        transition [:created, :waiting_for_resource, :preparing] => :pending
-        transition [:success, :failed, :canceled, :skipped] => :running
+        transition any - [:pending] => :pending
       end
 
       event :request_resource do
@@ -80,9 +83,8 @@ module Ci
       end
     end
 
-    def update_status
+    def set_status(new_status)
       retry_optimistic_lock(self) do
-        new_status = latest_stage_status.to_s
         case new_status
         when 'created' then nil
         when 'waiting_for_resource' then request_resource
@@ -102,8 +104,12 @@ module Ci
       end
     end
 
+    def update_legacy_status
+      set_status(latest_stage_status.to_s)
+    end
+
     def groups
-      @groups ||= Ci::Group.fabricate(self)
+      @groups ||= Ci::Group.fabricate(project, self)
     end
 
     def has_warnings?
@@ -132,7 +138,7 @@ module Ci
     end
 
     def latest_stage_status
-      statuses.latest.slow_composite_status || 'skipped'
+      statuses.latest.slow_composite_status(project: project) || 'skipped'
     end
   end
 end

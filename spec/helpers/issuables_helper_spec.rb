@@ -40,7 +40,7 @@ describe IssuablesHelper do
     end
 
     it 'returns default label when a group was not found for the provided id' do
-      expect(group_dropdown_label(9999, default)).to eq('default label')
+      expect(group_dropdown_label(non_existing_record_id, default)).to eq('default label')
     end
   end
 
@@ -183,8 +183,8 @@ describe IssuablesHelper do
       @project = issue.project
 
       expected_data = {
-        endpoint: "/#{@project.full_path}/issues/#{issue.iid}",
-        updateEndpoint: "/#{@project.full_path}/issues/#{issue.iid}.json",
+        endpoint: "/#{@project.full_path}/-/issues/#{issue.iid}",
+        updateEndpoint: "/#{@project.full_path}/-/issues/#{issue.iid}.json",
         canUpdate: true,
         canDestroy: true,
         issuableRef: "##{issue.iid}",

@@ -3,7 +3,7 @@
 require 'spec_helper'
 
 describe BoardsHelper do
-  set(:project) { create(:project) }
+  let_it_be(:project) { create(:project) }
 
   describe '#build_issue_link_base' do
     context 'project board' do
@@ -11,7 +11,7 @@ describe BoardsHelper do
         @project = project
         @board = create(:board, project: @project)
 
-        expect(build_issue_link_base).to eq("/#{@project.namespace.path}/#{@project.path}/issues")
+        expect(build_issue_link_base).to eq("/#{@project.namespace.path}/#{@project.path}/-/issues")
       end
     end
 
@@ -47,6 +47,10 @@ describe BoardsHelper do
 
     it 'returns a board_lists_path as lists_endpoint' do
       expect(helper.board_data[:lists_endpoint]).to eq(board_lists_path(board))
+    end
+
+    it 'returns board type as parent' do
+      expect(helper.board_data[:parent]).to eq('project')
     end
   end
 
